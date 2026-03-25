@@ -1,0 +1,1181 @@
+---
+title: "Composition of Unemployment by Reason"
+subtitle: "CPS Table A-11 · Post-1994 Redesign · Six-Way Decomposition"
+date: today
+format:
+  html:
+    theme: flatly
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-summary: "Show code"
+    fig-width: 10
+    fig-height: 5.5
+    embed-resources: true
+    self-contained-math: true
+execute:
+  warning: false
+  message: false
+---
+
+## Overview
+
+The headline unemployment rate tells you *how many* people are unemployed, but not *why*. A rising rate driven by permanent layoffs signals a very different economy than one driven by temporary furloughs, voluntary quits, or new graduates entering the job market for the first time.
+
+The Bureau of Labor Statistics classifies every unemployed person into one of six mutually exclusive categories based on their reason for unemployment: **temporary layoffs** (expecting recall), **permanent job losers** (no recall expected), **completed temporary jobs**, **job leavers** (quit voluntarily), **reentrants** (returning to the labor force after a period out), and **new entrants** (searching for their first job ever). These six groups sum to total unemployment. We also aggregate them into two broader groups — **job separations** (the first four) and **labor force entry** (reentrants + new entrants) — to isolate the demand-side from the supply-side channel.
+
+This report decomposes the unemployment rate along these dimensions to answer a central question: **what is driving changes in unemployment, and how has the composition shifted over time?** Each component's level divided by the civilian labor force gives its contribution to the total unemployment rate; stacking these contributions reconstructs the headline number. The distinction matters for policy: a surge in permanent job losers calls for countercyclical intervention, a spike in temporary layoffs may signal a shock firms expect to reverse, rising job leavers can indicate labor market confidence, and a rise in new entrants may reflect demographic shifts or an expanding economy drawing in first-time workers. By tracking both the rate contributions and the period-over-period changes of each component, we can distinguish between cyclical deterioration, structural shifts, and signs of labor market strength.
+
+```{r setup}
+#| label: setup
+
+library(tidyverse)
+library(fredr)
+library(ggsci)      # for scale_*_jco()
+library(scales)
+library(gt)
+library(lubridate)
+
+# ── FRED API key ─────────────────────────────────────────────────────────
+# Set your FRED API key. Get one free at https://fred.stlouisfed.org/docs/api/api_key.html
+# Uncomment and set below, or use Sys.setenv() in your .Renviron
+fredr_set_key("ccd350785a210a7653a20d02ce92d83a")
+
+# ── Theme ────────────────────────────────────────────────────────────────
+theme_report <- theme_minimal(base_size = 11, base_family = "sans") +
+  theme(
+    plot.title = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(color = "grey50", size = 9),
+    plot.caption = element_text(color = "grey60", size = 7, hjust = 0),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.title = element_text(size = 9, color = "grey40"),
+    axis.text = element_text(size = 8, color = "grey50"),
+    legend.position = "top",
+    legend.text = element_text(size = 8),
+    legend.title = element_blank()
+  )
+
+theme_set(theme_report)
+
+# ── Palettes ─────────────────────────────────────────────────────────────
+# 6-color palette for the six-way cause decomposition
+cause_cols <- pal_jco()(6)
+names(cause_cols) <- c("Temporary Layoff", "Permanent Job Losers",
+                       "Completed Temp Job", "Job Leavers",
+                       "Reentrants", "New Entrants")
+
+# 2-color palette for two-group decomposition
+group_cols <- c("Job Separations" = "#0073C2", "Labor Force Entry" = "#EFC000")
+
+# 4-color palette (kept for legacy charts)
+jco_cols <- pal_jco()(4)
+names(jco_cols) <- c("Job Losers", "Job Leavers", "Reentrants", "New Entrants")
+
+# ── NBER recession dates (post-1994) ────────────────────────────────────
+recessions <- tibble(
+  start = as.Date(c("2001-03-01", "2007-12-01", "2020-02-01")),
+  end   = as.Date(c("2001-11-01", "2009-06-01", "2020-04-01"))
+)
+
+add_recessions <- function(p, alpha = 0.08) {
+  p + annotate("rect",
+    xmin = recessions$start, xmax = recessions$end,
+    ymin = -Inf, ymax = Inf,
+    fill = "grey40", alpha = alpha
+  )
+}
+```
+
+```{r data-pull}
+#| label: data-pull
+#| cache: true
+
+# ── Pull all series from FRED ────────────────────────────────────────────
+# Four-way series (legacy)
+series_ids_4 <- c(
+  "LNS13023621",   # Job Losers (aggregate)
+  "LNS13023705",   # Job Leavers
+  "LNS13023557",   # Reentrants
+  "LNS13023569",   # New Entrants
+  "UNEMPLOY"        # Total Unemployed
+)
+series_names_4 <- c("Job Losers", "Job Leavers", "Reentrants", "New Entrants", "Total")
+
+# Six-way series (granular cause decomposition)
+series_ids_6 <- c(
+  "LNS13023653",   # On Temporary Layoff
+  "LNS13026638",   # Permanent Job Losers
+  "LNS13026637",   # Completed Temporary Job
+  "LNS13023705",   # Job Leavers
+  "LNS13023557",   # Reentrants
+  "LNS13023569",   # New Entrants
+  "UNEMPLOY",       # Total Unemployed
+  "CLF16OV"         # Civilian Labor Force (for rate conversion)
+)
+series_names_6 <- c("Temporary Layoff", "Permanent Job Losers", "Completed Temp Job",
+                     "Job Leavers", "Reentrants", "New Entrants", "Total", "CLF")
+
+# Pull four-way
+raw <- map2_dfr(series_ids_4, series_names_4, \(id, nm) {
+  fredr(
+    series_id = id,
+    observation_start = as.Date("1994-01-01"),
+    observation_end   = Sys.Date()
+  ) |>
+    transmute(date, series = nm, value)
+})
+
+# Pull six-way
+raw6 <- map2_dfr(series_ids_6, series_names_6, \(id, nm) {
+  fredr(
+    series_id = id,
+    observation_start = as.Date("1994-01-01"),
+    observation_end   = Sys.Date()
+  ) |>
+    transmute(date, series = nm, value)
+})
+
+# ── Four-way: pivot wide and compute shares ──────────────────────────────
+df_wide <- raw |>
+  pivot_wider(names_from = series, values_from = value) |>
+  drop_na() |>
+  mutate(
+    component_sum = `Job Losers` + `Job Leavers` + Reentrants + `New Entrants`,
+    across(c(`Job Losers`, `Job Leavers`, Reentrants, `New Entrants`),
+           \(x) x / component_sum * 100,
+           .names = "{.col}_share")
+  )
+
+component_order <- c("Job Losers", "Job Leavers", "Reentrants", "New Entrants")
+
+df_shares <- df_wide |>
+  select(date, ends_with("_share")) |>
+  pivot_longer(-date, names_to = "component", values_to = "share") |>
+  mutate(
+    component = str_remove(component, "_share"),
+    component = factor(component, levels = component_order)
+  )
+
+df_levels <- raw |>
+  filter(series != "Total") |>
+  mutate(series = factor(series, levels = component_order))
+
+# ── Six-way: pivot wide and compute rate contributions ───────────────────
+cause_order <- c("Temporary Layoff", "Permanent Job Losers", "Completed Temp Job",
+                 "Job Leavers", "Reentrants", "New Entrants")
+
+df6 <- raw6 |>
+  pivot_wider(names_from = series, values_from = value) |>
+  drop_na() |>
+  mutate(
+    across(all_of(cause_order),
+           \(x) x / CLF * 100,
+           .names = "{.col}_rate"),
+    urate = Total / CLF * 100
+  )
+
+# Long format for stacked bar
+df6_long <- df6 |>
+  select(date, ends_with("_rate")) |>
+  pivot_longer(-date, names_to = "cause", values_to = "rate") |>
+  mutate(
+    cause = str_remove(cause, "_rate"),
+    cause = factor(cause, levels = cause_order)
+  )
+
+# ── Two-group aggregation ────────────────────────────────────────────────
+group_order <- c("Job Separations", "Labor Force Entry")
+
+df2 <- df6 |>
+  mutate(
+    `Job Separations` = `Temporary Layoff` + `Permanent Job Losers` +
+                         `Completed Temp Job` + `Job Leavers`,
+    `Labor Force Entry` = Reentrants + `New Entrants`,
+    `Job Separations_rate` = `Job Separations` / CLF * 100,
+    `Labor Force Entry_rate` = `Labor Force Entry` / CLF * 100
+  )
+
+df2_long <- df2 |>
+  select(date, `Job Separations_rate`, `Labor Force Entry_rate`) |>
+  pivot_longer(-date, names_to = "group", values_to = "rate") |>
+  mutate(
+    group = str_remove(group, "_rate"),
+    group = factor(group, levels = group_order)
+  )
+```
+
+## 1. Unemployment Rate by Cause (1994–Present)
+
+::: {.panel-tabset}
+
+### Six-Way
+
+```{r fig-urate-cause-6}
+#| label: fig-urate-cause-6
+#| fig-cap: "Unemployment rate decomposed by cause (six-way). Bars stack to total unemployment rate."
+
+p_cause <- df6_long |>
+  ggplot(aes(x = date, y = rate, fill = cause)) +
+  geom_col(alpha = 0.85, width = 28, position = "stack") +
+  geom_line(
+    data = df6, aes(x = date, y = urate, fill = NULL),
+    color = "black", linewidth = 0.4, alpha = 0.5
+  ) +
+  scale_fill_manual(values = cause_cols) +
+  scale_y_continuous(labels = \(x) paste0(x, "%"),
+                     expand = expansion(mult = c(0, 0.02))) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(
+    title = "Unemployment Rate by Cause",
+    subtitle = "Each component = cause level / civilian labor force; bars stack to total unemployment rate",
+    y = "Unemployment Rate (%)", x = NULL,
+    caption = "Source: BLS via FRED · CPS Table A-11 · Seasonally Adjusted"
+  )
+
+add_recessions(p_cause)
+```
+
+### Two-Group
+
+```{r fig-urate-cause-2}
+#| label: fig-urate-cause-2
+#| fig-cap: "Unemployment rate decomposed into job separations vs. labor force entry. Bars stack to total unemployment rate."
+
+p_cause2 <- df2_long |>
+  ggplot(aes(x = date, y = rate, fill = group)) +
+  geom_col(alpha = 0.85, width = 28, position = "stack") +
+  geom_line(
+    data = df2, aes(x = date, y = urate, fill = NULL),
+    color = "black", linewidth = 0.4, alpha = 0.5
+  ) +
+  scale_fill_manual(values = group_cols) +
+  scale_y_continuous(labels = \(x) paste0(x, "%"),
+                     expand = expansion(mult = c(0, 0.02))) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(
+    title = "Unemployment Rate: Job Separations vs. Labor Force Entry",
+    subtitle = "Separations = layoffs + completed temp jobs + quits; Entry = reentrants + new entrants",
+    y = "Unemployment Rate (%)", x = NULL,
+    caption = "Source: BLS via FRED · CPS Table A-11 · Seasonally Adjusted"
+  )
+
+add_recessions(p_cause2)
+```
+
+:::
+
+The stacked bars show how each cause contributes to the total unemployment rate. Permanent job losers and temporary layoffs dominate during recessions — in 2020, temporary layoffs alone drove the rate above 8% as firms furloughed workers expecting a recall. The two-group view makes clear that job separations drive virtually all cyclical variation, while labor force entry contributes a relatively stable base.
+
+## 1b. Unemployment Rate by Cause — Recent Detail (2023–Present)
+
+::: {.panel-tabset}
+
+### Six-Way
+
+```{r fig-urate-cause-recent-6}
+#| label: fig-urate-cause-recent-6
+#| fig-cap: "Unemployment rate by cause, zoomed to 2023–present (six-way)."
+
+df6_long |>
+  filter(date >= as.Date("2023-01-01")) |>
+  ggplot(aes(x = date, y = rate, fill = cause)) +
+  geom_col(alpha = 0.85, width = 22, position = "stack") +
+  geom_line(
+    data = df6 |> filter(date >= as.Date("2023-01-01")),
+    aes(x = date, y = urate, fill = NULL),
+    color = "black", linewidth = 0.5, alpha = 0.5
+  ) +
+  geom_point(
+    data = df6 |> filter(date >= as.Date("2023-01-01")),
+    aes(x = date, y = urate, fill = NULL),
+    color = "black", size = 1
+  ) +
+  scale_fill_manual(values = cause_cols) +
+  scale_y_continuous(labels = \(x) paste0(x, "%"),
+                     expand = expansion(mult = c(0, 0.02))) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n'%y") +
+  labs(
+    title = "Unemployment Rate by Cause — Recent Detail",
+    subtitle = "Six-way decomposition, 2023–present",
+    y = "Unemployment Rate (%)", x = NULL,
+    caption = "Source: BLS via FRED · CPS Table A-11 · Seasonally Adjusted"
+  )
+```
+
+### Two-Group
+
+```{r fig-urate-cause-recent-2}
+#| label: fig-urate-cause-recent-2
+#| fig-cap: "Unemployment rate: separations vs. entry, zoomed to 2023–present."
+
+df2_long |>
+  filter(date >= as.Date("2023-01-01")) |>
+  ggplot(aes(x = date, y = rate, fill = group)) +
+  geom_col(alpha = 0.85, width = 22, position = "stack") +
+  geom_line(
+    data = df2 |> filter(date >= as.Date("2023-01-01")),
+    aes(x = date, y = urate, fill = NULL),
+    color = "black", linewidth = 0.5, alpha = 0.5
+  ) +
+  geom_point(
+    data = df2 |> filter(date >= as.Date("2023-01-01")),
+    aes(x = date, y = urate, fill = NULL),
+    color = "black", size = 1
+  ) +
+  scale_fill_manual(values = group_cols) +
+  scale_y_continuous(labels = \(x) paste0(x, "%"),
+                     expand = expansion(mult = c(0, 0.02))) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n'%y") +
+  labs(
+    title = "Unemployment Rate: Separations vs. Entry — Recent Detail",
+    subtitle = "Two-group decomposition, 2023–present",
+    y = "Unemployment Rate (%)", x = NULL,
+    caption = "Source: BLS via FRED · CPS Table A-11 · Seasonally Adjusted"
+  )
+```
+
+:::
+
+## 2. Change in Unemployment Rate by Cause
+
+```{r urate-chg-compute}
+#| label: urate-chg-compute
+
+# Compute YoY change in each cause's rate contribution (six-way)
+df6_chg <- df6 |>
+  arrange(date) |>
+  mutate(
+    across(all_of(paste0(cause_order, "_rate")),
+           \(x) x - lag(x, 12),
+           .names = "{.col}_chg"),
+    urate_chg = urate - lag(urate, 12)
+  ) |>
+  filter(!is.na(urate_chg))
+
+df6_chg_long <- df6_chg |>
+  select(date, ends_with("_rate_chg")) |>
+  pivot_longer(-date, names_to = "cause", values_to = "chg") |>
+  mutate(
+    cause = str_remove(cause, "_rate_chg"),
+    cause = factor(cause, levels = cause_order)
+  )
+
+# Compute YoY change (two-group)
+df2_chg <- df2 |>
+  arrange(date) |>
+  mutate(
+    `Job Separations_rate_chg` = `Job Separations_rate` - lag(`Job Separations_rate`, 12),
+    `Labor Force Entry_rate_chg` = `Labor Force Entry_rate` - lag(`Labor Force Entry_rate`, 12),
+    urate_chg = urate - lag(urate, 12)
+  ) |>
+  filter(!is.na(urate_chg))
+
+df2_chg_long <- df2_chg |>
+  select(date, ends_with("_rate_chg")) |>
+  pivot_longer(-date, names_to = "group", values_to = "chg") |>
+  mutate(
+    group = str_remove(group, "_rate_chg"),
+    group = factor(group, levels = group_order)
+  )
+```
+
+::: {.panel-tabset}
+
+### Six-Way
+
+```{r fig-urate-cause-chg-6}
+#| label: fig-urate-cause-chg-6
+#| fig-cap: "Year-over-year change in unemployment rate decomposed by cause (six-way)."
+
+p_cause_chg <- df6_chg_long |>
+  ggplot(aes(x = date, y = chg, fill = cause)) +
+  geom_col(alpha = 0.75, width = 25) +
+  geom_line(
+    data = df6_chg, aes(x = date, y = urate_chg, fill = NULL),
+    color = "black", linewidth = 0.6
+  ) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.3) +
+  scale_fill_manual(values = cause_cols) +
+  scale_y_continuous(labels = \(x) paste0(sprintf("%+.1f", x), "pp")) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(
+    title = "YoY Change in Unemployment Rate by Cause",
+    subtitle = "Additive decomposition: cause contributions sum to total YoY change in unemployment rate (black line)",
+    y = "Change (pp)", x = NULL,
+    caption = "Source: BLS via FRED · CPS Table A-11"
+  )
+
+add_recessions(p_cause_chg, alpha = 0.05)
+```
+
+### Two-Group
+
+```{r fig-urate-cause-chg-2}
+#| label: fig-urate-cause-chg-2
+#| fig-cap: "Year-over-year change in unemployment rate: job separations vs. labor force entry."
+
+df2_chg_long |>
+  ggplot(aes(x = date, y = chg, fill = group)) +
+  geom_col(alpha = 0.75, width = 25) +
+  geom_line(
+    data = df2_chg, aes(x = date, y = urate_chg, fill = NULL),
+    color = "black", linewidth = 0.6
+  ) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.3) +
+  scale_fill_manual(values = group_cols) +
+  scale_y_continuous(labels = \(x) paste0(sprintf("%+.1f", x), "pp")) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(
+    title = "YoY Change in Unemployment Rate: Separations vs. Entry",
+    subtitle = "Additive decomposition: two-group contributions sum to total YoY change (black line)",
+    y = "Change (pp)", x = NULL,
+    caption = "Source: BLS via FRED · CPS Table A-11"
+  )
+```
+
+:::
+
+The change decomposition reveals which causes are driving movements in the unemployment rate. Job separations drive virtually all recessionary surges and recoveries. Labor force entry contributes a smaller, more stable component to rate changes.
+
+## 3. Recent Detail: Change in Unemployment Rate by Cause (2023–Present)
+
+```{r urate-chg-recent-compute}
+#| label: urate-chg-recent-compute
+
+df6_chg_recent <- df6_chg |> filter(date >= as.Date("2023-01-01"))
+df6_chg_recent_long <- df6_chg_long |> filter(date >= as.Date("2023-01-01"))
+df2_chg_recent <- df2_chg |> filter(date >= as.Date("2023-01-01"))
+df2_chg_recent_long <- df2_chg_long |> filter(date >= as.Date("2023-01-01"))
+```
+
+::: {.panel-tabset}
+
+### Six-Way
+
+```{r fig-urate-cause-chg-recent-6}
+#| label: fig-urate-cause-chg-recent-6
+#| fig-cap: "Year-over-year change in unemployment rate by cause, zoomed to the post-pandemic period (six-way)."
+
+df6_chg_recent_long |>
+  ggplot(aes(x = date, y = chg, fill = cause)) +
+  geom_col(alpha = 0.75, width = 22) +
+  geom_line(
+    data = df6_chg_recent, aes(x = date, y = urate_chg, fill = NULL),
+    color = "black", linewidth = 0.7
+  ) +
+  geom_point(
+    data = df6_chg_recent, aes(x = date, y = urate_chg, fill = NULL),
+    color = "black", size = 1
+  ) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.3) +
+  scale_fill_manual(values = cause_cols) +
+  scale_y_continuous(labels = \(x) paste0(sprintf("%+.1f", x), "pp")) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n'%y") +
+  labs(
+    title = "YoY Change in Unemployment Rate by Cause — Recent Detail",
+    subtitle = "Post-pandemic period: which causes are driving rate changes?",
+    y = "Change (pp)", x = NULL,
+    caption = "Source: BLS via FRED · CPS Table A-11"
+  )
+```
+
+### Two-Group
+
+```{r fig-urate-cause-chg-recent-2}
+#| label: fig-urate-cause-chg-recent-2
+#| fig-cap: "Year-over-year change in unemployment rate: job separations vs. labor force entry, post-pandemic."
+
+df2_chg_recent_long |>
+  ggplot(aes(x = date, y = chg, fill = group)) +
+  geom_col(alpha = 0.75, width = 22) +
+  geom_line(
+    data = df2_chg_recent, aes(x = date, y = urate_chg, fill = NULL),
+    color = "black", linewidth = 0.7
+  ) +
+  geom_point(
+    data = df2_chg_recent, aes(x = date, y = urate_chg, fill = NULL),
+    color = "black", size = 1
+  ) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.3) +
+  scale_fill_manual(values = group_cols) +
+  scale_y_continuous(labels = \(x) paste0(sprintf("%+.1f", x), "pp")) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n'%y") +
+  labs(
+    title = "YoY Change in Unemployment Rate — Recent Detail",
+    subtitle = "Post-pandemic: separations vs. entry contributions to rate change",
+    y = "Change (pp)", x = NULL,
+    caption = "Source: BLS via FRED · CPS Table A-11"
+  )
+```
+
+:::
+
+## 4. Unemployment Composition: Stacked Shares (1994–Present)
+
+```{r stacked-shares-compute}
+#| label: stacked-shares-compute
+
+# Compute six-way shares relative to component sum so they stack to exactly 100%
+df6_shares <- df6 |>
+  mutate(
+    component_sum = `Temporary Layoff` + `Permanent Job Losers` + `Completed Temp Job` +
+                    `Job Leavers` + Reentrants + `New Entrants`,
+    across(all_of(cause_order),
+           \(x) x / component_sum * 100,
+           .names = "{.col}_share")
+  ) |>
+  select(date, ends_with("_share")) |>
+  pivot_longer(-date, names_to = "cause", values_to = "share") |>
+  mutate(
+    cause = str_remove(cause, "_share"),
+    cause = factor(cause, levels = cause_order)
+  )
+
+# Compute two-group shares
+df2_shares <- df2 |>
+  mutate(
+    component_sum = `Job Separations` + `Labor Force Entry`,
+    `Job Separations_share` = `Job Separations` / component_sum * 100,
+    `Labor Force Entry_share` = `Labor Force Entry` / component_sum * 100
+  ) |>
+  select(date, `Job Separations_share`, `Labor Force Entry_share`) |>
+  pivot_longer(-date, names_to = "group", values_to = "share") |>
+  mutate(
+    group = str_remove(group, "_share"),
+    group = factor(group, levels = group_order)
+  )
+```
+
+::: {.panel-tabset}
+
+### Six-Way
+
+```{r fig-stacked-6}
+#| label: fig-stacked-6
+#| fig-cap: "Share of total unemployment by reason (six-way). Shaded areas indicate NBER recessions."
+
+p_stacked <- df6_shares |>
+  ggplot(aes(x = date, y = share, fill = cause)) +
+  geom_col(alpha = 0.85, width = 28, position = "stack") +
+  scale_fill_manual(values = cause_cols) +
+  scale_y_continuous(labels = \(x) paste0(x, "%"), limits = c(0, 100),
+                     expand = expansion(mult = c(0, 0))) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(
+    title = "Composition of Unemployment by Reason",
+    subtitle = "Share of total unemployed, seasonally adjusted (six-way decomposition)",
+    y = "Share of Total Unemployed (%)", x = NULL,
+    caption = "Source: BLS via FRED · CPS Table A-11 · Seasonally Adjusted"
+  )
+
+add_recessions(p_stacked)
+```
+
+### Two-Group
+
+```{r fig-stacked-2}
+#| label: fig-stacked-2
+#| fig-cap: "Share of total unemployment: job separations vs. labor force entry."
+
+p_stacked2 <- df2_shares |>
+  ggplot(aes(x = date, y = share, fill = group)) +
+  geom_col(alpha = 0.85, width = 28, position = "stack") +
+  scale_fill_manual(values = group_cols) +
+  scale_y_continuous(labels = \(x) paste0(x, "%"), limits = c(0, 100),
+                     expand = expansion(mult = c(0, 0))) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(
+    title = "Composition of Unemployment: Separations vs. Entry",
+    subtitle = "Share of total unemployed, seasonally adjusted",
+    y = "Share of Total Unemployed (%)", x = NULL,
+    caption = "Source: BLS via FRED · CPS Table A-11 · Seasonally Adjusted"
+  )
+
+add_recessions(p_stacked2)
+```
+
+:::
+
+Temporary and permanent layoffs together dominate during and after recessions, with temporary layoffs spiking sharply in 2020 as firms furloughed workers. The two-group view shows job separations consistently account for 55–70% of unemployment, rising sharply during recessions.
+
+## 5. New Entrants Share
+
+::: {.panel-tabset}
+
+### Share of Total Unemployed
+
+```{r fig-ne-share-unemp}
+#| label: fig-ne-share-unemp
+#| fig-cap: "New entrant share of total unemployment with 12-month moving average."
+#| fig-height: 4
+
+ne_share <- df6 |>
+  transmute(date, share = `New Entrants` / Total * 100) |>
+  mutate(ma12 = zoo::rollmean(share, k = 12, fill = NA, align = "right"))
+
+p_ne <- ne_share |>
+  ggplot(aes(x = date)) +
+  geom_line(aes(y = share), color = cause_cols["New Entrants"], alpha = 0.3, linewidth = 0.4) +
+  geom_line(aes(y = ma12), color = cause_cols["New Entrants"], linewidth = 1, alpha = 0.75) +
+  scale_y_continuous(labels = \(x) paste0(x, "%")) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(
+    title = "New Entrants as a Share of Total Unemployed",
+    subtitle = "Monthly (light) and 12-month moving average (bold)",
+    y = "New Entrants Share (%)", x = NULL,
+    caption = "Source: BLS via FRED · LNS13023569 / UNEMPLOY"
+  )
+
+add_recessions(p_ne)
+```
+
+### Share of Labor Force
+
+```{r fig-ne-share-clf}
+#| label: fig-ne-share-clf
+#| fig-cap: "New entrants as a share of the civilian labor force with 12-month moving average."
+#| fig-height: 4
+
+ne_clf <- df6 |>
+  transmute(date, share = `New Entrants` / CLF * 100) |>
+  mutate(ma12 = zoo::rollmean(share, k = 12, fill = NA, align = "right"))
+
+p_ne_clf <- ne_clf |>
+  ggplot(aes(x = date)) +
+  geom_line(aes(y = share), color = cause_cols["New Entrants"], alpha = 0.3, linewidth = 0.4) +
+  geom_line(aes(y = ma12), color = cause_cols["New Entrants"], linewidth = 1, alpha = 0.75) +
+  scale_y_continuous(labels = \(x) paste0(x, "%")) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(
+    title = "New Entrants as a Share of the Civilian Labor Force",
+    subtitle = "Monthly (light) and 12-month moving average (bold)",
+    y = "New Entrants / CLF (%)", x = NULL,
+    caption = "Source: BLS via FRED · LNS13023569 / CLF16OV"
+  )
+
+add_recessions(p_ne_clf)
+```
+
+:::
+
+The share-of-unemployed view is counter-cyclical: it rises in expansions (as first-timers enter a strong market) and dips in recessions (as job losers surge and dominate the denominator). The share-of-labor-force view removes this denominator effect and shows the true incidence of new-entrant unemployment, which is more stable over time.
+
+## 6. YoY Contributions to Unemployment Growth (1995–Present)
+
+```{r yoy-contrib}
+#| label: yoy-compute
+
+# ── Contribution decomposition functions ─────────────────────────────────
+calc_contributions6 <- function(data, lag = 12, start_date = NULL) {
+  data |>
+    arrange(date) |>
+    mutate(
+      across(all_of(cause_order),
+             \(x) (x - lag(x, lag)) / lag(Total, lag) * 100,
+             .names = "{.col}_contrib"),
+      total_chg = (Total - lag(Total, lag)) / lag(Total, lag) * 100
+    ) |>
+    filter(!is.na(total_chg)) |>
+    (\(d) if (!is.null(start_date)) filter(d, date >= start_date) else d)()
+}
+
+calc_contributions2 <- function(data, lag = 12, start_date = NULL) {
+  data |>
+    arrange(date) |>
+    mutate(
+      across(all_of(group_order),
+             \(x) (x - lag(x, lag)) / lag(Total, lag) * 100,
+             .names = "{.col}_contrib"),
+      total_chg = (Total - lag(Total, lag)) / lag(Total, lag) * 100
+    ) |>
+    filter(!is.na(total_chg)) |>
+    (\(d) if (!is.null(start_date)) filter(d, date >= start_date) else d)()
+}
+
+# Six-way YoY
+df_yoy <- calc_contributions6(df6, lag = 12)
+
+df_yoy_long <- df_yoy |>
+  select(date, ends_with("_contrib"), total_chg) |>
+  pivot_longer(
+    cols = ends_with("_contrib"),
+    names_to = "cause",
+    values_to = "contrib"
+  ) |>
+  mutate(
+    cause = str_remove(cause, "_contrib"),
+    cause = factor(cause, levels = cause_order)
+  )
+
+# Two-group YoY
+df_yoy2 <- calc_contributions2(df2, lag = 12)
+
+df_yoy2_long <- df_yoy2 |>
+  select(date, ends_with("_contrib"), total_chg) |>
+  pivot_longer(
+    cols = ends_with("_contrib"),
+    names_to = "group",
+    values_to = "contrib"
+  ) |>
+  mutate(
+    group = str_remove(group, "_contrib"),
+    group = factor(group, levels = group_order)
+  )
+```
+
+::: {.panel-tabset}
+
+### Six-Way
+
+```{r fig-yoy-full-6}
+#| label: fig-yoy-full-6
+#| fig-cap: "Year-over-year contributions to total unemployment change by reason (six-way)."
+
+p_yoy <- df_yoy_long |>
+  ggplot(aes(x = date, y = contrib, fill = cause)) +
+  geom_col(alpha = 0.75, width = 25) +
+  geom_line(
+    data = df_yoy, aes(x = date, y = total_chg, fill = NULL),
+    color = "black", linewidth = 0.6
+  ) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.3) +
+  scale_fill_manual(values = cause_cols) +
+  scale_y_continuous(labels = \(x) paste0(sprintf("%+.0f", x), "pp")) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(
+    title = "YoY Contributions to Unemployment Growth",
+    subtitle = "Additive decomposition: six cause contributions sum to total YoY % change (black line)",
+    y = "Contribution (pp)", x = NULL,
+    caption = "Source: BLS via FRED · CPS Table A-11"
+  )
+
+add_recessions(p_yoy, alpha = 0.05)
+```
+
+### Two-Group
+
+```{r fig-yoy-full-2}
+#| label: fig-yoy-full-2
+#| fig-cap: "Year-over-year contributions to unemployment change: separations vs. entry."
+
+df_yoy2_long |>
+  ggplot(aes(x = date, y = contrib, fill = group)) +
+  geom_col(alpha = 0.75, width = 25) +
+  geom_line(
+    data = df_yoy2, aes(x = date, y = total_chg, fill = NULL),
+    color = "black", linewidth = 0.6
+  ) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.3) +
+  scale_fill_manual(values = group_cols) +
+  scale_y_continuous(labels = \(x) paste0(sprintf("%+.0f", x), "pp")) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(
+    title = "YoY Contributions to Unemployment Growth: Separations vs. Entry",
+    subtitle = "Two-group contributions sum to total YoY % change (black line)",
+    y = "Contribution (pp)", x = NULL,
+    caption = "Source: BLS via FRED · CPS Table A-11"
+  )
+
+```
+
+:::
+
+Each bar decomposes the YoY % change in total unemployment into additive contributions. Job separations drive virtually all cyclical swings. Labor force entry contributes modestly and more steadily.
+
+## 7. YoY Contributions — Recent Detail (2023–Present)
+
+```{r yoy-recent-compute}
+#| label: yoy-recent-compute
+
+df_yoy_recent <- calc_contributions6(df6, lag = 12, start_date = as.Date("2023-01-01"))
+df_yoy_recent_long <- df_yoy_recent |>
+  select(date, ends_with("_contrib"), total_chg) |>
+  pivot_longer(ends_with("_contrib"), names_to = "cause", values_to = "contrib") |>
+  mutate(cause = str_remove(cause, "_contrib"), cause = factor(cause, levels = cause_order))
+
+df_yoy_recent2 <- calc_contributions2(df2, lag = 12, start_date = as.Date("2023-01-01"))
+df_yoy_recent2_long <- df_yoy_recent2 |>
+  select(date, ends_with("_contrib"), total_chg) |>
+  pivot_longer(ends_with("_contrib"), names_to = "group", values_to = "contrib") |>
+  mutate(group = str_remove(group, "_contrib"), group = factor(group, levels = group_order))
+```
+
+::: {.panel-tabset}
+
+### Six-Way
+
+```{r fig-yoy-recent-6}
+#| label: fig-yoy-recent-6
+#| fig-cap: "Year-over-year contributions zoomed to the post-pandemic period (six-way)."
+
+df_yoy_recent_long |>
+  ggplot(aes(x = date, y = contrib, fill = cause)) +
+  geom_col(alpha = 0.75, width = 22) +
+  geom_line(
+    data = df_yoy_recent, aes(x = date, y = total_chg, fill = NULL),
+    color = "black", linewidth = 0.7
+  ) +
+  geom_point(
+    data = df_yoy_recent, aes(x = date, y = total_chg, fill = NULL),
+    color = "black", size = 1
+  ) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.3) +
+  scale_fill_manual(values = cause_cols) +
+  scale_y_continuous(labels = \(x) paste0(sprintf("%+.0f", x), "pp")) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n'%y") +
+  labs(
+    title = "YoY Contributions — Recent Detail",
+    subtitle = "Post-pandemic period: six-way decomposition of unemployment growth",
+    y = "Contribution (pp)", x = NULL,
+    caption = "Source: BLS via FRED · CPS Table A-11"
+  )
+```
+
+### Two-Group
+
+```{r fig-yoy-recent-2}
+#| label: fig-yoy-recent-2
+#| fig-cap: "Year-over-year contributions zoomed to post-pandemic: separations vs. entry."
+
+df_yoy_recent2_long |>
+  ggplot(aes(x = date, y = contrib, fill = group)) +
+  geom_col(alpha = 0.75, width = 22) +
+  geom_line(
+    data = df_yoy_recent2, aes(x = date, y = total_chg, fill = NULL),
+    color = "black", linewidth = 0.7
+  ) +
+  geom_point(
+    data = df_yoy_recent2, aes(x = date, y = total_chg, fill = NULL),
+    color = "black", size = 1
+  ) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.3) +
+  scale_fill_manual(values = group_cols) +
+  scale_y_continuous(labels = \(x) paste0(sprintf("%+.0f", x), "pp")) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n'%y") +
+  labs(
+    title = "YoY Contributions — Recent Detail: Separations vs. Entry",
+    subtitle = "Post-pandemic period: two-group decomposition",
+    y = "Contribution (pp)", x = NULL,
+    caption = "Source: BLS via FRED · CPS Table A-11"
+  )
+```
+
+:::
+
+Through 2022, total unemployment was still falling sharply year-over-year as pandemic-era job losses unwound. The six-way breakdown reveals which sub-categories of job loss are driving the recent inflection. The two-group view makes clear whether the driver is separations or new entry into the labor force.
+
+## 8. MoM Contributions to Unemployment Growth (2023–Present)
+
+```{r mom-compute}
+#| label: mom-compute
+
+df_mom <- calc_contributions6(df6, lag = 1, start_date = as.Date("2023-01-01"))
+df_mom_long <- df_mom |>
+  select(date, ends_with("_contrib"), total_chg) |>
+  pivot_longer(ends_with("_contrib"), names_to = "cause", values_to = "contrib") |>
+  mutate(cause = str_remove(cause, "_contrib"), cause = factor(cause, levels = cause_order))
+
+df_mom2 <- calc_contributions2(df2, lag = 1, start_date = as.Date("2023-01-01"))
+df_mom2_long <- df_mom2 |>
+  select(date, ends_with("_contrib"), total_chg) |>
+  pivot_longer(ends_with("_contrib"), names_to = "group", values_to = "contrib") |>
+  mutate(group = str_remove(group, "_contrib"), group = factor(group, levels = group_order))
+```
+
+::: {.panel-tabset}
+
+### Six-Way
+
+```{r fig-mom-recent-6}
+#| label: fig-mom-recent-6
+#| fig-cap: "Month-over-month contributions to unemployment change, 2023 onward (six-way)."
+#| fig-height: 4.5
+
+df_mom_long |>
+  ggplot(aes(x = date, y = contrib, fill = cause)) +
+  geom_col(alpha = 0.75, width = 22) +
+  geom_line(
+    data = df_mom, aes(x = date, y = total_chg, fill = NULL),
+    color = "black", linewidth = 0.7
+  ) +
+  geom_point(
+    data = df_mom, aes(x = date, y = total_chg, fill = NULL),
+    color = "black", size = 1.5
+  ) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.3) +
+  scale_fill_manual(values = cause_cols) +
+  scale_y_continuous(labels = \(x) paste0(sprintf("%+.1f", x), "pp")) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n'%y") +
+  labs(
+    title = "MoM Contributions to Unemployment Growth",
+    subtitle = "Monthly flow dynamics since January 2023 (six-way decomposition)",
+    y = "Contribution (pp)", x = NULL,
+    caption = "Source: BLS via FRED · CPS Table A-11"
+  )
+```
+
+### Two-Group
+
+```{r fig-mom-recent-2}
+#| label: fig-mom-recent-2
+#| fig-cap: "Month-over-month contributions: separations vs. entry, 2023 onward."
+#| fig-height: 4.5
+
+df_mom2_long |>
+  ggplot(aes(x = date, y = contrib, fill = group)) +
+  geom_col(alpha = 0.75, width = 22) +
+  geom_line(
+    data = df_mom2, aes(x = date, y = total_chg, fill = NULL),
+    color = "black", linewidth = 0.7
+  ) +
+  geom_point(
+    data = df_mom2, aes(x = date, y = total_chg, fill = NULL),
+    color = "black", size = 1.5
+  ) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.3) +
+  scale_fill_manual(values = group_cols) +
+  scale_y_continuous(labels = \(x) paste0(sprintf("%+.1f", x), "pp")) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n'%y") +
+  labs(
+    title = "MoM Contributions: Separations vs. Entry",
+    subtitle = "Monthly flow dynamics since January 2023 (two-group)",
+    y = "Contribution (pp)", x = NULL,
+    caption = "Source: BLS via FRED · CPS Table A-11"
+  )
+```
+
+:::
+
+Month-to-month contributions are noisy but the six-way breakdown reveals whether monthly swings are driven by temporary layoffs (often reversible) or permanent job losers (more persistent). The two-group view cleanly separates the separation and entry channels.
+
+## 9. Unemployment by Reason: Definitions & Examples
+
+The [BLS](https://www.bls.gov/cps/definitions.htm) classifies every unemployed person into exactly one of six mutually exclusive categories. These six groups sum to total unemployment.
+
+```{r definitions-table}
+#| label: tbl-definitions
+#| tbl-cap: "BLS unemployment categories: definitions, distinctions, and examples."
+
+tibble(
+  Category = c("Temporary Layoff", "Permanent Job Losers", "Completed Temp Job",
+                "Job Leavers", "Reentrants", "New Entrants"),
+  `BLS Definition` = c(
+    "People who have been given a date to return to work or who expect to return within 6 months.",
+    "People who have been permanently separated from their previous job — the position was eliminated, they were fired, or the employer closed.",
+    "People whose temporary job or assignment has ended and who are now actively seeking new work.",
+    "People who voluntarily quit their previous job and are now actively searching for new employment.",
+    "People who previously held a job, left the labor force for a period (stopped working and stopped looking), and have now returned to actively searching for work.",
+    "People who have never held a job and are actively looking for their first one. No prior work experience of any kind."
+  ),
+  `Key Distinction` = c(
+    "Expects to be recalled. Highly volatile — surges in sudden shocks (e.g., COVID furloughs) and reverses quickly.",
+    "No expectation of recall. The most 'recessionary' cause — rises with structural deterioration.",
+    "Job ended by design, not involuntary separation. Smaller and less cyclical than permanent losers.",
+    "Had a job but chose to leave. A confidence indicator — rises when the market is strong.",
+    "Have prior work experience but were out of the labor force entirely (not employed, not searching).",
+    "No work history at all — this distinguishes them from reentrants, who have worked before."
+  ),
+  `FRED Series` = c(
+    "[LNS13023653](https://fred.stlouisfed.org/series/LNS13023653)",
+    "[LNS13026638](https://fred.stlouisfed.org/series/LNS13026638)",
+    "[LNS13026637](https://fred.stlouisfed.org/series/LNS13026637)",
+    "[LNS13023705](https://fred.stlouisfed.org/series/LNS13023705)",
+    "[LNS13023557](https://fred.stlouisfed.org/series/LNS13023557)",
+    "[LNS13023569](https://fred.stlouisfed.org/series/LNS13023569)"
+  )
+) |>
+  gt() |>
+  fmt_markdown(columns = `FRED Series`) |>
+  tab_options(
+    table.font.size = px(12),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  cols_width(
+    Category ~ px(120),
+    `BLS Definition` ~ px(220),
+    `Key Distinction` ~ px(220),
+    `FRED Series` ~ px(120)
+  ) |>
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(columns = Category)
+  ) |>
+  tab_style(
+    style = cell_fill(color = "#eef2f7"),
+    locations = cells_body(rows = c(1, 3, 5))
+  ) |>
+  tab_style(
+    style = cell_fill(color = "#fef9f0"),
+    locations = cells_body(rows = c(2, 4, 6))
+  )
+```
+
+A common source of confusion is the distinction between **reentrants** and **new entrants**. Both are entering the labor force, but the dividing line is simple: has the person ever held a job? If yes → reentrant. If no → new entrant. Among job losers, the key distinction is between **temporary layoffs** (expects recall) and **permanent job losers** (no recall expected) — the latter is the most concerning for the business cycle. **Completed temporary jobs** are a smaller, less cyclical component where the job ended by design. The **job leaver** share is sometimes called a "confidence ratio" because it rises when workers feel secure enough to quit without a job in hand.
+
+## 10. Data Series Reference
+
+```{r series-table}
+#| label: tbl-series
+#| tbl-cap: "FRED series used in this report."
+
+# Pull latest values for the table
+latest4 <- df_wide |> slice_max(date, n = 1)
+latest6 <- df6 |> slice_max(date, n = 1)
+
+tibble(
+  `Series ID` = c(
+    "[LNS13023653](https://fred.stlouisfed.org/series/LNS13023653)",
+    "[LNS13026638](https://fred.stlouisfed.org/series/LNS13026638)",
+    "[LNS13026637](https://fred.stlouisfed.org/series/LNS13026637)",
+    "[LNS13023705](https://fred.stlouisfed.org/series/LNS13023705)",
+    "[LNS13023557](https://fred.stlouisfed.org/series/LNS13023557)",
+    "[LNS13023569](https://fred.stlouisfed.org/series/LNS13023569)",
+    "[LNS13023621](https://fred.stlouisfed.org/series/LNS13023621)",
+    "[UNEMPLOY](https://fred.stlouisfed.org/series/UNEMPLOY)",
+    "[CLF16OV](https://fred.stlouisfed.org/series/CLF16OV)"
+  ),
+  Name = c(
+    "Unemployment Level — On Temporary Layoff",
+    "Unemployment Level — Permanent Job Losers",
+    "Unemployment Level — Completed Temporary Job",
+    "Unemployment Level — Job Leavers",
+    "Unemployment Level — Reentrants",
+    "Unemployment Level — New Entrants",
+    "Unemployment Level — Job Losers (Aggregate)",
+    "Unemployment Level — Total",
+    "Civilian Labor Force Level"
+  ),
+  Units = c(rep("Thousands", 8), "Thousands"),
+  SA = rep("Yes", 9),
+  Frequency = rep("Monthly", 9),
+  `BLS Table` = c(
+    rep("[Table A-11](https://www.bls.gov/news.release/empsit.t11.htm)", 8),
+    "[Table A-1](https://www.bls.gov/news.release/empsit.t01.htm)"
+  )
+) |>
+  gt() |>
+  fmt_markdown(columns = c(`Series ID`, `BLS Table`)) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  tab_source_note(
+    source_note = md("All series from the [Current Population Survey (CPS)](https://www.bls.gov/cps/). Release schedule at [bls.gov/schedule](https://www.bls.gov/schedule/news_release/empsit.htm).")
+  )
+```
+
+```{r related-series-table}
+#| label: tbl-related
+#| tbl-cap: "Related FRED series (not directly used but referenced)."
+
+tibble(
+  `Series ID` = c(
+    "[LNS13023570](https://fred.stlouisfed.org/series/LNS13023570)",
+    "[LNS13023622](https://fred.stlouisfed.org/series/LNS13023622)",
+    "[LNS13023706](https://fred.stlouisfed.org/series/LNS13023706)",
+    "[LNS13023558](https://fred.stlouisfed.org/series/LNS13023558)",
+    "[LNS14023569](https://fred.stlouisfed.org/series/LNS14023569)"
+  ),
+  Name = c(
+    "New Entrants as % of Total Unemployed",
+    "Job Losers as % of Total Unemployed",
+    "Job Leavers as % of Total Unemployed",
+    "Reentrants as % of Total Unemployed",
+    "Unemployment Rate — New Entrants"
+  ),
+  Description = c(
+    "Pre-computed share: NE / Total × 100",
+    "Pre-computed share: JL / Total × 100",
+    "Pre-computed share: JV / Total × 100",
+    "Pre-computed share: RE / Total × 100",
+    "NE unemployed as share of NE labor force"
+  )
+) |>
+  gt() |>
+  fmt_markdown(columns = `Series ID`) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#5d6d7e"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+All series available at [fred.stlouisfed.org](https://fred.stlouisfed.org). BLS source: [Table A-11](https://www.bls.gov/news.release/empsit.t11.htm), [Employment Situation](https://www.bls.gov/news.release/empsit.nr0.htm) report. BLS concept definitions: [CPS Definitions](https://www.bls.gov/cps/definitions.htm).
+
+## 11. Methodology
+
+The six BLS reason-for-unemployment categories (temporary layoff, permanent job losers, completed temporary job, job leavers, reentrants, and new entrants) are exhaustive and mutually exclusive; they sum to total unemployment.
+
+**Unemployment rate by cause**: Each component's contribution to the unemployment rate is simply:
+
+$$
+r_{X,t} = \frac{X_t}{L_t} \times 100
+$$
+
+where $X_t$ is the unemployment level for cause $X$ and $L_t$ is the civilian labor force. These sum to the total unemployment rate $u_t = U_t / L_t \times 100$.
+
+**Change decomposition**: The YoY change in each cause's rate contribution is:
+
+$$
+\Delta r_{X,t}^{YoY} = r_{X,t} - r_{X,t-12} = \frac{X_t}{L_t} \times 100 - \frac{X_{t-12}}{L_{t-12}} \times 100
+$$
+
+These changes sum to the total change in the unemployment rate: $\sum_X \Delta r_{X,t}^{YoY} = u_t - u_{t-12}$.
+
+**YoY contribution (four-way)**: For each component $X$, the contribution to the YoY percentage change in total unemployment is:
+
+$$
+\text{Contrib}_{X,t}^{YoY} = \frac{X_t - X_{t-12}}{U_{t-12}} \times 100
+$$
+
+These contributions sum exactly to the total YoY percentage change:
+
+$$
+\sum_X \text{Contrib}_{X,t}^{YoY} = \frac{U_t - U_{t-12}}{U_{t-12}} \times 100
+$$
+
+**MoM contribution**: Same formula with a 1-month lag:
+
+$$
+\text{Contrib}_{X,t}^{MoM} = \frac{X_t - X_{t-1}}{U_{t-1}} \times 100
+$$
+
+**Seasonal adjustment and the component-sum discrepancy**: Although the six reason-for-unemployment categories are conceptually exhaustive and mutually exclusive, the BLS seasonally adjusts each component series *independently* of the headline UNEMPLOY total. Because seasonal adjustment is a nonlinear filtering process, the sum of the six independently adjusted components does not exactly equal the independently adjusted total.
+
+```{r sa-discrepancy}
+#| label: sa-discrepancy
+
+sa_disc <- df6 |>
+  mutate(
+    component_sum = `Temporary Layoff` + `Permanent Job Losers` + `Completed Temp Job` +
+                    `Job Leavers` + Reentrants + `New Entrants`,
+    discrepancy = component_sum - Total
+  )
+
+mean_disc <- round(mean(abs(sa_disc$discrepancy), na.rm = TRUE))
+max_disc  <- round(max(abs(sa_disc$discrepancy), na.rm = TRUE))
+mean_total <- round(mean(sa_disc$Total, na.rm = TRUE))
+```
+
+In our data the absolute discrepancy averages roughly `r comma(mean_disc)` thousand and can reach as high as `r comma(max_disc)` thousand — small relative to a mean total unemployment level of `r comma(mean_total)` thousand. To ensure the stacked-share chart (Section 4) sums to exactly 100%, we compute each component's share as a fraction of the *component sum* rather than UNEMPLOY. The unemployment-rate-by-cause charts (Sections 1–1b) and the contribution decompositions (Sections 2–3, 6–8) use the civilian labor force (CLF) or UNEMPLOY as the denominator to match standard BLS definitions; these may exhibit minor rounding discrepancies relative to the published headline rate.
+
+All series begin in January 1994 to avoid comparability issues with the pre-redesign CPS.
+
+---
+
+*Source: [U.S. Bureau of Labor Statistics](https://www.bls.gov/) via [FRED](https://fred.stlouisfed.org/). [NBER recession dates](https://www.nber.org/research/data/us-business-cycle-expansions-and-contractions). For informational purposes only.*

@@ -1,0 +1,20 @@
+# R / RStudio
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+
+# Quarto cache and output
+*_cache/
+*_files/
+*.knit.md
+*.utf8.md
+
+# Rendered output (regenerate from .qmd)
+unemployment_decomposition.html
+unemployment_decomposition.pdf
+
+# OS
+.DS_Store
+Thumbs.db
