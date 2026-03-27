@@ -15,6 +15,11 @@
 unemployment_decomposition.html
 unemployment_decomposition.pdf
 
+# Local agent/tooling state and downloaded microdata
+.claude/
+CLAUDE.md
+data/
+
 # OS
 .DS_Store
 Thumbs.db
