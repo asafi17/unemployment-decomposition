@@ -1,0 +1,611 @@
+---
+title: "UI Take-Up Study"
+subtitle: "State-Level Research Design Memo"
+date: today
+format:
+  html:
+    theme: flatly
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-summary: "Show code"
+    fig-width: 10
+    fig-height: 5.5
+    embed-resources: true
+    self-contained-math: true
+execute:
+  warning: false
+  message: false
+---
+
+## Overview
+
+This memo documents a proposed state-level study of why **UI claims take-up appears low relative to unemployment in recent years**. The core hypothesis is that take-up has fallen partly because the **composition of unemployment** has shifted toward groups that are less likely to be eligible for, or less likely to claim, unemployment insurance.
+
+Two broad stories motivate the exercise:
+
+1. **Eligibility/composition story**. A larger share of the unemployed may be made up of workers with weak UI eligibility, especially **new entrants** with no prior work history, and possibly some **migrant** groups.
+2. **Claim-propensity story**. Even among plausibly eligible workers, some groups may be less likely to claim UI because the costs of claiming are high relative to the expected benefit. One candidate mechanism is that some displaced white-collar workers receive severance packages or expect rapid re-employment and therefore do not bother filing.
+
+The clean empirical question is therefore not simply why claims are low, but whether **cross-state, over-time variation in the composition of unemployment helps explain variation in UI take-up**.
+
+## Recommended Framing
+
+The most defensible baseline outcome is a **take-up-style ratio**, not raw claims. Raw UI claims combine three things at once: the scale of unemployment, the composition of unemployment, and claiming behavior. A ratio is better aligned with the underlying hypothesis.
+
+Recommended outcomes:
+
+- `continued claims / unemployed`
+- `insured unemployment rate`
+- `initial claims / unemployed`
+
+The first-pass regression should use **state fixed effects** and **month fixed effects**:
+
+$$
+\text{takeup}_{st} = \beta_1 \text{NewEntrantShare}_{st} + \beta_2 \text{MigrantShare}_{st} + \alpha_s + \gamma_t + \varepsilon_{st}
+$$
+
+where $\alpha_s$ are state fixed effects and $\gamma_t$ are month fixed effects.
+
+The two most important design cautions are:
+
+- **New entrants** are a relatively clean mechanism because they are definitionally searching for a first job and are therefore likely to have weak or zero UI eligibility.
+- **Migrants** must be defined carefully. At the monthly state-panel frequency, the most workable proxies are likely **foreign-born share** or **noncitizen share**, not "recent migrant from abroad."
+
+## Data Feasibility
+
+The short answer is: **yes, the study is feasible with FRED + IPUMS CPS**, but the migrant measure must be chosen carefully.
+
+```{r}
+
+library(tidyverse)
+library(gt)
+library(scales)
+
+theme_report <- theme_minimal(base_size = 11, base_family = "sans") +
+  theme(
+    plot.title = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(color = "grey50", size = 9),
+    plot.caption = element_text(color = "grey60", size = 7, hjust = 0),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.title = element_text(size = 9, color = "grey40"),
+    axis.text = element_text(size = 8, color = "grey50"),
+    legend.position = "top",
+    legend.text = element_text(size = 8),
+    legend.title = element_blank()
+  )
+
+theme_set(theme_report)
+```
+
+### Source Summary
+
+```{r}
+#| tbl-cap: "Data-source feasibility for a monthly state UI take-up study."
+
+tibble(
+  Source = c("FRED / ETA", "FRED / LAUS", "IPUMS CPS", "IPUMS CPS"),
+  Measure = c(
+    "State UI claims data",
+    "State unemployment totals",
+    "State-month new entrant composition",
+    "State-month migrant composition"
+  ),
+  `What Exists` = c(
+    "Weekly initial claims, continued claims, insured unemployment rate, and covered employment by state",
+    "Monthly state unemployment rates and unemployed persons",
+    "Monthly CPS microdata with WHYUNEMP and STATEFIP",
+    "Monthly CPS microdata with STATEFIP plus NATIVITY and CITIZEN"
+  ),
+  Feasible = c("Yes", "Yes", "Yes", "Yes, with proxy choice"),
+  Notes = c(
+    "Can be aggregated to month for state panel construction",
+    "Useful denominator for take-up ratios",
+    "Can construct weighted state-month share of unemployed who are new entrants",
+    "Best monthly proxies are foreign-born or noncitizen shares; recent-migrant measures are weaker"
+  )
+) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  cols_width(
+    Source ~ px(100),
+    Measure ~ px(150),
+    `What Exists` ~ px(240),
+    Feasible ~ px(80),
+    Notes ~ px(220)
+  ) |>
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(columns = c(Source, Feasible))
+  )
+```
+
+## What FRED Can Provide
+
+FRED appears sufficient for the **state UI outcome side** of the study. The relevant release is the **State Unemployment Insurance Weekly Claims Report**, which includes:
+
+- **Initial claims by state**
+- **Continued claims (insured unemployment) by state**
+- **Insured unemployment rate by state**
+- **Covered employment by state**
+
+These are weekly series, so a monthly panel would require an aggregation choice:
+
+- sum weekly **initial claims** within month
+- average or end-of-month **continued claims**
+- average weekly **insured unemployment rate** within month
+
+FRED also has **monthly state unemployment rates** and **monthly state unemployed persons** from LAUS, which are natural denominators for a take-up ratio.
+
+### FRED Inputs For The Panel
+
+```{r}
+#| tbl-cap: "Recommended FRED-side inputs for panel construction."
+
+tibble(
+  Input = c(
+    "Initial claims by state",
+    "Continued claims by state",
+    "Insured unemployment rate by state",
+    "State unemployed persons",
+    "State unemployment rate"
+  ),
+  Definition = c(
+    "Number of first-time UI claims filed during the reference week",
+    "Number of people receiving UI for a week of unemployment after an initial claim",
+    "Insured unemployment as a share of covered employment",
+    "Estimated number of unemployed persons in the state",
+    "State unemployment rate from LAUS"
+  ),
+  `What It Captures` = c(
+    "Flow into the UI system",
+    "Stock of active UI receipt",
+    "UI intensity relative to covered jobs",
+    "Scale of unemployment in the state labor market",
+    "Overall labor-market slack"
+  ),
+  Frequency = c("Weekly", "Weekly", "Weekly", "Monthly", "Monthly"),
+  `Statistical Utility` = c(
+    "Alternative flow-style outcome; useful robustness check",
+    "Preferred stock-style UI receipt measure for baseline regressions",
+    "Direct take-up/intensity outcome that avoids constructing a ratio",
+    "Natural denominator for take-up ratios such as continued claims / unemployed",
+    "Control variable and descriptive labor-market context"
+  ),
+  `Preferred Role` = c(
+    "Robustness",
+    "Baseline outcome",
+    "Alternative baseline outcome",
+    "Baseline denominator",
+    "Control / context"
+  )
+) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  cols_width(
+    Input ~ px(140),
+    Definition ~ px(190),
+    `What It Captures` ~ px(165),
+    Frequency ~ px(75),
+    `Statistical Utility` ~ px(225),
+    `Preferred Role` ~ px(110)
+  )
+```
+
+## What IPUMS CPS Can Provide
+
+IPUMS CPS appears sufficient for the **state-month composition side** of the study.
+
+The cleanest monthly composition variable is the **new entrant share of unemployment**, because:
+
+- `WHYUNEMP` is available in monthly CPS and distinguishes **new entrants** from the other unemployment-reason categories.
+- `STATEFIP` is available monthly and identifies state of residence.
+- weighted state-month shares can be formed using person weights.
+
+The migrant story is more nuanced:
+
+- `NATIVITY` is available monthly and supports a **foreign-born share** measure.
+- `CITIZEN` is available monthly and supports a **noncitizen share** measure.
+- A "recent migrant from abroad" measure is harder. The most obvious migration-status variable, `MIGRATE1`, is not a monthly CPS workhorse variable; it is primarily an **ASEC** measure, so it is not suitable for a monthly state panel.
+
+### IPUMS Inputs For The Panel
+
+```{r}
+#| tbl-cap: "Recommended IPUMS CPS inputs for state-month composition measures."
+
+tibble(
+  Variable = c("STATEFIP", "WHYUNEMP", "NATIVITY", "CITIZEN", "WTFINL"),
+  Definition = c(
+    "State of residence identifier",
+    "Reason for unemployment category",
+    "Whether the person is native-born or foreign-born",
+    "Citizenship status",
+    "Final person weight"
+  ),
+  `What It Captures` = c(
+    "Geographic location for the state-month panel",
+    "Composition of unemployment by cause, including new entrants",
+    "Broad migrant background",
+    "Legal-status-adjacent proxy for potential UI access differences",
+    "Population-representative weighting"
+  ),
+  `Monthly Use` = c("Yes", "Yes", "Yes", "Yes", "Yes"),
+  `Recommended Construction` = c(
+    "Group to state-month",
+    "New entrant share among unemployed",
+    "Foreign-born share among unemployed",
+    "Noncitizen share among unemployed",
+    "Weighted shares and totals"
+  ),
+  `Statistical Utility` = c(
+    "Core geography for the panel merge",
+    "Cleanest eligibility-composition regressor in the study",
+    "Best broad migrant proxy for baseline specifications",
+    "Useful alternative or robustness check to nativity",
+    "Required for constructing all state-month weighted shares and totals"
+  )
+) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  cols_width(
+    Variable ~ px(90),
+    Definition ~ px(180),
+    `What It Captures` ~ px(180),
+    `Monthly Use` ~ px(70),
+    `Recommended Construction` ~ px(170),
+    `Statistical Utility` ~ px(220)
+  )
+```
+
+## Best Version Of The Migrant Story
+
+At monthly frequency, the strongest available versions of the migrant channel are:
+
+1. **Foreign-born share of the unemployed**
+2. **Noncitizen share of the unemployed**
+
+These are not perfect measures of UI ineligibility, but they are plausible and measurable. By contrast, a strict "recent arrival from abroad" story is much harder to implement cleanly in a monthly state panel using CPS alone.
+
+That means the best empirical framing is probably:
+
+- **primary composition channel**: new entrants
+- **secondary composition channel**: foreign-born or noncitizen unemployment share
+
+This is a stronger design than trying to force a monthly "recent migrant" variable that the data do not naturally support.
+
+## Recommended Baseline Panel
+
+```{r}
+#| tbl-cap: "Recommended baseline panel design."
+
+tibble(
+  Component = c(
+    "Unit of observation",
+    "Time frequency",
+    "Outcome",
+    "Main regressor 1",
+    "Main regressor 2",
+    "Fixed effects",
+    "Useful extensions"
+  ),
+  Choice = c(
+    "State × month",
+    "Monthly",
+    "Continued claims / unemployed",
+    "New entrant share of unemployed",
+    "Foreign-born or noncitizen share of unemployed",
+    "State FE + month FE",
+    "State trends, unemployment rate, reason-for-unemployment shares, occupation mix"
+  )
+) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(columns = Component)
+  )
+```
+
+## Interpretation And Limits
+
+A regression of UI take-up on new entrants and migrant proxies would be informative, but it should be interpreted carefully.
+
+What it can say:
+
+- whether states/months with more **new entrants** have lower measured UI take-up
+- whether states/months with larger **foreign-born** or **noncitizen** unemployment shares also have lower measured take-up
+
+What it cannot say by itself:
+
+- whether lower take-up is caused by **severance packages**
+- whether low claiming among white-collar workers is the dominant mechanism
+
+Those stories are still plausible, but they likely require either:
+
+- occupation/industry composition interactions, or
+- separate evidence on severance, claim hassle, or expected duration
+
+## Claims Hassle And Administrative Burden
+
+The **claims-hassle** story is conceptually plausible, but the main challenge is measurement. FRED and IPUMS CPS do not appear to provide a clean, long monthly state panel of administrative burden.
+
+That means the burden channel is best treated in one of three ways:
+
+1. **State-level burden index**
+   Construct or import a cross-state measure of UI administrative burden, such as:
+   - online-only versus multi-channel application
+   - availability of phone or in-person filing
+   - language accessibility
+   - waiting week
+   - weekly recertification complexity
+   - identity-verification burden
+
+2. **Time-varying policy variables**
+   If available, add state-by-year or state-by-month variation in:
+   - waiting weeks
+   - benefit duration
+   - replacement rates
+   - verification requirements
+
+3. **Interpretive channel rather than core regressor**
+   Treat hassle as a background mechanism and focus the baseline regressions on measurable composition channels, then discuss administrative burden as an omitted but important driver.
+
+The most realistic first-pass empirical strategy is therefore:
+
+- use **state fixed effects** to absorb persistent differences in administrative burden
+- add any time-varying UI policy variables if they can be assembled
+- discuss claims hassle as an important but imperfectly measured mechanism
+
+### Candidate Burden Measures
+
+```{r}
+#| tbl-cap: "Practical ways to incorporate claims hassle into the design."
+
+tibble(
+  Approach = c(
+    "State burden index",
+    "Time-varying UI policy controls",
+    "Administrative outcomes",
+    "Narrative / interpretation"
+  ),
+  `What It Captures` = c(
+    "Persistent cross-state differences in application difficulty",
+    "Changes in formal rules affecting claiming incentives or burden",
+    "Drop-off, denials, first-payment conversion, processing speed",
+    "Qualitative explanation for residual low take-up"
+  ),
+  `Monthly Panel Feasible` = c(
+    "Partly",
+    "Possibly",
+    "Usually no, not from standard FRED/IPUMS inputs",
+    "Yes"
+  ),
+  `Recommended Use` = c(
+    "Secondary regressor or interaction term",
+    "Preferred if reliable state-time panel can be built",
+    "Future extension if better administrative data are obtained",
+    "Include in interpretation even if not directly measured"
+  )
+) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+## Occupation Composition And Interaction Terms
+
+The white-collar severance story is better tested through **occupation-composition controls and interactions** than through verbal interpretation alone.
+
+The logic is straightforward:
+
+- **new entrant share** is a proxy for weak UI eligibility
+- **migrant share** is a proxy for potentially weaker attachment or eligibility
+- **occupation composition** is a proxy for claiming behavior conditional on job loss
+
+If white-collar workers are less likely to claim UI because of severance, expected rapid re-employment, or lower willingness to navigate the claiming process, then take-up should be lower in states/months where unemployment is more concentrated in professional and managerial occupations.
+
+IPUMS CPS gives a workable path to this because occupation and class-of-worker variables are available in the monthly microdata and can be aggregated to state-month composition measures.
+
+### Useful Occupation And Work-Background Measures
+
+```{r}
+#| tbl-cap: "Candidate occupation and work-composition measures from monthly CPS."
+
+tibble(
+  Measure = c(
+    "Professional / managerial share of unemployed",
+    "Service share of unemployed",
+    "Blue-collar share of unemployed",
+    "Private-sector share of unemployed with prior job",
+    "Professional / managerial share of permanent job losers",
+    "Professional / managerial share of temporary layoffs"
+  ),
+  `Why It Helps` = c(
+    "Captures white-collar unemployment concentration",
+    "Contrasts lower-wage service-sector unemployment",
+    "Captures construction / manufacturing / production exposure",
+    "Separates private-sector from other prior-job backgrounds",
+    "Targets the severance/claim-propensity story more directly",
+    "Helps distinguish furlough-style layoffs from permanent separations"
+  ),
+  `Use In Regression` = c(
+    "Main effect or interaction",
+    "Control",
+    "Control",
+    "Control",
+    "Preferred interaction variable",
+    "Robustness / mechanism"
+  )
+) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+### Why Interactions Matter
+
+A main-effect occupation variable tells you whether take-up is systematically lower when unemployment is more white-collar. An interaction term goes one step further and asks whether the effect of one composition channel depends on the occupational mix.
+
+Examples:
+
+- If the **migrant share** coefficient becomes more negative when white-collar unemployment is high, that suggests low claiming among migrant-heavy unemployment is especially pronounced in states/months where displaced workers are more white-collar.
+- If the **permanent-job-loser share** becomes less predictive of claims when professional unemployment is high, that is consistent with a severance or lower-claim-propensity mechanism among otherwise job-attached workers.
+
+The cleanest interaction is probably not with all unemployed persons, but with **job-loser composition**. That keeps the interpretation closer to the set of people who are plausibly UI-eligible.
+
+## Preferred Regression Extensions
+
+The baseline model remains:
+
+$$
+\text{takeup}_{st} = \beta_1 \text{NewEntrantShare}_{st} + \beta_2 \text{MigrantShare}_{st} + \alpha_s + \gamma_t + \varepsilon_{st}
+$$
+
+The next useful extension is:
+
+$$
+\text{takeup}_{st} =
+\beta_1 \text{NewEntrantShare}_{st} +
+\beta_2 \text{MigrantShare}_{st} +
+\beta_3 \text{WhiteCollarShare}_{st} +
+\alpha_s + \gamma_t + \varepsilon_{st}
+$$
+
+To speak more directly to the severance / white-collar mechanism, a better extension is:
+
+$$
+\text{takeup}_{st} =
+\beta_1 \text{NewEntrantShare}_{st} +
+\beta_2 \text{MigrantShare}_{st} +
+\beta_3 \text{WhiteCollarJobLoserShare}_{st} +
+\beta_4 \left(\text{MigrantShare}_{st} \times \text{WhiteCollarJobLoserShare}_{st}\right) +
+\alpha_s + \gamma_t + \varepsilon_{st}
+$$
+
+And the most mechanism-oriented version would add controls for reason-for-unemployment composition:
+
+$$
+\text{takeup}_{st} =
+\beta_1 \text{NewEntrantShare}_{st} +
+\beta_2 \text{MigrantShare}_{st} +
+\beta_3 \text{PermanentLoserShare}_{st} +
+\beta_4 \text{TempLayoffShare}_{st} +
+\beta_5 \text{WhiteCollarPermanentLoserShare}_{st} +
+\alpha_s + \gamma_t + \varepsilon_{st}
+$$
+
+### Empirical Priority Order
+
+```{r}
+#| tbl-cap: "Suggested sequence for moving from baseline to mechanism tests."
+
+tibble(
+  Step = c(
+    "1. Baseline composition model",
+    "2. Add occupation controls",
+    "3. Add job-loser occupation interactions",
+    "4. Add UI policy / burden controls",
+    "5. Explore richer industry composition"
+  ),
+  Purpose = c(
+    "Test whether take-up covaries with new entrants and migrant proxies",
+    "Check whether white-collar composition matters directly",
+    "Probe severance / claim-propensity mechanisms",
+    "Separate composition effects from administrative-friction effects",
+    "Assess whether occupation or industry detail changes the story"
+  )
+) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+## Bottom Line
+
+The project is empirically feasible with currently available data.
+
+The cleanest version of the design is:
+
+- build a **monthly state panel**
+- use a **take-up ratio** as the outcome
+- construct **new entrant share** from `WHYUNEMP`
+- use **foreign-born share** or **noncitizen share** as the migrant proxy
+- add occupation composition and job-loser interactions as the main extension
+- estimate models with **state FE and month FE**
+
+The strongest immediate next step is therefore to move from conceptual discussion to data assembly:
+
+1. build a monthly state UI outcome panel from FRED
+2. build monthly state composition measures from IPUMS CPS
+3. merge them and estimate the baseline fixed-effects regression
+
+## Source Notes
+
+This memo is based on a review of:
+
+- FRED's **State Unemployment Insurance Weekly Claims Report**
+- IPUMS CPS variable availability for `WHYUNEMP`, `STATEFIP`, `NATIVITY`, and `CITIZEN`
+- IPUMS CPS migration-variable availability, including the limits of using `MIGRATE1` in a monthly design
+
+Useful source pages:
+
+- [FRED state UI claims release](https://fred.stlouisfed.org/release?rid=469)
+- [IPUMS CPS: WHYUNEMP](https://cps.ipums.org/cps-action/variables/WHYUNEMP)
+- [IPUMS CPS: STATEFIP](https://cps.ipums.org/cps-action/variables/STATEFIP/)
+- [IPUMS CPS: NATIVITY](https://cps.ipums.org/cps-action/variables/NATIVITY)
+- [IPUMS CPS: CITIZEN](https://cps.ipums.org/cps-action/variables/CITIZEN)
+- [IPUMS CPS: MIGRATE1](https://cps.ipums.org/cps-action/variables/MIGRATE1)

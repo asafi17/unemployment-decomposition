@@ -1017,7 +1017,7 @@ if (length(ddi_files) > 0 && length(dat_files) > 0) {
     ) |>
     pull(name)
 
-  extract_description <- "WHYUNEMP by demographics, 1994-present"
+  extract_description <- "WHYUNEMP by demographics, 1994-present with EMPSTAT"
 
   extract_def <- define_extract_micro(
     collection  = "cps",
@@ -1025,7 +1025,7 @@ if (length(ddi_files) > 0 && length(dat_files) > 0) {
     samples     = ipums_samples,
     variables   = list(
       "YEAR", "MONTH", "WTFINL",
-      "AGE", "SEX", "RACE", "HISPAN", "EDUC",
+      "AGE", "SEX", "RACE", "HISPAN", "EDUC", "EMPSTAT",
       var_spec("WHYUNEMP", case_selections = as.character(1:6)),
       "OCC1990", "CLASSWKR"
     ),
@@ -1073,15 +1073,14 @@ if (length(ddi_files) > 0 && length(dat_files) > 0) {
 }
 
 ddi     <- read_ipums_ddi(path_to_ddi)
-cps_raw <- read_ipums_micro(ddi)
+cps_raw <- read_ipums_micro(ddi, verbose = FALSE)
 ```
 
 ```{r ipums-recode}
 #| label: ipums-recode
 
 # ── Harmonize WHYUNEMP labels with the six-way cause_order ────────────────
-cps <- cps_raw |>
-  filter(WHYUNEMP %in% 1:6) |>
+cps_all <- cps_raw |>
   mutate(
     cause = factor(
       WHYUNEMP,
@@ -1139,6 +1138,16 @@ cps <- cps_raw |>
       "No Prior Job", "Other/Unclassified"
     )),
 
+    occ_group4 = case_when(
+      OCC1990 >= 3   & OCC1990 <= 391 ~ "White Collar",
+      OCC1990 >= 403 & OCC1990 <= 469 ~ "Service",
+      (OCC1990 >= 473 & OCC1990 <= 499) |
+        (OCC1990 >= 503 & OCC1990 <= 890) ~ "Blue Collar",
+      TRUE ~ "No Prior Job / Other"
+    ) |> factor(levels = c(
+      "White Collar", "Service", "Blue Collar", "No Prior Job / Other"
+    )),
+
     class_label = case_when(
       CLASSWKR %in% c(20, 21, 22, 23) ~ "Private Sector",
       CLASSWKR %in% c(24, 25, 26, 27, 28) ~ "Government",
@@ -1151,12 +1160,18 @@ cps <- cps_raw |>
       "Unpaid Family", "No Prior Job", "Other"
     ))
   ) |>
-  filter(!is.na(age_group), !is.na(educ_group)) |>
   mutate(date = as.Date(paste(YEAR, MONTH, "01", sep = "-")))
+
+cps <- cps_all |>
+  filter(WHYUNEMP %in% 1:6)
+
+cps_lf <- cps_all |>
+  filter(EMPSTAT %in% c(10, 12, 20, 21, 22))
 
 # Helper: weighted counts by cause × demographic variable (pooled)
 weighted_by <- function(data, demo_var) {
   data |>
+    filter(!is.na(.data[[demo_var]])) |>
     group_by(cause, .data[[demo_var]]) |>
     summarise(n = sum(WTFINL, na.rm = TRUE), .groups = "drop") |>
     rename(group = 2)
@@ -1165,6 +1180,7 @@ weighted_by <- function(data, demo_var) {
 # Helper: weighted shares by cause × demographic × year
 weighted_by_year <- function(data, demo_var) {
   data |>
+    filter(!is.na(.data[[demo_var]])) |>
     group_by(YEAR, cause, .data[[demo_var]]) |>
     summarise(n = sum(WTFINL, na.rm = TRUE), .groups = "drop") |>
     rename(group = 3) |>
@@ -1176,6 +1192,7 @@ weighted_by_year <- function(data, demo_var) {
 # Helper: weighted shares by cause × demographic × month (for recent detail)
 weighted_by_month <- function(data, demo_var) {
   data |>
+    filter(!is.na(.data[[demo_var]])) |>
     group_by(date, cause, .data[[demo_var]]) |>
     summarise(n = sum(WTFINL, na.rm = TRUE), .groups = "drop") |>
     rename(group = 3) |>
@@ -1184,9 +1201,94 @@ weighted_by_month <- function(data, demo_var) {
     ungroup()
 }
 
+# Helper: representation ratio = share within unemployment cause / share within labor force
+representation_ratio_pooled <- function(unemp_data, lf_data, demo_var) {
+  cause_shares <- unemp_data |>
+    filter(!is.na(.data[[demo_var]])) |>
+    group_by(cause, .data[[demo_var]]) |>
+    summarise(n = sum(WTFINL, na.rm = TRUE), .groups = "drop") |>
+    rename(group = 2) |>
+    group_by(cause) |>
+    mutate(cause_share = n / sum(n)) |>
+    ungroup()
+
+  lf_shares <- lf_data |>
+    filter(!is.na(.data[[demo_var]])) |>
+    group_by(.data[[demo_var]]) |>
+    summarise(n_lf = sum(WTFINL, na.rm = TRUE), .groups = "drop") |>
+    rename(group = 1) |>
+    mutate(lf_share = n_lf / sum(n_lf)) |>
+    select(group, lf_share)
+
+  cause_shares |>
+    left_join(lf_shares, by = "group") |>
+    mutate(ratio = cause_share / lf_share)
+}
+
+representation_ratio_year <- function(unemp_data, lf_data, demo_var) {
+  cause_shares <- unemp_data |>
+    filter(!is.na(.data[[demo_var]])) |>
+    group_by(YEAR, cause, .data[[demo_var]]) |>
+    summarise(n = sum(WTFINL, na.rm = TRUE), .groups = "drop") |>
+    rename(group = 3) |>
+    group_by(YEAR, cause) |>
+    mutate(cause_share = n / sum(n)) |>
+    ungroup()
+
+  lf_shares <- lf_data |>
+    filter(!is.na(.data[[demo_var]])) |>
+    group_by(YEAR, .data[[demo_var]]) |>
+    summarise(n_lf = sum(WTFINL, na.rm = TRUE), .groups = "drop") |>
+    rename(group = 2) |>
+    group_by(YEAR) |>
+    mutate(lf_share = n_lf / sum(n_lf)) |>
+    ungroup() |>
+    select(YEAR, group, lf_share)
+
+  cause_shares |>
+    left_join(lf_shares, by = c("YEAR", "group")) |>
+    mutate(ratio = cause_share / lf_share)
+}
+
+representation_ratio_month <- function(unemp_data, lf_data, demo_var) {
+  cause_shares <- unemp_data |>
+    filter(!is.na(.data[[demo_var]])) |>
+    group_by(date, cause, .data[[demo_var]]) |>
+    summarise(n = sum(WTFINL, na.rm = TRUE), .groups = "drop") |>
+    rename(group = 3) |>
+    group_by(date, cause) |>
+    mutate(cause_share = n / sum(n)) |>
+    ungroup()
+
+  lf_shares <- lf_data |>
+    filter(!is.na(.data[[demo_var]])) |>
+    group_by(date, .data[[demo_var]]) |>
+    summarise(n_lf = sum(WTFINL, na.rm = TRUE), .groups = "drop") |>
+    rename(group = 2) |>
+    group_by(date) |>
+    mutate(lf_share = n_lf / sum(n_lf)) |>
+    ungroup() |>
+    select(date, group, lf_share)
+
+  cause_shares |>
+    left_join(lf_shares, by = c("date", "group")) |>
+    mutate(ratio = cause_share / lf_share)
+}
+
 # Latest year in CPS data (for dynamic recent-detail cutoff)
 cps_max_year <- max(cps$YEAR)
 cps_recent_start <- as.Date(paste0(max(cps_max_year - 2, 1994), "-01-01"))
+
+age_ratio_colors <- c(
+  "16–24" = "#D55E00",
+  "25–34" = "#0072B2",
+  "35–44" = "#009E73",
+  "45–54" = "#CC79A7",
+  "55–64" = "#E69F00",
+  "65+" = "#4D4D4D"
+)
+educ_ratio_colors <- setNames(RColorBrewer::brewer.pal(4, "Blues"), levels(cps$educ_group))
+race_ratio_colors <- setNames(RColorBrewer::brewer.pal(5, "Set2"), levels(cps$race_eth))
 ```
 
 ::: {.panel-tabset}
@@ -1264,6 +1366,94 @@ weighted_by_month(cps |> filter(date >= cps_recent_start), "age_group") |>
 
 New entrants are overwhelmingly young: over 60% are aged 16–24, which is natural since most first-time job seekers are teenagers or recent graduates. Temporary layoffs skew toward prime-age workers (25–54), reflecting industries like construction and manufacturing where temporary furloughs are common. Re-entrants have a broader age distribution, with a notable share of workers aged 35–54 returning after time out of the labor force — consistent with parents re-entering after caregiving.
 
+The next set of plots rescales each age share by its contemporaneous share in the **civilian labor force**. Formally, for demographic group $g$ and unemployment cause $c$:
+
+$$
+\text{Representation Ratio}_{g,c,t} =
+\frac{\text{Share of cause } c \text{ accounted for by group } g}
+{\text{Share of the labor force accounted for by group } g}
+$$
+
+A value above 1 means the group is overrepresented in that unemployment cause relative to its labor-force share; a value below 1 means it is underrepresented. For example, if workers aged 16–24 make up 30% of new entrants but only 12% of the labor force, the ratio is $30/12 = 2.5$, meaning they are represented at roughly 2.5 times their labor-force share.
+
+The labor force is the most useful benchmark here because it is the relevant pool of people attached to the labor market and therefore plausibly at risk of unemployment. A raw composition plot can be distorted by long-run demographic change: if college graduates or older workers make up a larger share of the labor force than they used to, they may also become a larger share of the unemployed even if their relative exposure has not risen. Benchmarking each group against its labor-force share answers the more interesting question: is this group appearing in a given unemployment cause **more or less than we would expect given its presence in the labor market**?
+
+::: {.panel-tabset}
+
+### Pooled Ratio to Labor Force
+
+```{r fig-demo-age-ratio-pooled}
+#| label: fig-demo-age-ratio-pooled
+#| fig-cap: "Age representation in each unemployment cause relative to labor-force share (pooled, 1994–present)."
+#| fig-height: 4.75
+
+representation_ratio_pooled(cps, cps_lf, "age_group") |>
+  ggplot(aes(x = cause, y = ratio, fill = group)) +
+  geom_col(position = "dodge", width = 0.75) +
+  geom_hline(yintercept = 1, color = "grey45", linewidth = 0.4) +
+  scale_fill_manual(values = age_ratio_colors) +
+  scale_y_continuous(labels = \(x) paste0(round(x, 1), "x")) +
+  labs(
+    title = "Age Representation by Cause Relative to Labor Force",
+    subtitle = "Share in unemployment cause divided by share in labor force",
+    x = NULL, y = "Representation Ratio", fill = NULL,
+    caption = "Source: IPUMS CPS · WHYUNEMP × AGE · Weighted by WTFINL"
+  ) +
+  theme_report +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+### Full History Ratio
+
+```{r fig-demo-age-ratio-hist}
+#| label: fig-demo-age-ratio-hist
+#| fig-cap: "Age representation in each unemployment cause relative to labor-force share over time (annual, 1994–present)."
+#| fig-height: 7
+
+representation_ratio_year(cps, cps_lf, "age_group") |>
+  ggplot(aes(x = YEAR, y = ratio, color = group)) +
+  geom_hline(yintercept = 1, color = "grey45", linewidth = 0.3) +
+  geom_line(linewidth = 0.6) +
+  facet_wrap(~ cause, ncol = 2) +
+  scale_color_manual(values = age_ratio_colors) +
+  scale_y_continuous(labels = \(x) paste0(round(x, 1), "x")) +
+  labs(
+    title = "Age Representation by Cause Over Time",
+    subtitle = "Representation ratio relative to the labor force, annual",
+    x = NULL, y = "Representation Ratio", color = NULL,
+    caption = "Source: IPUMS CPS · WHYUNEMP × AGE · Weighted by WTFINL"
+  ) +
+  theme_report +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
+```
+
+### Recent Detail Ratio
+
+```{r fig-demo-age-ratio-recent}
+#| label: fig-demo-age-ratio-recent
+#| fig-cap: "Age representation in each unemployment cause relative to labor-force share, 2023–present (monthly)."
+#| fig-height: 7
+
+representation_ratio_month(cps |> filter(date >= cps_recent_start), cps_lf |> filter(date >= cps_recent_start), "age_group") |>
+  ggplot(aes(x = date, y = ratio, color = group)) +
+  geom_hline(yintercept = 1, color = "grey45", linewidth = 0.3) +
+  geom_line(linewidth = 0.6) +
+  facet_wrap(~ cause, ncol = 2) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n'%y") +
+  scale_color_manual(values = age_ratio_colors) +
+  scale_y_continuous(labels = \(x) paste0(round(x, 1), "x")) +
+  labs(
+    title = "Age Representation by Cause — Recent Detail",
+    subtitle = paste0("Monthly representation ratio relative to labor force, ", format(cps_recent_start, "%Y"), "–present"),
+    x = NULL, y = "Representation Ratio", color = NULL,
+    caption = "Source: IPUMS CPS · WHYUNEMP × AGE · Weighted by WTFINL"
+  ) +
+  theme_report +
+  theme(axis.text.x = element_text(size = 6))
+```
+
+:::
+
 ::: {.panel-tabset}
 
 ### Pooled
@@ -1338,6 +1528,84 @@ weighted_by_month(cps |> filter(date >= cps_recent_start), "educ_group") |>
 :::
 
 New entrants have the highest share of below-HS education — many are still in or just out of high school. Job leavers have the highest college+ share among all causes, consistent with voluntary quitting being a luxury of those with stronger labor market prospects. Permanent job losers and temporary layoffs show similar education profiles, skewing toward HS diploma and some college, reflecting the blue-collar and middle-skill industries most exposed to cyclical downturns.
+
+These composition shares can partly reflect the secular rise in educational attainment over time. To correct for that, the next view scales each education group’s share in an unemployment cause by its contemporaneous share in the **labor force**. This makes it possible to distinguish genuine overrepresentation from simple population drift.
+
+::: {.panel-tabset}
+
+### Pooled Ratio to Labor Force
+
+```{r fig-demo-educ-ratio-pooled}
+#| label: fig-demo-educ-ratio-pooled
+#| fig-cap: "Education representation in each unemployment cause relative to labor-force share (pooled, 1994–present)."
+#| fig-height: 4.75
+
+representation_ratio_pooled(cps, cps_lf, "educ_group") |>
+  ggplot(aes(x = cause, y = ratio, fill = group)) +
+  geom_col(position = "dodge", width = 0.75) +
+  geom_hline(yintercept = 1, color = "grey45", linewidth = 0.4) +
+  scale_fill_manual(values = educ_ratio_colors) +
+  scale_y_continuous(labels = \(x) paste0(round(x, 1), "x")) +
+  labs(
+    title = "Education Representation by Cause Relative to Labor Force",
+    subtitle = "Share in unemployment cause divided by share in labor force",
+    x = NULL, y = "Representation Ratio", fill = NULL,
+    caption = "Source: IPUMS CPS · WHYUNEMP × EDUC · Weighted by WTFINL"
+  ) +
+  theme_report +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+### Full History Ratio
+
+```{r fig-demo-educ-ratio-hist}
+#| label: fig-demo-educ-ratio-hist
+#| fig-cap: "Education representation in each unemployment cause relative to labor-force share over time (annual, 1994–present)."
+#| fig-height: 7
+
+representation_ratio_year(cps, cps_lf, "educ_group") |>
+  ggplot(aes(x = YEAR, y = ratio, color = group)) +
+  geom_hline(yintercept = 1, color = "grey45", linewidth = 0.3) +
+  geom_line(linewidth = 0.6) +
+  facet_wrap(~ cause, ncol = 2) +
+  scale_color_manual(values = educ_ratio_colors) +
+  scale_y_continuous(labels = \(x) paste0(round(x, 1), "x")) +
+  labs(
+    title = "Education Representation by Cause Over Time",
+    subtitle = "Representation ratio relative to the labor force, annual",
+    x = NULL, y = "Representation Ratio", color = NULL,
+    caption = "Source: IPUMS CPS · WHYUNEMP × EDUC · Weighted by WTFINL"
+  ) +
+  theme_report +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
+```
+
+### Recent Detail Ratio
+
+```{r fig-demo-educ-ratio-recent}
+#| label: fig-demo-educ-ratio-recent
+#| fig-cap: "Education representation in each unemployment cause relative to labor-force share, 2023–present (monthly)."
+#| fig-height: 7
+
+representation_ratio_month(cps |> filter(date >= cps_recent_start), cps_lf |> filter(date >= cps_recent_start), "educ_group") |>
+  ggplot(aes(x = date, y = ratio, color = group)) +
+  geom_hline(yintercept = 1, color = "grey45", linewidth = 0.3) +
+  geom_line(linewidth = 0.6) +
+  facet_wrap(~ cause, ncol = 2) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n'%y") +
+  scale_color_manual(values = educ_ratio_colors) +
+  scale_y_continuous(labels = \(x) paste0(round(x, 1), "x")) +
+  labs(
+    title = "Education Representation by Cause — Recent Detail",
+    subtitle = paste0("Monthly representation ratio relative to labor force, ", format(cps_recent_start, "%Y"), "–present"),
+    x = NULL, y = "Representation Ratio", color = NULL,
+    caption = "Source: IPUMS CPS · WHYUNEMP × EDUC · Weighted by WTFINL"
+  ) +
+  theme_report +
+  theme(axis.text.x = element_text(size = 6))
+```
+
+:::
 
 ```{r sex-colors-def}
 #| label: sex-colors-def
@@ -1418,7 +1686,7 @@ weighted_by_month(cps |> filter(date >= cps_recent_start), "sex_label") |>
 
 :::
 
-Men are overrepresented among temporary layoffs (~60%), reflecting their higher concentration in cyclically sensitive industries like construction, manufacturing, and extraction. The sex split is more balanced for permanent job losers, job leavers, and re-entrants. New entrants are roughly even, as both young men and women enter the labor force for the first time at similar rates.
+Men account for about 60% of temporary layoffs in the pooled CPS data. The occupation breakdown later in the report helps explain why this pattern is plausible: within temporary layoffs, about 70% of men come from the simplified **Blue Collar** group, compared with only about 22% of women, while women in temporary layoffs are much more concentrated in **White Collar** and **Service** backgrounds. That does not by itself prove an industry mechanism, but it does provide direct evidence from the same microdata that male temporary layoffs are much more concentrated in the occupations most exposed to cyclical and seasonal interruption. The sex split is more balanced for permanent job losers, job leavers, and re-entrants. New entrants are roughly even, as both young men and women enter the labor force for the first time at similar rates.
 
 ::: {.panel-tabset}
 
@@ -1493,11 +1761,301 @@ weighted_by_month(cps |> filter(date >= cps_recent_start), "race_eth") |>
 
 :::
 
-The racial composition is broadly similar across causes, though Black non-Hispanic workers are somewhat overrepresented in permanent job loss and re-entry relative to their labor force share — a pattern consistent with well-documented disparities in layoff exposure and labor force attachment. Hispanic workers make up a larger share of temporary layoffs, reflecting concentration in construction and seasonal industries.
+The pooled representation-ratio plots show a more specific pattern than the raw shares alone. In temporary layoffs, both **White non-Hispanic** and **Hispanic** workers are overrepresented relative to their labor-force shares. **White non-Hispanic** workers are also overrepresented among job leavers. **Black non-Hispanic** workers are overrepresented mainly in **re-entrants** and **completed temporary jobs**, while they are underrepresented in temporary layoffs and slightly underrepresented among permanent job losers in the pooled data. In **new entrants**, every group except **White non-Hispanic** workers is overrepresented relative to labor-force share, with especially high ratios for **Asian/PI non-Hispanic**, **Hispanic**, and **Other** workers.
+
+As with education, raw race/ethnicity shares can drift over time simply because the composition of the labor force changes. The next set of plots therefore shows each group’s **share in cause / share in labor force**, so values above 1 indicate overrepresentation in that unemployment cause relative to the labor force benchmark.
+
+::: {.panel-tabset}
+
+### Pooled Ratio to Labor Force
+
+```{r fig-demo-race-ratio-pooled}
+#| label: fig-demo-race-ratio-pooled
+#| fig-cap: "Race/ethnicity representation in each unemployment cause relative to labor-force share (pooled, 1994–present)."
+#| fig-height: 4.75
+
+representation_ratio_pooled(cps, cps_lf, "race_eth") |>
+  ggplot(aes(x = cause, y = ratio, fill = group)) +
+  geom_col(position = "dodge", width = 0.75) +
+  geom_hline(yintercept = 1, color = "grey45", linewidth = 0.4) +
+  scale_fill_manual(values = race_ratio_colors) +
+  scale_y_continuous(labels = \(x) paste0(round(x, 1), "x")) +
+  labs(
+    title = "Race/Ethnicity Representation by Cause Relative to Labor Force",
+    subtitle = "Share in unemployment cause divided by share in labor force",
+    x = NULL, y = "Representation Ratio", fill = NULL,
+    caption = "Source: IPUMS CPS · WHYUNEMP × RACE/HISPAN · Weighted by WTFINL"
+  ) +
+  theme_report +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+### Full History Ratio
+
+```{r fig-demo-race-ratio-hist}
+#| label: fig-demo-race-ratio-hist
+#| fig-cap: "Race/ethnicity representation in each unemployment cause relative to labor-force share over time (annual, 1994–present)."
+#| fig-height: 7
+
+representation_ratio_year(cps, cps_lf, "race_eth") |>
+  ggplot(aes(x = YEAR, y = ratio, color = group)) +
+  geom_hline(yintercept = 1, color = "grey45", linewidth = 0.3) +
+  geom_line(linewidth = 0.6) +
+  facet_wrap(~ cause, ncol = 2) +
+  scale_color_manual(values = race_ratio_colors) +
+  scale_y_continuous(labels = \(x) paste0(round(x, 1), "x")) +
+  labs(
+    title = "Race/Ethnicity Representation by Cause Over Time",
+    subtitle = "Representation ratio relative to the labor force, annual",
+    x = NULL, y = "Representation Ratio", color = NULL,
+    caption = "Source: IPUMS CPS · WHYUNEMP × RACE/HISPAN · Weighted by WTFINL"
+  ) +
+  theme_report +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
+```
+
+### Recent Detail Ratio
+
+```{r fig-demo-race-ratio-recent}
+#| label: fig-demo-race-ratio-recent
+#| fig-cap: "Race/ethnicity representation in each unemployment cause relative to labor-force share, 2023–present (monthly)."
+#| fig-height: 7
+
+representation_ratio_month(cps |> filter(date >= cps_recent_start), cps_lf |> filter(date >= cps_recent_start), "race_eth") |>
+  ggplot(aes(x = date, y = ratio, color = group)) +
+  geom_hline(yintercept = 1, color = "grey45", linewidth = 0.3) +
+  geom_line(linewidth = 0.6) +
+  facet_wrap(~ cause, ncol = 2) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n'%y") +
+  scale_color_manual(values = race_ratio_colors) +
+  scale_y_continuous(labels = \(x) paste0(round(x, 1), "x")) +
+  labs(
+    title = "Race/Ethnicity Representation by Cause — Recent Detail",
+    subtitle = paste0("Monthly representation ratio relative to labor force, ", format(cps_recent_start, "%Y"), "–present"),
+    x = NULL, y = "Representation Ratio", color = NULL,
+    caption = "Source: IPUMS CPS · WHYUNEMP × RACE/HISPAN · Weighted by WTFINL"
+  ) +
+  theme_report +
+  theme(axis.text.x = element_text(size = 6))
+```
+
+:::
 
 ## 10. Work Characteristics by Cause
 
 Beyond demographics, the CPS microdata reveal what *kinds of jobs* the unemployed previously held. For each cause, we can examine the broad occupation and class of worker (private sector, government, self-employed) of the prior job. New entrants and re-entrants who never held a job are coded as "No Prior Job" — their presence in certain categories is itself informative.
+
+Because the full OCC1990-based occupation breakdown contains many categories, it can be hard to see the main patterns quickly. To make the visuals easier to read, we first collapse the detailed buckets into four intuitive groups: **White Collar**, **Service**, **Blue Collar**, and **No Prior Job / Other**. The goal is not to replace the detailed breakdown, but to provide a simpler first pass that makes the dominant differences across unemployment causes easier to track.
+
+```{r occ-group-table}
+#| label: tbl-occ-group
+#| tbl-cap: "Compressed occupation groups used alongside the detailed OCC1990 breakdown."
+
+tibble(
+  Group = c("White Collar", "Service", "Blue Collar", "No Prior Job / Other"),
+  Definition = c(
+    "Management, business, professional, technician, sales, and administrative support occupations",
+    "Service occupations",
+    "Farm/forest/fish, production/craft, operators/fabricators, and transport/laborer occupations",
+    "Military, unclassified residual categories, and workers with no prior job"
+  ),
+  Rationale = c(
+    "Captures the broad office/professional side of the labor market, where severance and lower UI claiming propensity may be more relevant",
+    "Separates the service sector, which often has different turnover, wages, and UI-claiming behavior from both office and blue-collar work",
+    "Captures construction, manufacturing, transport, and other manual/trades backgrounds that are often central to cyclical layoffs",
+    "Keeps first-time job seekers and residual occupations visible without forcing too many tiny categories into the main charts"
+  )
+) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  cols_width(
+    Group ~ px(140),
+    Definition ~ px(260),
+    Rationale ~ px(320)
+  ) |>
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(columns = Group)
+  )
+```
+
+```{r occ-group-colors-def}
+#| label: occ-group-colors-def
+
+occ_group4_colors <- c(
+  "White Collar" = "#2A9D8F",
+  "Service" = "#E76F51",
+  "Blue Collar" = "#5C677D",
+  "No Prior Job / Other" = "#CCCCCC"
+)
+```
+
+### Simplified Occupation Groups
+
+::: {.panel-tabset}
+
+### Pooled
+
+```{r fig-work-occ-group-pooled}
+#| label: fig-work-occ-group-pooled
+#| fig-cap: "Compressed prior occupation composition of each unemployment cause (weighted, 1994â€“present)."
+#| fig-height: 4.75
+
+weighted_by(cps, "occ_group4") |>
+  ggplot(aes(x = cause, y = n, fill = group)) +
+  geom_col(position = "fill", width = 0.75) +
+  scale_y_continuous(labels = percent_format()) +
+  scale_fill_manual(values = occ_group4_colors) +
+  labs(
+    title = "Prior Occupation by Unemployment Cause: Simplified Groups",
+    subtitle = "White Collar, Service, Blue Collar, and No Prior Job / Other",
+    x = NULL, y = "Share", fill = NULL,
+    caption = "Source: IPUMS CPS Â· WHYUNEMP Ã— OCC1990 (grouped) Â· Weighted by WTFINL"
+  ) +
+  theme_report +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+### Full History
+
+```{r fig-work-occ-group-hist}
+#| label: fig-work-occ-group-hist
+#| fig-cap: "Compressed prior occupation composition of each unemployment cause over time (annual, 1994â€“present)."
+#| fig-height: 7
+
+weighted_by_year(cps, "occ_group4") |>
+  ggplot(aes(x = YEAR, y = share, fill = group)) +
+  geom_col(width = 0.9, position = "stack") +
+  facet_wrap(~ cause, ncol = 2) +
+  scale_y_continuous(labels = percent_format()) +
+  scale_fill_manual(values = occ_group4_colors) +
+  labs(
+    title = "Prior Occupation by Cause Over Time: Simplified Groups",
+    subtitle = "Annual weighted shares within each unemployment cause",
+    x = NULL, y = "Share", fill = NULL,
+    caption = "Source: IPUMS CPS Â· WHYUNEMP Ã— OCC1990 (grouped) Â· Weighted by WTFINL"
+  ) +
+  theme_report +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
+```
+
+### Recent Detail
+
+```{r fig-work-occ-group-recent}
+#| label: fig-work-occ-group-recent
+#| fig-cap: "Compressed prior occupation composition of each unemployment cause, 2023â€“present (monthly)."
+#| fig-height: 7
+
+weighted_by_month(cps |> filter(date >= cps_recent_start), "occ_group4") |>
+  ggplot(aes(x = date, y = share, fill = group)) +
+  geom_col(width = 22, position = "stack") +
+  facet_wrap(~ cause, ncol = 2) +
+  scale_y_continuous(labels = percent_format()) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n'%y") +
+  scale_fill_manual(values = occ_group4_colors) +
+  labs(
+    title = "Prior Occupation by Cause â€” Recent Detail: Simplified Groups",
+    subtitle = paste0("Monthly weighted shares, ", format(cps_recent_start, "%Y"), "â€“present"),
+    x = NULL, y = "Share", fill = NULL,
+    caption = "Source: IPUMS CPS Â· WHYUNEMP Ã— OCC1990 (grouped) Â· Weighted by WTFINL"
+  ) +
+  theme_report +
+  theme(axis.text.x = element_text(size = 6))
+```
+
+:::
+
+The simplified grouping makes the headline pattern easier to see. Temporary layoffs and permanent job loss have a visibly larger **Blue Collar** footprint than job leavers, while job leavers tilt more toward **White Collar** backgrounds. New entrants remain dominated by **No Prior Job / Other**, which is exactly what we would expect if they have not yet established an employment history.
+
+These grouped occupation shares can also be benchmarked against the **labor force** rather than read purely as raw composition. The representation-ratio view below shows whether a background is over- or underrepresented in each unemployment cause relative to its share in the labor force.
+
+For the simplified occupation groups, the code is doing exactly what we want: it compares each cause-specific occupation mix to that occupation group's share in the labor force. This means the **New Entrants** panel can legitimately look extreme, because nearly all new entrants fall into **No Prior Job / Other**, while that category is only a small share of the overall labor force. To keep that mechanically large ratio from flattening the other panels, the full-history and recent-detail facets use separate y-axis scales by cause.
+
+::: {.panel-tabset}
+
+### Pooled Ratio to Labor Force
+
+```{r fig-work-occ-group-ratio-pooled}
+#| label: fig-work-occ-group-ratio-pooled
+#| fig-cap: "Simplified occupation-group representation in each unemployment cause relative to labor-force share (pooled, 1994–present)."
+#| fig-height: 4.75
+
+representation_ratio_pooled(cps, cps_lf, "occ_group4") |>
+  ggplot(aes(x = cause, y = ratio, fill = group)) +
+  geom_col(position = "dodge", width = 0.75) +
+  geom_hline(yintercept = 1, color = "grey45", linewidth = 0.4) +
+  scale_fill_manual(values = occ_group4_colors) +
+  scale_y_continuous(labels = \(x) paste0(round(x, 1), "x")) +
+  labs(
+    title = "Simplified Occupation Representation by Cause Relative to Labor Force",
+    subtitle = "Share in unemployment cause divided by share in labor force",
+    x = NULL, y = "Representation Ratio", fill = NULL,
+    caption = "Source: IPUMS CPS · WHYUNEMP × OCC1990 (grouped) · Weighted by WTFINL"
+  ) +
+  theme_report +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+### Full History Ratio
+
+```{r fig-work-occ-group-ratio-hist}
+#| label: fig-work-occ-group-ratio-hist
+#| fig-cap: "Simplified occupation-group representation in each unemployment cause relative to labor-force share over time (annual, 1994–present)."
+#| fig-height: 7
+
+representation_ratio_year(cps, cps_lf, "occ_group4") |>
+  ggplot(aes(x = YEAR, y = ratio, color = group)) +
+  geom_hline(yintercept = 1, color = "grey45", linewidth = 0.3) +
+  geom_line(linewidth = 0.6) +
+  facet_wrap(~ cause, ncol = 2, scales = "free_y") +
+  scale_color_manual(values = occ_group4_colors) +
+  scale_y_continuous(labels = \(x) paste0(round(x, 1), "x")) +
+  labs(
+    title = "Simplified Occupation Representation by Cause Over Time",
+    subtitle = "Representation ratio relative to the labor force, annual",
+    x = NULL, y = "Representation Ratio", color = NULL,
+    caption = "Source: IPUMS CPS · WHYUNEMP × OCC1990 (grouped) · Weighted by WTFINL"
+  ) +
+  theme_report +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
+```
+
+### Recent Detail Ratio
+
+```{r fig-work-occ-group-ratio-recent}
+#| label: fig-work-occ-group-ratio-recent
+#| fig-cap: "Simplified occupation-group representation in each unemployment cause relative to labor-force share, 2023–present (monthly)."
+#| fig-height: 7
+
+representation_ratio_month(cps |> filter(date >= cps_recent_start), cps_lf |> filter(date >= cps_recent_start), "occ_group4") |>
+  ggplot(aes(x = date, y = ratio, color = group)) +
+  geom_hline(yintercept = 1, color = "grey45", linewidth = 0.3) +
+  geom_line(linewidth = 0.6) +
+  facet_wrap(~ cause, ncol = 2, scales = "free_y") +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n'%y") +
+  scale_color_manual(values = occ_group4_colors) +
+  scale_y_continuous(labels = \(x) paste0(round(x, 1), "x")) +
+  labs(
+    title = "Simplified Occupation Representation by Cause — Recent Detail",
+    subtitle = paste0("Monthly representation ratio relative to labor force, ", format(cps_recent_start, "%Y"), "–present"),
+    x = NULL, y = "Representation Ratio", color = NULL,
+    caption = "Source: IPUMS CPS · WHYUNEMP × OCC1990 (grouped) · Weighted by WTFINL"
+  ) +
+  theme_report +
+  theme(axis.text.x = element_text(size = 6))
+```
+
+:::
+
+### Detailed Occupation Buckets
 
 ```{r occ-colors-def}
 #| label: occ-colors-def
@@ -1915,6 +2473,22 @@ mean_total <- round(mean(sa_disc$Total, na.rm = TRUE))
 ```
 
 In our data the absolute discrepancy averages roughly `r comma(mean_disc)` thousand and can reach as high as `r comma(max_disc)` thousand — small relative to a mean total unemployment level of `r comma(mean_total)` thousand. To ensure the stacked-share chart (Section 4) sums to exactly 100%, we compute each component's share as a fraction of the *component sum* rather than UNEMPLOY. The unemployment-rate-by-cause charts (Sections 1–1b) and the contribution decompositions (Sections 2–3, 6–8) use the civilian labor force (CLF) or UNEMPLOY as the denominator to match standard BLS definitions; these may exhibit minor rounding discrepancies relative to the published headline rate.
+
+**Appendix: pooled vs. full-history IPUMS plots**: For any demographic or work-background group $g$ within unemployment cause $c$, the **pooled** plots stack all monthly CPS person-records from 1994 onward into one weighted sample and compute:
+
+$$
+\text{Pooled Share}_{g,c} =
+\frac{\sum_t w_{gct}}{\sum_t \sum_g w_{gct}}
+$$
+
+where $w_{gct}$ is the sum of CPS person weights in month $t$ for group $g$ within cause $c$. The **full-history** plots instead compute the same share separately within each year:
+
+$$
+\text{Annual Share}_{g,c,t} =
+\frac{w_{gct}}{\sum_g w_{gct}}
+$$
+
+So the pooled plots are **not** averages of annual shares. They are one long weighted cross-section formed by combining all months in the sample window, whereas the historical plots preserve time variation by recomputing the shares year by year.
 
 All series begin in January 1994 to avoid comparability issues with the pre-redesign CPS.
 
