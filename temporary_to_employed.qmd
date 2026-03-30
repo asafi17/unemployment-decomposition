@@ -1,0 +1,553 @@
+---
+title: "Temporary Unemployed to Employed"
+subtitle: "Linked CPS Follow-Up for Temporary Layoffs vs Permanent Job Losers"
+date: today
+format:
+  html:
+    theme: flatly
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-summary: "Show code"
+    fig-width: 10
+    fig-height: 5.5
+    embed-resources: true
+    self-contained-math: true
+execute:
+  warning: false
+  message: false
+---
+
+## Overview
+
+This note asks a simple panel-style question using linked monthly CPS records: when someone reports being unemployed because of a **temporary layoff**, how often do they later show up as **employed** in subsequent CPS interviews, and how has that changed over time?
+
+The comparison group is **permanent job losers**. The report tracks three linked outcomes by the respondent's **origin month**:
+
+1. employed in the **next observed interview**
+2. employed **within the next 3 observed interviews**
+3. employed at the respondent's **first reappearance after the long CPS rotation gap**
+
+All three are shown **over time**, with temporary layoffs and permanent job losers plotted together.
+
+## Rotation Design
+
+The CPS is not a clean 16-month monthly panel. It uses a **4-8-4 rotation**:
+
+- interviewed for 4 consecutive months
+- out of sample for 8 months
+- interviewed for 4 consecutive months again
+
+So this report does **not** measure "employed within the next 6 calendar months" for everyone. Instead it measures employment at later **observed CPS interviews**. For linkage, the report uses the validated person identifier `CPSIDV`.
+
+```{r setup}
+library(tidyverse)
+library(ipumsr)
+library(lubridate)
+library(gt)
+library(scales)
+
+theme_report <- theme_minimal(base_size = 11, base_family = "sans") +
+  theme(
+    plot.title = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(color = "grey50", size = 9),
+    plot.caption = element_text(color = "grey60", size = 7, hjust = 0),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.title = element_text(size = 9, color = "grey40"),
+    axis.text = element_text(size = 8, color = "grey50"),
+    legend.position = "top",
+    legend.text = element_text(size = 8),
+    legend.title = element_blank()
+  )
+
+theme_set(theme_report)
+
+analysis_dir <- file.path("data", "CPS", "temporary_to_employed")
+dir.create(analysis_dir, recursive = TRUE, showWarnings = FALSE)
+
+extract_ddi_path <- file.path(analysis_dir, "cps_temp_to_employed.xml")
+extract_csv_path <- file.path(analysis_dir, "cps_temp_to_employed.csv.gz")
+monthly_transition_path <- file.path(analysis_dir, "monthly_transition_rates.csv")
+origin_record_path <- file.path(analysis_dir, "origin_records_with_followup.csv.gz")
+linkage_summary_path <- file.path(analysis_dir, "linkage_summary.csv")
+```
+
+## Extract Definition
+
+```{r extract-download}
+#| cache: true
+
+extract_description <- paste(
+  "Temporary to employed monthly CPS extract:",
+  "CPSIDV/CPSIDP, EMPSTAT, WHYUNEMP, WTFINL, AGE, 1994-present"
+)
+
+ensure_temp_to_employed_extract <- function(target_ddi, target_csv, extract_desc) {
+  month_index <- function(year, month) {
+    as.integer(year) * 12L + as.integer(month)
+  }
+
+  recent_year_threshold <- max(1994L, year(Sys.Date()) - 1L)
+
+  ddi_months <- function(ddi_path) {
+    if (!file.exists(ddi_path)) {
+      return(tibble(year = integer(), month = integer(), ym = integer()))
+    }
+
+    read_lines(ddi_path) |>
+      str_match("timePrd date=\"(\\d{4})-(\\d{2})\"") |>
+      as_tibble(.name_repair = "minimal") |>
+      transmute(
+        year = as.integer(V2),
+        month = as.integer(V3),
+        ym = month_index(year, month)
+      ) |>
+      filter(!is.na(year), !is.na(month)) |>
+      distinct(ym, .keep_all = TRUE)
+  }
+
+  csv_months <- function(csv_path) {
+    if (!file.exists(csv_path)) {
+      return(tibble(year = integer(), month = integer(), ym = integer()))
+    }
+
+    tryCatch(
+      {
+        read_csv(
+          csv_path,
+          col_select = c("YEAR", "MONTH"),
+          show_col_types = FALSE,
+          progress = FALSE
+        ) |>
+          transmute(
+            year = as.integer(YEAR),
+            month = as.integer(MONTH),
+            ym = month_index(year, month)
+          ) |>
+          filter(!is.na(year), !is.na(month)) |>
+          distinct(ym, .keep_all = TRUE)
+      },
+      error = function(e) tibble(year = integer(), month = integer(), ym = integer())
+    )
+  }
+
+  has_expected_coverage <- function(ddi_path, csv_path) {
+    declared_months <- ddi_months(ddi_path)
+    observed_months <- csv_months(csv_path)
+
+    if (nrow(declared_months) == 0 || nrow(observed_months) == 0) {
+      return(FALSE)
+    }
+
+    min(declared_months$year, na.rm = TRUE) <= 1994L &&
+      max(declared_months$year, na.rm = TRUE) >= recent_year_threshold &&
+      all(declared_months$ym %in% observed_months$ym)
+  }
+
+  local_files_exist <- file.exists(target_ddi) && file.exists(target_csv)
+
+  if (local_files_exist && has_expected_coverage(target_ddi, target_csv)) {
+    return(list(ddi = target_ddi, csv = target_csv, source = "local-validated"))
+  }
+
+  if (local_files_exist) {
+    file.remove(c(target_ddi, target_csv))
+  }
+
+  extract_history <- tryCatch(
+    get_extract_history("cps", how_many = 25),
+    error = function(e) NULL
+  )
+
+  matching_completed <- list()
+  if (!is.null(extract_history)) {
+    matching_completed <- keep(
+      extract_history,
+      \(x) identical(x$description, extract_desc) && identical(x$status, "completed")
+    )
+  }
+
+  copy_download_to_targets <- function(path_to_ddi) {
+    downloaded_csv <- sub("\\.xml$", ".csv.gz", path_to_ddi)
+
+    if (file.exists(target_ddi)) file.remove(target_ddi)
+    if (file.exists(target_csv)) file.remove(target_csv)
+
+    ok_ddi <- FALSE
+    ok_csv <- FALSE
+
+    for (attempt in 1:3) {
+      ok_ddi <- file.copy(path_to_ddi, target_ddi, overwrite = TRUE)
+      ok_csv <- file.copy(downloaded_csv, target_csv, overwrite = TRUE)
+
+      if (ok_ddi && ok_csv && file.exists(target_ddi) && file.exists(target_csv)) {
+        break
+      }
+
+      Sys.sleep(attempt)
+    }
+
+    if (!ok_ddi || !ok_csv || !file.exists(target_ddi) || !file.exists(target_csv)) {
+      stop("Failed to copy downloaded CPS extract into the analysis directory.")
+    }
+
+    file.remove(path_to_ddi)
+    file.remove(downloaded_csv)
+  }
+
+  try_download_extract <- function(extract_obj) {
+    partial_xml <- list.files(analysis_dir, pattern = "^cps_\\d+\\.xml$", full.names = TRUE)
+    partial_csv <- list.files(analysis_dir, pattern = "^cps_\\d+\\.csv\\.gz$", full.names = TRUE)
+
+    if (length(c(partial_xml, partial_csv)) > 0) {
+      file.remove(c(partial_xml, partial_csv))
+    }
+
+    path_to_ddi <- NULL
+    for (attempt in 1:5) {
+      path_to_ddi <- tryCatch(
+        download_extract(extract_obj, download_dir = analysis_dir),
+        error = function(e) {
+          if (attempt < 5) {
+            Sys.sleep(attempt * 10)
+          }
+          NULL
+        }
+      )
+
+      if (!is.null(path_to_ddi)) {
+        downloaded_csv <- sub("\\.xml$", ".csv.gz", path_to_ddi)
+
+        if (has_expected_coverage(path_to_ddi, downloaded_csv)) {
+          return(path_to_ddi)
+        }
+
+        file.remove(c(path_to_ddi, downloaded_csv))
+      }
+    }
+
+    NULL
+  }
+
+  for (candidate in matching_completed) {
+    path_to_ddi <- try_download_extract(candidate)
+
+    if (is.null(path_to_ddi)) {
+      next
+    }
+
+    if (has_expected_coverage(path_to_ddi, sub("\\.xml$", ".csv.gz", path_to_ddi))) {
+      copy_download_to_targets(path_to_ddi)
+      return(list(ddi = target_ddi, csv = target_csv, source = "history-validated"))
+    }
+
+    downloaded_csv <- sub("\\.xml$", ".csv.gz", path_to_ddi)
+    file.remove(c(path_to_ddi, downloaded_csv))
+  }
+
+  all_samples <- get_sample_info("cps")
+
+  ipums_samples <- all_samples |>
+    filter(
+      grepl("^cps\\d{4}_\\d{2}[bs]$", name),
+      as.numeric(gsub("cps(\\d{4}).*", "\\1", name)) >= 1994,
+      !str_detect(.data$description, "ASEC")
+    ) |>
+    pull(name)
+
+  extract_def <- define_extract_micro(
+    collection = "cps",
+    description = extract_desc,
+    samples = ipums_samples,
+    variables = list(
+      "YEAR", "MONTH", "PERNUM", "WTFINL",
+      "CPSIDP", "CPSIDV",
+      "AGE", "EMPSTAT", "WHYUNEMP"
+    ),
+    data_format = "csv"
+  )
+
+  submitted <- submit_extract(extract_def)
+  downloadable <- wait_for_extract(submitted)
+  path_to_ddi <- try_download_extract(downloadable)
+
+  if (is.null(path_to_ddi)) {
+    stop("Failed to download the temporary-to-employed CPS extract.")
+  }
+
+  if (!has_expected_coverage(sub("\\.xml$", ".csv.gz", path_to_ddi), expected_months)) {
+    downloaded_csv <- sub("\\.xml$", ".csv.gz", path_to_ddi)
+    file.remove(c(path_to_ddi, downloaded_csv))
+    stop("Downloaded temporary-to-employed extract is still missing requested monthly coverage.")
+  }
+
+  copy_download_to_targets(path_to_ddi)
+
+  list(ddi = target_ddi, csv = target_csv, source = "downloaded-validated")
+}
+
+extract_files <- ensure_temp_to_employed_extract(
+  extract_ddi_path,
+  extract_csv_path,
+  extract_description
+)
+
+cps_summary <- read_csv(
+  extract_files$csv,
+  col_select = c("YEAR", "MONTH"),
+  show_col_types = FALSE,
+  progress = FALSE
+)
+
+cps_var_names <- names(
+  read_csv(
+    extract_files$csv,
+    n_max = 0,
+    show_col_types = FALSE,
+    progress = FALSE
+  )
+)
+```
+
+```{r extract-summary}
+#| tbl-cap: "Linked CPS extract used for the temporary-to-employed analysis."
+
+tibble(
+  Item = c(
+    "Source",
+    "Rows",
+    "Years",
+    "Months",
+    "Variables"
+  ),
+  Value = c(
+    extract_files$source,
+    comma(nrow(cps_summary)),
+    paste0(min(cps_summary$YEAR, na.rm = TRUE), "-", max(cps_summary$YEAR, na.rm = TRUE)),
+    n_distinct(paste(cps_summary$YEAR, cps_summary$MONTH)),
+    paste(cps_var_names, collapse = ", ")
+  )
+) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+## Link Construction
+
+```{r build-linked-panel}
+#| cache: true
+
+if (
+  file.exists(monthly_transition_path) &&
+  file.exists(origin_record_path) &&
+  file.exists(linkage_summary_path) &&
+  file.mtime(monthly_transition_path) >= file.mtime(extract_csv_path) &&
+  file.mtime(origin_record_path) >= file.mtime(extract_csv_path) &&
+  file.mtime(linkage_summary_path) >= file.mtime(extract_csv_path)
+) {
+  monthly_transition_rates <- read_csv(
+    monthly_transition_path,
+    show_col_types = FALSE,
+    progress = FALSE
+  )
+  origin_records <- read_csv(
+    origin_record_path,
+    show_col_types = FALSE,
+    progress = FALSE
+  )
+  linkage_summary <- read_csv(
+    linkage_summary_path,
+    show_col_types = FALSE,
+    progress = FALSE
+  )
+} else {
+  stop("Prebuilt panel outputs are missing or stale. Run build_temporary_to_employed_panel.R first.")
+}
+```
+
+## Linkage Coverage
+
+```{r linkage-coverage}
+#| tbl-cap: "Origin-cohort linkage coverage for temporary layoffs and permanent job losers."
+
+linkage_summary |>
+  gt() |>
+  fmt_number(columns = Observations, decimals = 0) |>
+  fmt_percent(columns = `Weighted Linkable Share`, decimals = 1) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+## Employed in Next Observed Interview
+
+```{r next-observed-plot}
+monthly_transition_rates |>
+  ggplot(aes(x = date, y = next_obs_employed_share, color = unemployed_reason)) +
+  geom_line(linewidth = 0.7, alpha = 0.9) +
+  scale_color_manual(
+    values = c(
+      "Temporary Layoff" = "#0073C2",
+      "Permanent Job Loser" = "#CD534C"
+    )
+  ) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  labs(
+    title = "Employed in the Next Observed CPS Interview",
+    subtitle = "Monthly origin cohorts, weighted by origin-month WTFINL",
+    x = NULL,
+    y = "Share employed",
+    color = NULL,
+    caption = "Denominator is the origin cohort with a nonmissing next observed interview."
+  )
+```
+
+## Employed Within Next 3 Observed Interviews
+
+```{r next3-plot}
+monthly_transition_rates |>
+  ggplot(aes(x = date, y = next3_employed_share, color = unemployed_reason)) +
+  geom_line(linewidth = 0.7, alpha = 0.9) +
+  scale_color_manual(
+    values = c(
+      "Temporary Layoff" = "#0073C2",
+      "Permanent Job Loser" = "#CD534C"
+    )
+  ) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  labs(
+    title = "Employed Within the Next 3 Observed CPS Interviews",
+    subtitle = "Monthly origin cohorts, weighted by origin-month WTFINL",
+    x = NULL,
+    y = "Share employed",
+    color = NULL,
+    caption = "Denominator is the origin cohort with at least one observed interview in the next 3 waves."
+  )
+```
+
+## Employed at Reappearance After the Long Gap
+
+```{r gap-plot}
+monthly_transition_rates |>
+  ggplot(aes(x = date, y = gap_employed_share, color = unemployed_reason)) +
+  geom_line(linewidth = 0.7, alpha = 0.9) +
+  scale_color_manual(
+    values = c(
+      "Temporary Layoff" = "#0073C2",
+      "Permanent Job Loser" = "#CD534C"
+    )
+  ) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  labs(
+    title = "Employed at First Reappearance After the Long CPS Gap",
+    subtitle = "First later interview with a gap of at least 9 months from the origin month",
+    x = NULL,
+    y = "Share employed",
+    color = NULL,
+    caption = "Denominator is the origin cohort that reappears after the long rotation gap."
+  )
+```
+
+## Coverage Over Time
+
+```{r coverage-plot}
+coverage_long <- monthly_transition_rates |>
+  select(
+    date, unemployed_reason,
+    next_obs_followup_share, next3_followup_share, gap_followup_share
+  ) |>
+  pivot_longer(
+    cols = -c(date, unemployed_reason),
+    names_to = "metric",
+    values_to = "value"
+  ) |>
+  mutate(
+    metric = recode(
+      metric,
+      next_obs_followup_share = "Next observed interview available",
+      next3_followup_share = "At least one of next 3 observed interviews available",
+      gap_followup_share = "Reappears after long gap"
+    )
+  )
+
+coverage_long |>
+  ggplot(aes(x = date, y = value, color = unemployed_reason)) +
+  geom_line(linewidth = 0.6, alpha = 0.9) +
+  facet_wrap(~metric, ncol = 1) +
+  scale_color_manual(
+    values = c(
+      "Temporary Layoff" = "#0073C2",
+      "Permanent Job Loser" = "#CD534C"
+    )
+  ) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  labs(
+    title = "Follow-Up Coverage by Origin Month",
+    subtitle = "Later origin months lose evaluable follow-up near the sample end",
+    x = NULL,
+    y = "Coverage share",
+    color = NULL
+  )
+```
+
+## Latest Available Comparison
+
+```{r latest-table}
+#| tbl-cap: "Latest available monthly origin-cohort transition rates."
+
+latest_complete <- monthly_transition_rates |>
+  filter(!is.na(next_obs_employed_share), !is.na(next3_employed_share), !is.na(gap_employed_share)) |>
+  group_by(unemployed_reason) |>
+  filter(date == max(date, na.rm = TRUE)) |>
+  ungroup() |>
+  transmute(
+    Date = date,
+    Group = unemployed_reason,
+    `Employed next observed interview` = next_obs_employed_share,
+    `Employed within next 3 observed interviews` = next3_employed_share,
+    `Employed after long-gap reappearance` = gap_employed_share
+  )
+
+latest_complete |>
+  gt() |>
+  fmt_date(columns = Date, date_style = 10) |>
+  fmt_percent(
+    columns = c(
+      `Employed next observed interview`,
+      `Employed within next 3 observed interviews`,
+      `Employed after long-gap reappearance`
+    ),
+    decimals = 1
+  ) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+## Interpretation Notes
+
+- The "next observed interview" outcome is the cleanest short-run linked measure.
+- "Within next 3 observed interviews" is broader: it asks whether the respondent gets back to employment over the next observed stretch of CPS interviews, not necessarily in consecutive calendar months.
+- The long-gap reappearance outcome is a separate persistence test. It is not purely a short-run recall measure, but it is useful for seeing whether temporary layoffs eventually reconnect to employment more strongly than permanent job losers.
+- Near the end of the sample, later origin months have less follow-up available. The coverage plots above make that explicit.

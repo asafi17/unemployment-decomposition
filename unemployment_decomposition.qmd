@@ -989,91 +989,22 @@ tibble(
 #| cache: true
 
 # ── IPUMS CPS microdata ───────────────────────────────────────────────────
-# If the data already exists in data/, read it directly.
-# Otherwise, try to re-download the latest completed matching extract from IPUMS.
-# Only submit a fresh extract if no matching completed extract is available.
-# Requires an API key: set_ipums_api_key("YOUR_KEY", save = TRUE)
-# Get one free at https://account.ipums.org/api_keys
+# Reads from the unified CPS extract shared across both QMD files in this project.
+# To download or refresh the data, run: Rscript submit_unified_cps_extract.R
+# The extract includes: YEAR, MONTH, WTFINL, STATEFIP, AGE, SEX, RACE, HISPAN,
+#   EDUC, EMPSTAT, WHYUNEMP (cases 1-6), OCC1990, CLASSWKR, NATIVITY, CITIZEN
 
-ddi_files <- list.files("data", pattern = "\\.xml$", full.names = TRUE)
-dat_files <- list.files("data", pattern = "\\.(dat|csv)\\.gz$", full.names = TRUE)
-
-if (length(ddi_files) > 0 && length(dat_files) > 0) {
-  # Data already downloaded — read directly
-  path_to_ddi <- ddi_files[[1]]
-} else {
-  # Clean up any partial files from interrupted downloads
-  file.remove(c(ddi_files, dat_files))
-
-  # Submit a fresh extract with regular monthly CPS samples from 1994+.
-  # Recent monthly samples can use either a b or s suffix; exclude ASEC explicitly.
-  # Do the WHYUNEMP filter at extract time to avoid downloading the full CPS universe.
-  all_samples <- get_sample_info("cps")
-  ipums_samples <- all_samples |>
-    filter(
-      grepl("^cps\\d{4}_\\d{2}[bs]$", name),
-      as.numeric(gsub("cps(\\d{4}).*", "\\1", name)) >= 1994,
-      !str_detect(description, "ASEC")
-    ) |>
-    pull(name)
-
-  extract_description <- "WHYUNEMP by demographics, 1994-present with EMPSTAT"
-
-  extract_def <- define_extract_micro(
-    collection  = "cps",
-    description = extract_description,
-    samples     = ipums_samples,
-    variables   = list(
-      "YEAR", "MONTH", "WTFINL",
-      "AGE", "SEX", "RACE", "HISPAN", "EDUC", "EMPSTAT",
-      var_spec("WHYUNEMP", case_selections = as.character(1:6)),
-      "OCC1990", "CLASSWKR"
-    ),
-    data_format = "csv"
+path_to_ddi <- "data/CPS/cps_unified.xml"
+path_to_csv <- "data/CPS/cps_unified.csv.gz"
+if (!file.exists(path_to_ddi) || !file.exists(path_to_csv)) {
+  stop(
+    "Unified CPS data not found at ", path_to_ddi, ".\n",
+    "Run 'Rscript submit_unified_cps_extract.R' to download it."
   )
-
-  # Reuse the most recent matching completed extract if it exists on the server.
-  extract_history <- tryCatch(
-    get_extract_history("cps", how_many = 10),
-    error = function(e) NULL
-  )
-
-  downloadable <- NULL
-  if (!is.null(extract_history)) {
-    matching_completed <- keep(
-      extract_history,
-      \(x) identical(x$description, extract_description) && identical(x$status, "completed")
-    )
-    if (length(matching_completed) > 0) {
-      downloadable <- matching_completed[[1]]
-    }
-  }
-
-  if (is.null(downloadable)) {
-    submitted    <- submit_extract(extract_def)
-    downloadable <- wait_for_extract(submitted)
-  }
-
-  # Download with retry (IPUMS connections can reset on large files)
-  for (attempt in 1:5) {
-    path_to_ddi <- tryCatch(
-      download_extract(downloadable, download_dir = "data"),
-      error = function(e) {
-        if (attempt < 5) {
-          message("Download attempt ", attempt, " failed: ", conditionMessage(e))
-          message("Retrying in ", attempt * 10, " seconds...")
-          Sys.sleep(attempt * 10)
-        }
-        NULL
-      }
-    )
-    if (!is.null(path_to_ddi)) break
-  }
-  if (is.null(path_to_ddi)) stop("Failed to download IPUMS extract after 5 attempts.")
 }
 
 ddi     <- read_ipums_ddi(path_to_ddi)
-cps_raw <- read_ipums_micro(ddi, verbose = FALSE)
+cps_raw <- read_ipums_micro(ddi, data_file = path_to_csv, verbose = FALSE)
 ```
 
 ```{r ipums-recode}
@@ -2251,6 +2182,453 @@ weighted_by_month(cps |> filter(date >= cps_recent_start), "class_label") |>
 :::
 
 The private sector dominates all causes that involve a prior job — layoffs, permanent job loss, completed temporary jobs, and voluntary quits are overwhelmingly a private-sector phenomenon. This category includes both for-profit and nonprofit private employers (IPUMS CLASSWKR codes 20–23). Government workers (federal, state, and local, including armed forces) make up a small but visible share across most causes, and are slightly more represented among job leavers (voluntary quits from government positions). Self-employed workers appear primarily among permanent job losers and job leavers, reflecting business closures and voluntary transitions out of self-employment. The "No Prior Job" bar for new entrants is a data integrity check: it confirms that 100% of new entrants have no prior class of worker, as expected.
+
+## 10b. Dominant Profile Radar Charts
+
+The stacked composition charts above show the full distribution for each unemployment cause. A complementary summary is to ask: **what is the single dominant subgroup on each margin?** For each cause, the radar charts below keep only the top-share category for:
+
+1. age group
+2. education category
+3. sex
+4. race/ethnicity
+5. simplified occupation group
+6. class of worker
+
+So each spoke answers a question like: "what share of new entrants are in the dominant age group?" For example, if **16â€“24** is the largest age bucket for new entrants, the age spoke is the share of new entrants who are **16â€“24**.
+
+```{r dominant-profile-helpers}
+#| label: dominant-profile-helpers
+
+dominant_profile <- function(data, demo_var, dimension_label) {
+  data |>
+    filter(!is.na(.data[[demo_var]])) |>
+    group_by(cause, .data[[demo_var]]) |>
+    summarise(n = sum(WTFINL, na.rm = TRUE), .groups = "drop") |>
+    rename(group = 2) |>
+    group_by(cause) |>
+    mutate(share = n / sum(n)) |>
+    slice_max(order_by = share, n = 1, with_ties = FALSE) |>
+    ungroup() |>
+    transmute(
+      cause,
+      dimension = dimension_label,
+      dominant_group = as.character(group),
+      share
+    )
+}
+
+build_dominant_profile <- function(data) {
+  bind_rows(
+    dominant_profile(data, "age_group", "Age"),
+    dominant_profile(data, "educ_group", "Education"),
+    dominant_profile(data, "sex_label", "Sex"),
+    dominant_profile(data, "race_eth", "Race/Ethnicity"),
+    dominant_profile(data, "occ_group4", "Occupation"),
+    dominant_profile(data, "class_label", "Class")
+  ) |>
+    mutate(
+      dimension = factor(
+        dimension,
+        levels = c("Age", "Education", "Sex", "Race/Ethnicity", "Occupation", "Class")
+      ),
+      label = paste0(dominant_group, "\n", percent(share, accuracy = 1)),
+      label_y = pmin(share + 0.08, 1.05)
+    ) |>
+    arrange(cause, dimension)
+}
+
+plot_dominant_radar_single <- function(profile_df, cause_name, subtitle) {
+  plot_df <- profile_df |>
+    filter(cause == cause_name) |>
+    arrange(dimension) |>
+    mutate(axis_id = row_number())
+
+  n_axes <- nrow(plot_df)
+  angles <- pi / 2 - 2 * pi * (seq_len(n_axes) - 1) / n_axes
+  radial_breaks <- c(0, 0.25, 0.50, 0.75, 1.00)
+
+  point_df <- plot_df |>
+    mutate(
+      angle = angles,
+      x = share * cos(angle),
+      y = share * sin(angle)
+    )
+
+  closed_df <- bind_rows(point_df, slice(point_df, 1))
+
+  spoke_df <- tibble(
+    axis_id = seq_len(n_axes),
+    angle = angles,
+    x = 0,
+    y = 0,
+    xend = cos(angle),
+    yend = sin(angle)
+  )
+
+  ring_df <- map_dfr(
+    radial_breaks[-1],
+    \(ring) {
+      tibble(
+        ring = ring,
+        axis_id = c(seq_len(n_axes), 1L),
+        angle = angles[c(seq_len(n_axes), 1L)],
+        x = ring * cos(angle),
+        y = ring * sin(angle)
+      )
+    }
+  )
+
+  axis_label_df <- point_df |>
+    transmute(
+      dimension,
+      angle,
+      label_x = 1.17 * cos(angle),
+      label_y = 1.17 * sin(angle),
+      hjust = case_when(
+        label_x > 0.15 ~ 0,
+        label_x < -0.15 ~ 1,
+        TRUE ~ 0.5
+      ),
+      vjust = case_when(
+        label_y > 0.15 ~ 0,
+        label_y < -0.15 ~ 1,
+        TRUE ~ 0.5
+      )
+    )
+
+  point_label_df <- point_df |>
+    transmute(
+      axis_id,
+      angle,
+      point_label = dominant_group,
+      label_radius = case_when(
+        share >= 0.72 ~ pmax(share - 0.14, 0.16),
+        TRUE ~ pmin(share + 0.11, 0.88)
+      ),
+      tangent_shift = if_else(axis_id %% 2 == 0, 0.045, -0.045),
+      label_x = label_radius * cos(angle) + tangent_shift * (-sin(angle)),
+      label_y = label_radius * sin(angle) + tangent_shift * cos(angle),
+      hjust = case_when(
+        label_x > 0.18 ~ 0,
+        label_x < -0.18 ~ 1,
+        TRUE ~ 0.5
+      ),
+      vjust = case_when(
+        label_y > 0.18 ~ 0,
+        label_y < -0.18 ~ 1,
+        TRUE ~ 0.5
+      )
+    )
+
+  radial_label_df <- tibble(
+    ring = radial_breaks,
+    x = radial_breaks,
+    y = 0.02,
+    label = percent(radial_breaks, accuracy = 1)
+  )
+
+  ggplot() +
+    geom_path(
+      data = filter(ring_df, ring < 1),
+      aes(x = x, y = y, group = ring),
+      color = "grey72",
+      linewidth = 0.15
+    ) +
+    geom_path(
+      data = filter(ring_df, ring == 1),
+      aes(x = x, y = y, group = ring),
+      color = "grey72",
+      linewidth = 0.15
+    ) +
+    geom_segment(
+      data = spoke_df,
+      aes(x = x, y = y, xend = xend, yend = yend),
+      color = "grey76",
+      linewidth = 0.15
+    ) +
+    geom_polygon(
+      data = closed_df,
+      aes(x = x, y = y),
+      fill = scales::alpha(cause_cols[[cause_name]], 0.45),
+      color = cause_cols[[cause_name]],
+      linewidth = 0.15,
+      linejoin = "round"
+    ) +
+    geom_point(
+      data = point_df,
+      aes(x = x, y = y),
+      color = cause_cols[[cause_name]],
+      fill = cause_cols[[cause_name]],
+      shape = 21,
+      stroke = 0.2,
+      size = 1.4
+    ) +
+    geom_text(
+      data = point_label_df,
+      aes(x = label_x, y = label_y, label = point_label, hjust = hjust, vjust = vjust),
+      size = 2.7,
+      lineheight = 0.92,
+      color = cause_cols[[cause_name]]
+    ) +
+    geom_text(
+      data = axis_label_df,
+      aes(x = label_x, y = label_y, label = dimension, hjust = hjust, vjust = vjust),
+      size = 3.6,
+      lineheight = 0.9
+    ) +
+    geom_text(
+      data = radial_label_df,
+      aes(x = x, y = y, label = label),
+      color = "grey65",
+      size = 3.3,
+      hjust = 0.5,
+      vjust = 0
+    ) +
+    coord_equal(clip = "off") +
+    xlim(-1.28, 1.28) +
+    ylim(-1.26, 1.28) +
+    labs(
+      title = cause_name,
+      subtitle = subtitle,
+      x = NULL,
+      y = NULL
+    ) +
+    theme_report +
+    theme(
+      axis.text = element_blank(),
+      axis.ticks = element_blank(),
+      axis.line = element_blank(),
+      panel.grid = element_blank(),
+      plot.margin = margin(20, 35, 20, 35)
+    )
+}
+
+dominant_profile_pooled <- build_dominant_profile(cps)
+dominant_profile_2025 <- build_dominant_profile(cps |> filter(YEAR == 2025))
+```
+
+```{r dominant-profile-table-pooled}
+#| label: dominant-profile-table-pooled
+#| tbl-cap: "Dominant subgroup on each margin within each unemployment cause, pooled CPS 1994â€“present."
+
+dominant_profile_pooled |>
+  mutate(share = percent(share, accuracy = 0.1)) |>
+  select(Cause = cause, Dimension = dimension, `Dominant Group` = dominant_group, Share = share) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+### Temporary Layoff
+
+::: {.panel-tabset}
+
+#### Pooled
+
+```{r fig-dominant-profile-radar-temp-layoff-pooled}
+#| label: fig-dominant-profile-radar-temp-layoff-pooled
+#| fig-cap: "Temporary Layoff dominant-profile spider plot, pooled CPS 1994 to present."
+#| fig-height: 6
+
+plot_dominant_radar_single(
+  dominant_profile_pooled,
+  cause_name = "Temporary Layoff",
+  subtitle = "1994 to present"
+)
+```
+
+#### 2025
+
+```{r fig-dominant-profile-radar-temp-layoff-2025}
+#| label: fig-dominant-profile-radar-temp-layoff-2025
+#| fig-cap: "Temporary Layoff dominant-profile spider plot, calendar year 2025."
+#| fig-height: 6
+
+plot_dominant_radar_single(
+  dominant_profile_2025,
+  cause_name = "Temporary Layoff",
+  subtitle = "Calendar year 2025"
+)
+```
+
+:::
+
+### Permanent Job Losers
+
+::: {.panel-tabset}
+
+#### Pooled
+
+```{r fig-dominant-profile-radar-perm-losers-pooled}
+#| label: fig-dominant-profile-radar-perm-losers-pooled
+#| fig-cap: "Permanent Job Losers dominant-profile spider plot, pooled CPS 1994 to present."
+#| fig-height: 6
+
+plot_dominant_radar_single(
+  dominant_profile_pooled,
+  cause_name = "Permanent Job Losers",
+  subtitle = "1994 to present"
+)
+```
+
+#### 2025
+
+```{r fig-dominant-profile-radar-perm-losers-2025}
+#| label: fig-dominant-profile-radar-perm-losers-2025
+#| fig-cap: "Permanent Job Losers dominant-profile spider plot, calendar year 2025."
+#| fig-height: 6
+
+plot_dominant_radar_single(
+  dominant_profile_2025,
+  cause_name = "Permanent Job Losers",
+  subtitle = "Calendar year 2025"
+)
+```
+
+:::
+
+### Completed Temp Job
+
+::: {.panel-tabset}
+
+#### Pooled
+
+```{r fig-dominant-profile-radar-completed-temp-pooled}
+#| label: fig-dominant-profile-radar-completed-temp-pooled
+#| fig-cap: "Completed Temp Job dominant-profile spider plot, pooled CPS 1994 to present."
+#| fig-height: 6
+
+plot_dominant_radar_single(
+  dominant_profile_pooled,
+  cause_name = "Completed Temp Job",
+  subtitle = "1994 to present"
+)
+```
+
+#### 2025
+
+```{r fig-dominant-profile-radar-completed-temp-2025}
+#| label: fig-dominant-profile-radar-completed-temp-2025
+#| fig-cap: "Completed Temp Job dominant-profile spider plot, calendar year 2025."
+#| fig-height: 6
+
+plot_dominant_radar_single(
+  dominant_profile_2025,
+  cause_name = "Completed Temp Job",
+  subtitle = "Calendar year 2025"
+)
+```
+
+:::
+
+### Job Leavers
+
+::: {.panel-tabset}
+
+#### Pooled
+
+```{r fig-dominant-profile-radar-job-leavers-pooled}
+#| label: fig-dominant-profile-radar-job-leavers-pooled
+#| fig-cap: "Job Leavers dominant-profile spider plot, pooled CPS 1994 to present."
+#| fig-height: 6
+
+plot_dominant_radar_single(
+  dominant_profile_pooled,
+  cause_name = "Job Leavers",
+  subtitle = "1994 to present"
+)
+```
+
+#### 2025
+
+```{r fig-dominant-profile-radar-job-leavers-2025}
+#| label: fig-dominant-profile-radar-job-leavers-2025
+#| fig-cap: "Job Leavers dominant-profile spider plot, calendar year 2025."
+#| fig-height: 6
+
+plot_dominant_radar_single(
+  dominant_profile_2025,
+  cause_name = "Job Leavers",
+  subtitle = "Calendar year 2025"
+)
+```
+
+:::
+
+### Reentrants
+
+::: {.panel-tabset}
+
+#### Pooled
+
+```{r fig-dominant-profile-radar-reentrants-pooled}
+#| label: fig-dominant-profile-radar-reentrants-pooled
+#| fig-cap: "Reentrants dominant-profile spider plot, pooled CPS 1994 to present."
+#| fig-height: 6
+
+plot_dominant_radar_single(
+  dominant_profile_pooled,
+  cause_name = "Reentrants",
+  subtitle = "1994 to present"
+)
+```
+
+#### 2025
+
+```{r fig-dominant-profile-radar-reentrants-2025}
+#| label: fig-dominant-profile-radar-reentrants-2025
+#| fig-cap: "Reentrants dominant-profile spider plot, calendar year 2025."
+#| fig-height: 6
+
+plot_dominant_radar_single(
+  dominant_profile_2025,
+  cause_name = "Reentrants",
+  subtitle = "Calendar year 2025"
+)
+```
+
+:::
+
+### New Entrants
+
+::: {.panel-tabset}
+
+#### Pooled
+
+```{r fig-dominant-profile-radar-new-entrants-pooled}
+#| label: fig-dominant-profile-radar-new-entrants-pooled
+#| fig-cap: "New Entrants dominant-profile spider plot, pooled CPS 1994 to present."
+#| fig-height: 6
+
+plot_dominant_radar_single(
+  dominant_profile_pooled,
+  cause_name = "New Entrants",
+  subtitle = "1994 to present"
+)
+```
+
+#### 2025
+
+```{r fig-dominant-profile-radar-new-entrants-2025}
+#| label: fig-dominant-profile-radar-new-entrants-2025
+#| fig-cap: "New Entrants dominant-profile spider plot, calendar year 2025."
+#| fig-height: 6
+
+plot_dominant_radar_single(
+  dominant_profile_2025,
+  cause_name = "New Entrants",
+  subtitle = "Calendar year 2025"
+)
+```
+
+:::
 
 ## 11. Unemployment by Reason: Definitions & Examples
 

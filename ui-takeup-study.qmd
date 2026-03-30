@@ -18,7 +18,7 @@ execute:
   message: false
 ---
 
-## Overview
+# Overview
 
 This memo documents a proposed state-level study of why **UI claims take-up appears low relative to unemployment in recent years**. The core hypothesis is that take-up has fallen partly because the **composition of unemployment** has shifted toward groups that are less likely to be eligible for, or less likely to claim, unemployment insurance.
 
@@ -29,7 +29,7 @@ Two broad stories motivate the exercise:
 
 The clean empirical question is therefore not simply why claims are low, but whether **cross-state, over-time variation in the composition of unemployment helps explain variation in UI take-up**.
 
-## Recommended Framing
+# Recommended Framing
 
 The most defensible baseline outcome is a **take-up-style ratio**, not raw claims. Raw UI claims combine three things at once: the scale of unemployment, the composition of unemployment, and claiming behavior. A ratio is better aligned with the underlying hypothesis.
 
@@ -39,28 +39,47 @@ Recommended outcomes:
 - `insured unemployment rate`
 - `initial claims / unemployed`
 
-The first-pass regression should use **state fixed effects** and **month fixed effects**:
+The first-pass regression should use **state fixed effects** and **date fixed effects**:
 
 $$
 \text{takeup}_{st} = \beta_1 \text{NewEntrantShare}_{st} + \beta_2 \text{MigrantShare}_{st} + \alpha_s + \gamma_t + \varepsilon_{st}
 $$
 
-where $\alpha_s$ are state fixed effects and $\gamma_t$ are month fixed effects.
+where $\alpha_s$ are state fixed effects and $\gamma_t$ are date fixed effects — one dummy per period in the panel (month-year for monthly panels, quarter-year for quarterly, year for yearly). These are *not* 12 seasonal dummies; they absorb all common national time variation. Identification therefore comes from **within-period, cross-state variation** in composition after absorbing persistent state differences. Baseline inference uses **standard errors clustered by state** to account for serial correlation within states.
 
 The two most important design cautions are:
 
 - **New entrants** are a relatively clean mechanism because they are definitionally searching for a first job and are therefore likely to have weak or zero UI eligibility.
-- **Migrants** must be defined carefully. At the monthly state-panel frequency, the most workable proxies are likely **foreign-born share** or **noncitizen share**, not "recent migrant from abroad."
+- **Migrants** must be defined carefully. At the monthly state-panel frequency, the most workable proxies are likely **foreign-born share** or **noncitizen share**, not "recent migrant from abroad." Of these, **noncitizen share** is the sharper proxy for the eligibility channel, since naturalized citizens included in the foreign-born measure are fully UI-eligible. Foreign-born share may still matter through broader frictions (language barriers, information costs, institutional unfamiliarity), but the mechanism is different from legal eligibility.
 
-## Data Feasibility
+# Data Feasibility
 
 The short answer is: **yes, the study is feasible with FRED + IPUMS CPS**, but the migrant measure must be chosen carefully.
 
 ```{r}
 
 library(tidyverse)
+library(fredr)
 library(gt)
+library(lubridate)
+library(plotly)
 library(scales)
+library(DT)
+
+fredr_set_key("ccd350785a210a7653a20d02ce92d83a")
+
+state_meta <- tibble(
+  state = state.name,
+  abb = state.abb,
+  fips = c(
+    "01", "02", "04", "05", "06", "08", "09", "10", "12", "13",
+    "15", "16", "17", "18", "19", "20", "21", "22", "23", "24",
+    "25", "26", "27", "28", "29", "30", "31", "32", "33", "34",
+    "35", "36", "37", "38", "39", "40", "41", "42", "44", "45",
+    "46", "47", "48", "49", "50", "51", "53", "54", "55", "56"
+  )
+) |>
+  arrange(state)
 
 theme_report <- theme_minimal(base_size = 11, base_family = "sans") +
   theme(
@@ -79,7 +98,7 @@ theme_report <- theme_minimal(base_size = 11, base_family = "sans") +
 theme_set(theme_report)
 ```
 
-### Source Summary
+## Source Summary
 
 ```{r}
 #| tbl-cap: "Data-source feasibility for a monthly state UI take-up study."
@@ -129,7 +148,7 @@ tibble(
   )
 ```
 
-## What FRED Can Provide
+# What FRED Can Provide
 
 FRED appears sufficient for the **state UI outcome side** of the study. The relevant release is the **State Unemployment Insurance Weekly Claims Report**, which includes:
 
@@ -138,15 +157,17 @@ FRED appears sufficient for the **state UI outcome side** of the study. The rele
 - **Insured unemployment rate by state**
 - **Covered employment by state**
 
-These are weekly series, so a monthly panel would require an aggregation choice:
+These are weekly series, so a monthly panel requires an aggregation choice. The memo uses the following rules:
 
-- sum weekly **initial claims** within month
-- average or end-of-month **continued claims**
-- average weekly **insured unemployment rate** within month
+- **Initial claims**: sum all weekly filings within the calendar month (flow measure)
+- **Continued claims**: average weekly continued claims within the calendar month (stock measure)
+- **Insured unemployment rate**: average weekly rate within the calendar month
+
+Weekly observations are assigned to months via `floor_date(date, "month")`, so weeks that straddle month boundaries are assigned to the month containing their start date. End-of-month continued claims is a natural robustness alternative.
 
 FRED also has **monthly state unemployment rates** and **monthly state unemployed persons** from LAUS, which are natural denominators for a take-up ratio.
 
-### FRED Inputs For The Panel
+## FRED Inputs For The Panel
 
 ```{r}
 #| tbl-cap: "Recommended FRED-side inputs for panel construction."
@@ -209,26 +230,633 @@ tibble(
   )
 ```
 
-## What IPUMS CPS Can Provide
+The memo now pulls these FRED inputs for **all 50 states**. For the weekly UI series, the state-level naming pattern is consistent across the FRED release (`XXICLAIMS`, `XXCCLAIMS`, `XXINSUREDUR`). For the monthly LAUS inputs, the state unemployment rate is `XXUR` and the seasonally adjusted unemployed-persons series follows the `LASST{state_fips}0000000000004` pattern.
 
-IPUMS CPS appears sufficient for the **state-month composition side** of the study.
+The table below is a **pre-pull inspection table** so you can verify the exact series IDs for every state before the live FRED pull runs.
 
-The cleanest monthly composition variable is the **new entrant share of unemployment**, because:
+```{r fred-all-states-pull}
+#| cache: true
 
-- `WHYUNEMP` is available in monthly CPS and distinguishes **new entrants** from the other unemployment-reason categories.
-- `STATEFIP` is available monthly and identifies state of residence.
-- weighted state-month shares can be formed using person weights.
+fred_dir <- file.path("data", "FRED")
+fred_panel_path <- file.path(fred_dir, "ui_takeup_fred_monthly_state_panel.csv")
+fred_catalog_path <- file.path(fred_dir, "ui_takeup_fred_series_catalog.csv")
+fred_meta_path <- file.path(fred_dir, "ui_takeup_fred_pull_version.txt")
+fred_pull_version <- "earliest_available_v1"
 
-The migrant story is more nuanced:
+dir.create(fred_dir, recursive = TRUE, showWarnings = FALSE)
 
-- `NATIVITY` is available monthly and supports a **foreign-born share** measure.
-- `CITIZEN` is available monthly and supports a **noncitizen share** measure.
-- A "recent migrant from abroad" measure is harder. The most obvious migration-status variable, `MIGRATE1`, is not a monthly CPS workhorse variable; it is primarily an **ASEC** measure, so it is not suitable for a monthly state panel.
+weekly_catalog <- state_meta |>
+  crossing(
+    tibble(
+      measure = c(
+        "Initial Claims",
+        "Continued Claims",
+        "Insured Unemployment Rate"
+      ),
+      suffix = c("ICLAIMS", "CCLAIMS", "INSUREDUR"),
+      frequency = "Weekly"
+    )
+  ) |>
+  mutate(series_id = paste0(abb, suffix)) |>
+  select(state, abb, measure, series_id, frequency)
 
-### IPUMS Inputs For The Panel
+monthly_catalog <- state_meta |>
+  crossing(
+    tibble(
+      measure = c("Unemployed Persons", "Unemployment Rate"),
+      series_type = c("unemployed_persons", "unemployment_rate"),
+      frequency = "Monthly"
+    )
+  ) |>
+  mutate(
+    series_id = case_when(
+      series_type == "unemployed_persons" ~ paste0("LASST", fips, "0000000000004"),
+      series_type == "unemployment_rate" ~ paste0(abb, "UR")
+    )
+  ) |>
+  select(state, abb, measure, series_id, frequency)
+
+fred_catalog <- bind_rows(weekly_catalog, monthly_catalog)
+fred_catalog_export <- fred_catalog |>
+  mutate(series_url = paste0("https://fred.stlouisfed.org/series/", series_id)) |>
+  arrange(state, frequency, measure)
+
+if (!file.exists(fred_catalog_path)) {
+  write_csv(fred_catalog_export, fred_catalog_path)
+}
+
+pull_fred_series <- function(series_id, state, abb, measure, frequency) {
+  fredr(
+    series_id = series_id,
+    observation_end = Sys.Date()
+  ) |>
+    transmute(
+      state = state,
+      abb = abb,
+      measure = measure,
+      frequency = frequency,
+      series_id = series_id,
+      date,
+      value
+    )
+}
+
+needs_fred_download <- !file.exists(fred_panel_path) ||
+  !file.exists(fred_meta_path) ||
+  !identical(readLines(fred_meta_path, warn = FALSE, n = 1), fred_pull_version)
+
+if (!needs_fred_download) {
+  fred_state_month_panel <- read_csv(fred_panel_path, show_col_types = FALSE) |>
+    mutate(date = as.Date(date))
+} else {
+  fred_panel <- pmap_dfr(
+    fred_catalog,
+    pull_fred_series
+  )
+
+  weekly_state_month <- fred_panel |>
+    filter(frequency == "Weekly") |>
+    mutate(date = floor_date(date, unit = "month")) |>
+    group_by(state, abb, date, measure) |>
+    summarise(
+      value = if (first(measure) == "Initial Claims") {
+        sum(value, na.rm = TRUE)
+      } else {
+        mean(value, na.rm = TRUE)
+      },
+      .groups = "drop"
+    ) |>
+    pivot_wider(names_from = measure, values_from = value)
+
+  monthly_state_month <- fred_panel |>
+    filter(frequency == "Monthly") |>
+    group_by(state, abb, date, measure) |>
+    summarise(value = dplyr::first(value), .groups = "drop") |>
+    pivot_wider(names_from = measure, values_from = value)
+
+  fred_state_month_panel <- weekly_state_month |>
+    full_join(monthly_state_month, by = c("state", "abb", "date")) |>
+    rename(
+      state_abbr = abb,
+      initial_claims = `Initial Claims`,
+      continued_claims = `Continued Claims`,
+      insured_unemployment_rate = `Insured Unemployment Rate`,
+      unemployed_persons = `Unemployed Persons`,
+      unemployment_rate = `Unemployment Rate`
+    ) |>
+    select(
+      date,
+      state,
+      state_abbr,
+      initial_claims,
+      continued_claims,
+      insured_unemployment_rate,
+      unemployed_persons,
+      unemployment_rate
+    ) |>
+    arrange(state, date)
+
+  write_csv(fred_state_month_panel, fred_panel_path)
+  writeLines(fred_pull_version, fred_meta_path)
+}
+
+fred_latest <- fred_state_month_panel |>
+  group_by(state, state_abbr) |>
+  slice_max(date, n = 1, with_ties = FALSE) |>
+  ungroup()
+```
 
 ```{r}
-#| tbl-cap: "Recommended IPUMS CPS inputs for state-month composition measures."
+#| tbl-cap: "All-state FRED pull coverage used for the memo's UI panel."
+
+fred_state_month_panel |>
+  summarise(
+    States = n_distinct(state),
+    `Date Range Start` = min(date, na.rm = TRUE),
+    `Date Range End` = max(date, na.rm = TRUE),
+    Rows = n()
+  ) |>
+  mutate(
+    `Date Range Start` = format(`Date Range Start`, "%Y-%m-%d"),
+    `Date Range End` = format(`Date Range End`, "%Y-%m-%d")
+  ) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  cols_width(
+    States ~ px(70),
+    `Date Range Start` ~ px(120),
+    `Date Range End` ~ px(120),
+    Rows ~ px(90)
+  ) |>
+  tab_source_note(
+    source_note = md(paste0(
+      "Saved locally to `", fred_panel_path, "` and `", fred_catalog_path, "`."
+    ))
+  )
+```
+
+```{r}
+#| tbl-cap: "Latest month available in the saved FRED state panel."
+
+fred_latest |>
+  summarise(
+    States = n_distinct(state),
+    `Latest Month` = max(date, na.rm = TRUE)
+  ) |>
+  mutate(`Latest Month` = format(`Latest Month`, "%Y-%m-%d")) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+```{r}
+#| tbl-cap: "Saved FRED panel columns."
+
+tibble(
+  Column = c(
+    "date",
+    "state",
+    "state_abbr",
+    "initial_claims",
+    "continued_claims",
+    "insured_unemployment_rate",
+    "unemployed_persons",
+    "unemployment_rate"
+  ),
+  Description = c(
+    "Month of observation",
+    "State name",
+    "Two-letter state abbreviation",
+    "Sum of weekly initial claims within month",
+    "Average weekly continued claims within month",
+    "Average weekly insured unemployment rate within month",
+    "Monthly unemployed persons",
+    "Monthly unemployment rate"
+  )
+) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  cols_width(
+    Column ~ px(170),
+    Description ~ px(380)
+  )
+```
+
+```{r fred-series-table}
+#| tbl-cap: "All-state FRED reference table for the proposed UI take-up panel."
+
+state_meta |>
+  transmute(
+    State = state,
+    `Initial Claims` = paste0("[", abb, "ICLAIMS](https://fred.stlouisfed.org/series/", abb, "ICLAIMS)"),
+    `Continued Claims` = paste0("[", abb, "CCLAIMS](https://fred.stlouisfed.org/series/", abb, "CCLAIMS)"),
+    `Insured UR` = paste0("[", abb, "INSUREDUR](https://fred.stlouisfed.org/series/", abb, "INSUREDUR)"),
+    `Unemployed Persons` = paste0("[LASST", fips, "0000000000004](https://fred.stlouisfed.org/series/LASST", fips, "0000000000004)"),
+    `Unemployment Rate` = paste0("[", abb, "UR](https://fred.stlouisfed.org/series/", abb, "UR)")
+  ) |>
+  gt() |>
+  fmt_markdown(columns = c(
+    `Initial Claims`,
+    `Continued Claims`,
+    `Insured UR`,
+    `Unemployed Persons`,
+    `Unemployment Rate`
+  )) |>
+  tab_options(
+    table.font.size = px(10),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  cols_width(
+    State ~ px(120),
+    `Initial Claims` ~ px(120),
+    `Continued Claims` ~ px(130),
+    `Insured UR` ~ px(110),
+    `Unemployed Persons` ~ px(150),
+    `Unemployment Rate` ~ px(120)
+  ) |>
+  tab_source_note(
+    source_note = md("These links point to the exact FRED series IDs used in the all-state pull above.")
+  )
+```
+
+```{r fred-panel-helpers}
+fred_analysis_specs <- tibble(
+  variable = c(
+    "initial_claims_per_unemployed",
+    "continued_claims_per_unemployed",
+    "insured_unemployment_rate_share"
+  ),
+  label = c(
+    "Initial Claims / Unemployed Persons",
+    "Continued Claims / Unemployed Persons",
+    "Insured Unemployment Rate"
+  ),
+  p10_color = c("#4c78a8", "#b2477c", "#2f6f4f"),
+  p50_color = c("#0b3c5d", "#7a1f52", "#1b4332"),
+  p90_color = c("#3f88c5", "#e56b6f", "#52b788")
+)
+
+fred_analysis_panel <- fred_state_month_panel |>
+  mutate(
+    initial_claims_per_unemployed = initial_claims / unemployed_persons,
+    continued_claims_per_unemployed = continued_claims / unemployed_persons,
+    insured_unemployment_rate_share = insured_unemployment_rate / 100
+  ) |>
+  pivot_longer(
+    cols = all_of(fred_analysis_specs$variable),
+    names_to = "variable",
+    values_to = "value"
+  ) |>
+  left_join(fred_analysis_specs, by = "variable") |>
+  filter(is.finite(value))
+
+fred_analysis_summary_long <- fred_analysis_panel |>
+  group_by(variable, label, date, p10_color, p50_color, p90_color) |>
+  summarise(
+    p10 = quantile(value, probs = 0.10, na.rm = TRUE),
+    p50 = quantile(value, probs = 0.50, na.rm = TRUE),
+    p90 = quantile(value, probs = 0.90, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  pivot_longer(
+    cols = c(p10, p50, p90),
+    names_to = "stat",
+    values_to = "value"
+  ) |>
+  mutate(
+    stat_label = recode(stat, p10 = "P10", p50 = "P50", p90 = "P90"),
+    stat_color = case_when(
+      stat == "p10" ~ p10_color,
+      stat == "p50" ~ p50_color,
+      stat == "p90" ~ p90_color
+    )
+  )
+
+fred_analysis_annual_avg <- fred_analysis_panel |>
+  mutate(year = year(date)) |>
+  group_by(variable, label, year, state, state_abbr) |>
+  summarise(value = mean(value, na.rm = TRUE), .groups = "drop")
+
+build_fred_analysis_time_series_plot <- function(var_id, y_range = NULL) {
+  state_data <- fred_analysis_panel |>
+    filter(variable == var_id)
+
+  summary_data <- fred_analysis_summary_long |>
+    filter(variable == var_id)
+
+  label_text <- fred_analysis_specs |>
+    filter(variable == var_id) |>
+    pull(label)
+
+  p <- plot_ly()
+
+  p <- p |>
+    add_lines(
+      data = state_data,
+      x = ~date,
+      y = ~value,
+      split = ~state,
+      line = list(color = "rgba(150, 150, 150, 0.22)", width = 0.6),
+      hoverinfo = "skip",
+      showlegend = FALSE
+    )
+
+  for (stat_name in c("p10", "p50", "p90")) {
+    stat_data <- summary_data |>
+      filter(stat == stat_name)
+
+    p <- p |>
+      add_lines(
+        data = stat_data,
+        x = ~date,
+        y = ~value,
+        name = stat_data$stat_label[[1]],
+        line = list(
+          color = stat_data$stat_color[[1]],
+          width = if (stat_name == "p50") 2.6 else 1.8
+        ),
+        text = ~paste0(
+          label_text, "<br>",
+          stat_label, ": ", percent(value, accuracy = 0.1), "<br>",
+          "Date: ", format(date, "%Y-%m-%d")
+        ),
+        hovertemplate = "%{text}<extra></extra>",
+        showlegend = TRUE
+      )
+  }
+
+  p |>
+    layout(
+      hovermode = "x unified",
+      legend = list(orientation = "h", x = 0, y = 1.12),
+      margin = list(l = 60, r = 20, t = 40, b = 40),
+      xaxis = list(
+        title = "",
+        rangeslider = list(visible = TRUE)
+      ),
+      yaxis = list(title = label_text, tickformat = ".1%", range = y_range)
+    )
+}
+
+build_fred_analysis_map_plot <- function(var_id) {
+  map_data <- fred_analysis_annual_avg |>
+    filter(variable == var_id)
+
+  label_text <- fred_analysis_specs |>
+    filter(variable == var_id) |>
+    pull(label)
+
+  plot_ly(
+    data = map_data,
+    type = "choropleth",
+    locationmode = "USA-states",
+    locations = ~state_abbr,
+    z = ~value,
+    frame = ~year,
+    colorscale = list(
+      c(0.0, "#0b3c5d"),
+      c(0.5, "#f3e5d8"),
+      c(1.0, "#7f0000")
+    ),
+    colorbar = list(
+      title = paste0(label_text, "<br>NA = gray"),
+      tickformat = ".1%",
+      x = 1.02,
+      xanchor = "left",
+      y = 0.5,
+      yanchor = "middle",
+      len = 0.6,
+      thickness = 12
+    ),
+    marker = list(line = list(color = "white", width = 0.6)),
+    text = ~paste0(
+      state, "<br>",
+      "Year: ", year, "<br>",
+      label_text, ": ", percent(value, accuracy = 0.1)
+    ),
+    hovertemplate = "%{text}<extra></extra>"
+  ) |>
+    layout(
+      margin = list(l = 0, r = 60, t = 24, b = 0),
+      annotations = list(
+        list(
+          x = 1.02,
+          y = 0.84,
+          xref = "paper",
+          yref = "paper",
+          text = "NA = gray",
+          showarrow = FALSE,
+          font = list(size = 10, color = "#555555")
+        )
+      ),
+      geo = list(
+        scope = "usa",
+        projection = list(type = "albers usa"),
+        showlakes = FALSE,
+        bgcolor = "rgba(0,0,0,0)"
+      )
+    )
+}
+
+build_fred_analysis_summary_table <- function(var_id) {
+  label_text <- fred_analysis_specs |>
+    filter(variable == var_id) |>
+    pull(label)
+
+  fred_analysis_panel |>
+    filter(variable == var_id) |>
+    summarise(
+      States = n_distinct(state),
+      `Monthly Observations` = n(),
+      `Start Month` = min(date),
+      `End Month` = max(date),
+      Mean = mean(value, na.rm = TRUE),
+      SD = sd(value, na.rm = TRUE),
+      Min = min(value, na.rm = TRUE),
+      P10 = quantile(value, probs = 0.10, na.rm = TRUE),
+      P50 = quantile(value, probs = 0.50, na.rm = TRUE),
+      P90 = quantile(value, probs = 0.90, na.rm = TRUE),
+      Max = max(value, na.rm = TRUE)
+    ) |>
+    gt() |>
+    fmt_date(columns = c(`Start Month`, `End Month`), date_style = 10) |>
+    fmt_percent(columns = c(Mean, SD, Min, P10, P50, P90, Max), decimals = 1) |>
+    tab_header(title = label_text) |>
+    tab_options(
+      table.font.size = px(11),
+      column_labels.font.weight = "bold",
+      column_labels.background.color = "#2c3e50"
+    ) |>
+    tab_style(
+      style = cell_text(color = "white"),
+      locations = cells_column_labels()
+    )
+}
+```
+
+# FRED Panel Assembly
+
+California was gray in the earlier initial-claims map because the state initial-claims series does not begin until **February 1986** in the saved panel, so any earlier animation year has missing values and Plotly renders those states in gray. The normalized claims sections below only use nonmissing years for the mapped variable.
+
+The claims ratios can exceed the monthly number of unemployed persons because the numerator and denominator are not the same concept. `Initial claims` is a **monthly flow** formed by summing weekly filings across the month, while `unemployed persons` is a **monthly stock** from LAUS/CPS. `Continued claims` is an insured-unemployment administrative measure tied to UI eligibility and covered employment, not the same population as total unemployed persons. So these ratios are useful normalization devices, but they are not bounded by 1.
+
+The normalized ratio sections end in **December 2025** because the weekly UI series continue through **March 2026**, but the monthly state `unemployed persons` and `unemployment rate` LAUS series in the saved FRED pull currently stop at **2025-12-01**.
+
+## Initial Claims Adjusted by Unemployed Persons
+
+::: {.panel-tabset}
+
+### Time Series
+
+```{r initial-claims-adjusted-timeseries}
+build_fred_analysis_time_series_plot("initial_claims_per_unemployed")
+```
+
+### Time Series - Trim Y
+
+```{r initial-claims-adjusted-timeseries-trim}
+build_fred_analysis_time_series_plot("initial_claims_per_unemployed", y_range = c(0, 1))
+```
+
+### Interactive Map
+
+```{r initial-claims-adjusted-map}
+build_fred_analysis_map_plot("initial_claims_per_unemployed")
+```
+
+### Summary Statistics
+
+```{r initial-claims-adjusted-summary}
+build_fred_analysis_summary_table("initial_claims_per_unemployed")
+```
+
+:::
+
+## Continued Claims Adjusted by Unemployed Persons
+
+::: {.panel-tabset}
+
+### Time Series
+
+```{r continued-claims-adjusted-timeseries}
+build_fred_analysis_time_series_plot("continued_claims_per_unemployed")
+```
+
+### Time Series - Trim Y
+
+```{r continued-claims-adjusted-timeseries-trim}
+build_fred_analysis_time_series_plot("continued_claims_per_unemployed", y_range = c(0, 1))
+```
+
+### Interactive Map
+
+```{r continued-claims-adjusted-map}
+build_fred_analysis_map_plot("continued_claims_per_unemployed")
+```
+
+### Summary Statistics
+
+```{r continued-claims-adjusted-summary}
+build_fred_analysis_summary_table("continued_claims_per_unemployed")
+```
+
+:::
+
+## Insured Unemployment Rate
+
+::: {.panel-tabset}
+
+### Time Series
+
+```{r insured-ur-timeseries}
+build_fred_analysis_time_series_plot("insured_unemployment_rate_share")
+```
+
+### Time Series - Trim Y
+
+```{r insured-ur-timeseries-trim}
+build_fred_analysis_time_series_plot("insured_unemployment_rate_share", y_range = c(0, 0.1))
+```
+
+### Interactive Map
+
+```{r insured-ur-map}
+build_fred_analysis_map_plot("insured_unemployment_rate_share")
+```
+
+### Summary Statistics
+
+```{r insured-ur-summary}
+build_fred_analysis_summary_table("insured_unemployment_rate_share")
+```
+
+:::
+
+# What CPS Can Provide
+
+Monthly CPS appears sufficient for the **state-month composition side** of the study. The survey is the natural complement to the FRED panel: FRED provides the **UI outcome side**, while CPS provides the **who-is-unemployed** side.
+
+For this project, the monthly CPS can provide:
+
+- **new entrant share** of the unemployed by state-month
+- **foreign-born share** of the unemployed by state-month
+- **noncitizen share** of the unemployed by state-month
+- reason-for-unemployment composition such as temporary layoff, permanent job loser, job leaver, reentrant, and new entrant
+- occupation, industry, education, age, sex, and race/ethnicity composition measures for the unemployed
+
+The cleanest baseline composition variable is the **new entrant share of unemployment**, because monthly CPS directly observes:
+
+- `WHYUNEMP`, which identifies **new entrants** and the other unemployment-reason categories
+- `STATEFIP`, which identifies state of residence
+- `WTFINL`, which allows weighted state-month aggregation
+
+The migrant side is workable, but more limited. Monthly CPS supports:
+
+- `NATIVITY` for a **foreign-born share** measure
+- `CITIZEN` for a **noncitizen share** measure
+
+It does **not** cleanly support a monthly state panel of recent-arrival status, since the most obvious migration-status variable for that story, `MIGRATE1`, is primarily an **ASEC** measure rather than a standard monthly CPS workhorse.
+
+As a result, the monthly CPS should be used to construct **state-month composition measures among unemployed persons**, not direct administrative claiming outcomes. In practice, the workflow is:
+
+1. keep monthly CPS records for unemployed individuals
+2. identify state with `STATEFIP`
+3. weight records with `WTFINL`
+4. compute state-month composition shares
+5. merge those CPS-side measures to the saved FRED panel
+
+## CPS Inputs For The Panel
+
+```{r}
+#| tbl-cap: "Recommended CPS-side inputs for state-month composition measures."
 
 tibble(
   Variable = c("STATEFIP", "WHYUNEMP", "NATIVITY", "CITIZEN", "WTFINL"),
@@ -282,7 +910,649 @@ tibble(
   )
 ```
 
-## Best Version Of The Migrant Story
+Monthly CPS does **not** provide a clean long panel of UI claiming, claims burden, or severance receipt. Those are conceptually important, but they belong outside the CPS panel-assembly step and should be treated as separate extensions or external controls.
+
+# CPS Panel Assembly
+
+The CPS state-month composition panel is saved locally, so the memo can load the aggregated panel directly without rereading the raw microdata each time. The saved state-month panel used below is `data/CPS/cps_ui_state_month_panel.csv`. The underlying microdata comes from the unified CPS extract at `data/CPS/cps_unified.csv.gz` (shared with `unemployment_decomposition.qmd`; run `Rscript submit_unified_cps_extract.R` to download or refresh).
+
+```{r cps-panel-load}
+cps_dir <- file.path("data", "CPS")
+cps_panel_path <- file.path(cps_dir, "cps_ui_state_month_panel.csv")
+
+cps_state_month_panel <- read_csv(cps_panel_path, show_col_types = FALSE) |>
+  mutate(date = as.Date(date))
+```
+
+```{r}
+#| tbl-cap: "Saved CPS panel coverage used for the memo's composition panel."
+
+cps_state_month_panel |>
+  summarise(
+    States = n_distinct(state),
+    `Date Range Start` = min(date, na.rm = TRUE),
+    `Date Range End` = max(date, na.rm = TRUE),
+    Rows = n()
+  ) |>
+  mutate(
+    `Date Range Start` = format(`Date Range Start`, "%Y-%m-%d"),
+    `Date Range End` = format(`Date Range End`, "%Y-%m-%d")
+  ) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  cols_width(
+    States ~ px(70),
+    `Date Range Start` ~ px(120),
+    `Date Range End` ~ px(120),
+    Rows ~ px(90)
+  ) |>
+  tab_source_note(
+    source_note = md(paste0(
+      "Saved locally to `", cps_panel_path, "`. Raw microdata from unified extract at `data/CPS/cps_unified.csv.gz`."
+    ))
+  )
+```
+
+```{r}
+#| tbl-cap: "Saved CPS panel columns."
+
+tibble(
+  Column = c(
+    "date",
+    "state",
+    "state_abbr",
+    "unemployed_total",
+    "new_entrant_share",
+    "foreign_born_share",
+    "noncitizen_share",
+    "white_collar_share",
+    "service_share",
+    "blue_collar_share",
+    "perm_job_loser_share",
+    "temp_layoff_share",
+    "white_collar_perm_job_loser_share"
+  ),
+  Description = c(
+    "Month of observation",
+    "State name",
+    "Two-letter state abbreviation",
+    "Weighted total unemployed persons in the state-month",
+    "Weighted share of unemployed persons who are new entrants",
+    "Weighted share of unemployed persons who are foreign born",
+    "Weighted share of unemployed persons who are noncitizens",
+    "Weighted share of unemployed persons in broad white-collar occupations (OCC1990 3-400)",
+    "Weighted share of unemployed persons in service occupations (OCC1990 401-470)",
+    "Weighted share of unemployed persons in blue-collar occupations (OCC1990 471-889)",
+    "Weighted share of unemployed persons who are permanent job losers",
+    "Weighted share of unemployed persons on temporary layoff",
+    "Weighted share of unemployed persons who are white-collar permanent job losers"
+  )
+) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  cols_width(
+    Column ~ px(170),
+    Description ~ px(380)
+  )
+```
+
+```{r cps-panel-helpers}
+cps_analysis_specs <- tibble(
+  variable = c(
+    "new_entrant_share",
+    "foreign_born_share",
+    "noncitizen_share"
+  ),
+  label = c(
+    "Share of Unemployed Who Are New Entrants",
+    "Share of Unemployed Who Are Foreign Born",
+    "Share of Unemployed Who Are Noncitizens"
+  ),
+  map_label = c(
+    "New entrant share",
+    "Foreign-born share",
+    "Noncitizen share"
+  ),
+  p10_color = c("#4c78a8", "#2a9d8f", "#b2477c"),
+  p50_color = c("#0b3c5d", "#1b4332", "#7a1f52"),
+  p90_color = c("#3f88c5", "#52b788", "#e56b6f")
+)
+
+cps_panel_long <- cps_state_month_panel |>
+  pivot_longer(
+    cols = all_of(cps_analysis_specs$variable),
+    names_to = "variable",
+    values_to = "value"
+  ) |>
+  left_join(cps_analysis_specs, by = "variable") |>
+  filter(is.finite(value))
+
+cps_summary_long <- cps_panel_long |>
+  group_by(variable, label, date, p10_color, p50_color, p90_color) |>
+  summarise(
+    p10 = quantile(value, probs = 0.10, na.rm = TRUE),
+    p50 = quantile(value, probs = 0.50, na.rm = TRUE),
+    p90 = quantile(value, probs = 0.90, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  pivot_longer(
+    cols = c(p10, p50, p90),
+    names_to = "stat",
+    values_to = "value"
+  ) |>
+  mutate(
+    stat_label = recode(stat, p10 = "P10", p50 = "P50", p90 = "P90"),
+    stat_color = case_when(
+      stat == "p10" ~ p10_color,
+      stat == "p50" ~ p50_color,
+      stat == "p90" ~ p90_color
+    )
+  )
+
+cps_annual_avg <- cps_panel_long |>
+  mutate(year = year(date)) |>
+  group_by(variable, label, year, state, state_abbr) |>
+  summarise(value = mean(value, na.rm = TRUE), .groups = "drop")
+
+build_cps_time_series_plot <- function(var_id) {
+  state_data <- cps_panel_long |>
+    filter(variable == var_id)
+
+  summary_data <- cps_summary_long |>
+    filter(variable == var_id)
+
+  label_text <- cps_analysis_specs |>
+    filter(variable == var_id) |>
+    pull(label)
+
+  p <- plot_ly()
+
+  p <- p |>
+    add_lines(
+      data = state_data,
+      x = ~date,
+      y = ~value,
+      split = ~state,
+      line = list(color = "rgba(150, 150, 150, 0.22)", width = 0.6),
+      hoverinfo = "skip",
+      showlegend = FALSE
+    )
+
+  for (stat_name in c("p10", "p50", "p90")) {
+    stat_data <- summary_data |>
+      filter(stat == stat_name)
+
+    p <- p |>
+      add_lines(
+        data = stat_data,
+        x = ~date,
+        y = ~value,
+        name = stat_data$stat_label[[1]],
+        line = list(
+          color = stat_data$stat_color[[1]],
+          width = if (stat_name == "p50") 2.6 else 1.8
+        ),
+        text = ~paste0(
+          label_text, "<br>",
+          stat_label, ": ", percent(value, accuracy = 0.1), "<br>",
+          "Date: ", format(date, "%Y-%m-%d")
+        ),
+        hovertemplate = "%{text}<extra></extra>",
+        showlegend = TRUE
+      )
+  }
+
+  p |>
+    layout(
+      hovermode = "x unified",
+      legend = list(orientation = "h", x = 0, y = 1.12),
+      margin = list(l = 60, r = 20, t = 40, b = 40),
+      xaxis = list(
+        title = "",
+        rangeslider = list(visible = TRUE)
+      ),
+      yaxis = list(title = label_text, tickformat = ".1%")
+    )
+}
+
+build_cps_map_plot <- function(var_id) {
+  map_data <- cps_annual_avg |>
+    filter(variable == var_id)
+
+  label_text <- cps_analysis_specs |>
+    filter(variable == var_id) |>
+    pull(label)
+  map_label_text <- cps_analysis_specs |>
+    filter(variable == var_id) |>
+    pull(map_label)
+
+  plot_ly(
+    data = map_data,
+    type = "choropleth",
+    locationmode = "USA-states",
+    locations = ~state_abbr,
+    z = ~value,
+    frame = ~year,
+    colorscale = list(
+      c(0.0, "#0b3c5d"),
+      c(0.5, "#f3e5d8"),
+      c(1.0, "#7f0000")
+    ),
+    colorbar = list(
+      title = paste0(map_label_text, "<br>NA = gray"),
+      tickformat = ".1%",
+      x = 1.02,
+      xanchor = "left",
+      y = 0.5,
+      yanchor = "middle",
+      len = 0.6,
+      thickness = 12
+    ),
+    marker = list(line = list(color = "white", width = 0.6)),
+    text = ~paste0(
+      state, "<br>",
+      "Year: ", year, "<br>",
+      label_text, ": ", percent(value, accuracy = 0.1)
+    ),
+    hovertemplate = "%{text}<extra></extra>"
+  ) |>
+    layout(
+      margin = list(l = 0, r = 60, t = 24, b = 0),
+      annotations = list(
+        list(
+          x = 1.02,
+          y = 0.84,
+          xref = "paper",
+          yref = "paper",
+          text = "NA = gray",
+          showarrow = FALSE,
+          font = list(size = 10, color = "#555555")
+        )
+      ),
+      geo = list(
+        scope = "usa",
+        projection = list(type = "albers usa"),
+        showlakes = FALSE,
+        bgcolor = "rgba(0,0,0,0)"
+      )
+    )
+}
+
+build_cps_summary_table <- function(var_id) {
+  label_text <- cps_analysis_specs |>
+    filter(variable == var_id) |>
+    pull(label)
+
+  cps_panel_long |>
+    filter(variable == var_id) |>
+    summarise(
+      States = n_distinct(state),
+      `Monthly Observations` = n(),
+      `Start Month` = min(date),
+      `End Month` = max(date),
+      Mean = mean(value, na.rm = TRUE),
+      SD = sd(value, na.rm = TRUE),
+      Min = min(value, na.rm = TRUE),
+      P10 = quantile(value, probs = 0.10, na.rm = TRUE),
+      P50 = quantile(value, probs = 0.50, na.rm = TRUE),
+      P90 = quantile(value, probs = 0.90, na.rm = TRUE),
+      Max = max(value, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    gt() |>
+    fmt_date(columns = c(`Start Month`, `End Month`), date_style = 10) |>
+    fmt_percent(columns = c(Mean, SD, Min, P10, P50, P90, Max), decimals = 1) |>
+    tab_header(title = label_text) |>
+    tab_options(
+      table.font.size = px(11),
+      column_labels.font.weight = "bold",
+      column_labels.background.color = "#2c3e50"
+    ) |>
+    tab_style(
+      style = cell_text(color = "white"),
+      locations = cells_column_labels()
+    )
+}
+```
+
+## New Entrant Share
+
+::: {.panel-tabset}
+
+### Time Series
+
+```{r cps-new-entrant-timeseries}
+build_cps_time_series_plot("new_entrant_share")
+```
+
+### Interactive Map
+
+```{r cps-new-entrant-map}
+build_cps_map_plot("new_entrant_share")
+```
+
+### Summary Statistics
+
+```{r cps-new-entrant-summary}
+build_cps_summary_table("new_entrant_share")
+```
+
+:::
+
+## Foreign-Born Share
+
+::: {.panel-tabset}
+
+### Time Series
+
+```{r cps-foreign-born-timeseries}
+build_cps_time_series_plot("foreign_born_share")
+```
+
+### Interactive Map
+
+```{r cps-foreign-born-map}
+build_cps_map_plot("foreign_born_share")
+```
+
+### Summary Statistics
+
+```{r cps-foreign-born-summary}
+build_cps_summary_table("foreign_born_share")
+```
+
+:::
+
+## Noncitizen Share
+
+::: {.panel-tabset}
+
+### Time Series
+
+```{r cps-noncitizen-timeseries}
+build_cps_time_series_plot("noncitizen_share")
+```
+
+### Interactive Map
+
+```{r cps-noncitizen-map}
+build_cps_map_plot("noncitizen_share")
+```
+
+### Summary Statistics
+
+```{r cps-noncitizen-summary}
+build_cps_summary_table("noncitizen_share")
+```
+
+:::
+
+# Final Merged Panel
+
+The final merged panel combines the saved FRED outcome-side panel with the saved CPS composition-side panel. The purpose is to produce a single analysis-ready dataset that can be estimated at multiple time aggregations depending on the tradeoff between identification and precision.
+
+The monthly panel preserves the most within-state time variation, the quarterly panel provides a middle ground, and the yearly panel substantially improves the precision of the CPS composition estimates. All three are saved under `data/final` so that the merged panel does not need to be rebuilt during routine memo renders.
+
+## Final Panel Outputs
+
+```{r}
+#| tbl-cap: "Saved final merged panel outputs."
+
+tibble(
+  File = c(
+    "ui_takeup_panel_state_month.csv",
+    "ui_takeup_panel_state_month_analysis_ready.csv",
+    "ui_takeup_panel_state_quarter.csv",
+    "ui_takeup_panel_state_quarter_analysis_ready.csv",
+    "ui_takeup_panel_state_year.csv",
+    "ui_takeup_panel_state_year_analysis_ready.csv",
+    "cps_month_precision.csv",
+    "cps_quarter_precision.csv",
+    "cps_year_precision.csv",
+    "cps_precision_comparison.csv"
+  ),
+  Purpose = c(
+    "Full merged state-month panel",
+    "State-month panel restricted to overlap observations with all key variables present",
+    "Full merged state-quarter panel",
+    "State-quarter panel restricted to overlap observations with all key variables present",
+    "Full merged state-year panel",
+    "State-year panel restricted to overlap observations with all key variables present",
+    "State-month CPS precision diagnostics",
+    "State-quarter CPS precision diagnostics",
+    "State-year CPS precision diagnostics",
+    "Cross-frequency comparison of CPS precision"
+  )
+) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  cols_width(
+    File ~ px(260),
+    Purpose ~ px(430)
+  ) |>
+  tab_source_note(
+    source_note = md("All files are saved in the local `data/final` directory.")
+  )
+```
+
+## Dataset Previews
+
+The tables below show the first few rows of each saved panel so the reader can see the exact structure that is being carried forward into estimation.
+
+```{r final-panel-preview-helpers}
+preview_final_dataset <- function(path) {
+  read_csv(path, show_col_types = FALSE) |>
+    head() |>
+    DT::datatable(
+      rownames = FALSE,
+      options = list(
+        pageLength = 6,
+        dom = "tip",
+        scrollX = TRUE
+      )
+    )
+}
+```
+
+::: {.panel-tabset}
+
+### State-Month Full
+
+```{r final-preview-month-full}
+preview_final_dataset(file.path("data", "final", "ui_takeup_panel_state_month.csv"))
+```
+
+### State-Month Analysis Ready
+
+```{r final-preview-month-ar}
+preview_final_dataset(file.path("data", "final", "ui_takeup_panel_state_month_analysis_ready.csv"))
+```
+
+### State-Quarter Full
+
+```{r final-preview-quarter-full}
+preview_final_dataset(file.path("data", "final", "ui_takeup_panel_state_quarter.csv"))
+```
+
+### State-Quarter Analysis Ready
+
+```{r final-preview-quarter-ar}
+preview_final_dataset(file.path("data", "final", "ui_takeup_panel_state_quarter_analysis_ready.csv"))
+```
+
+### State-Year Full
+
+```{r final-preview-year-full}
+preview_final_dataset(file.path("data", "final", "ui_takeup_panel_state_year.csv"))
+```
+
+### State-Year Analysis Ready
+
+```{r final-preview-year-ar}
+preview_final_dataset(file.path("data", "final", "ui_takeup_panel_state_year_analysis_ready.csv"))
+```
+
+:::
+
+## CPS Statistical Power
+
+The key source of statistical noise in the merged panel is the CPS composition side. For a weighted state-period share $\hat{p}_{st}$, the memo uses the Kish-style effective sample size
+
+$$
+n^{\text{eff}}_{st} = \frac{\left(\sum_{i \in st} w_i\right)^2}{\sum_{i \in st} w_i^2},
+$$
+
+and then approximates sampling precision with
+
+$$
+\text{SE}(\hat{p}_{st}) \approx \sqrt{\frac{\hat{p}_{st}(1-\hat{p}_{st})}{n^{\text{eff}}_{st}}}
+\qquad \text{and} \qquad
+\text{MOE}_{95}(\hat{p}_{st}) \approx 1.96 \times \text{SE}(\hat{p}_{st}).
+$$
+
+This makes the panel tradeoff transparent: moving from month to quarter or year raises $n^{\text{eff}}_{st}$ by pooling more CPS records, and the sampling noise falls roughly at the rate $1 / \sqrt{n^{\text{eff}}_{st}}$.
+
+```{r}
+#| tbl-cap: "Approximate CPS precision by aggregation frequency."
+
+read_csv(file.path("data", "final", "cps_precision_comparison.csv"), show_col_types = FALSE) |>
+  mutate(
+    Measure = recode(
+      measure,
+      new_entrant_share = "New entrant share",
+      foreign_born_share = "Foreign-born share",
+      noncitizen_share = "Noncitizen share"
+    ),
+    Frequency = str_to_title(frequency)
+  ) |>
+  select(
+    Frequency,
+    Measure,
+    Periods = periods,
+    `Median Eff. N` = median_effective_n,
+    `P10 Eff. N` = p10_effective_n,
+    `Median MOE (95%)` = median_moe95,
+    `P90 MOE (95%)` = p90_moe95,
+    `Median Unweighted Numerator N` = median_unweighted_numerator,
+    `P10 Unweighted Numerator N` = p10_unweighted_numerator
+  ) |>
+  gt() |>
+  fmt_number(
+    columns = c(`Median Eff. N`, `P10 Eff. N`, `Median Unweighted Numerator N`, `P10 Unweighted Numerator N`),
+    decimals = 1
+  ) |>
+  fmt_percent(
+    columns = c(`Median MOE (95%)`, `P90 MOE (95%)`),
+    decimals = 1
+  ) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  cols_width(
+    Frequency ~ px(90),
+    Measure ~ px(150),
+    Periods ~ px(80),
+    `Median Eff. N` ~ px(95),
+    `P10 Eff. N` ~ px(90),
+    `Median MOE (95%)` ~ px(110),
+    `P90 MOE (95%)` ~ px(110),
+    `Median Unweighted Numerator N` ~ px(135),
+    `P10 Unweighted Numerator N` ~ px(130)
+  )
+```
+
+```{r}
+#| tbl-cap: "Frequency-level tradeoff summary using the CPS precision diagnostics."
+
+read_csv(file.path("data", "final", "cps_precision_comparison.csv"), show_col_types = FALSE) |>
+  group_by(frequency) |>
+  summarise(
+    `Median Eff. N` = median(median_effective_n),
+    `Median MOE (95%)` = median(median_moe95),
+    .groups = "drop"
+  ) |>
+  mutate(
+    Frequency = str_to_title(frequency),
+    month_eff_n = `Median Eff. N`[frequency == "month"],
+    `SE Relative To Month` = sqrt(month_eff_n / `Median Eff. N`)
+  ) |>
+  select(Frequency, `Median Eff. N`, `Median MOE (95%)`, `SE Relative To Month`) |>
+  filter(!is.na(`SE Relative To Month`)) |>
+  gt() |>
+  fmt_number(columns = `Median Eff. N`, decimals = 1) |>
+  fmt_percent(columns = c(`Median MOE (95%)`, `SE Relative To Month`), decimals = 1) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+In practical terms, the monthly CPS panel is usable but noisy, especially in smaller states. The quarter panel raises the typical effective sample size by about a factor of three, so the sampling error falls to roughly $\sqrt{45/135} \approx 0.58$ of the monthly level. The year panel raises the typical effective sample size to a bit above 500, so the sampling error falls to roughly $\sqrt{45/526} \approx 0.29$ of the monthly level. That is why the quarterly and yearly panels are valuable robustness versions even if the monthly panel remains attractive for identification.
+
+# Methodology
+
+The merged panel combines the FRED state series with CPS-based composition measures at monthly, quarterly, and yearly frequencies. The CPS side is the part of the design where finite-sample precision matters most, because each state-period estimate is built from unemployed CPS respondents rather than from administrative census-style counts.
+
+The `effective_n` variable is therefore not the literal number of sampled unemployed respondents. Instead, it is the **equal-weight sample size that would deliver the same precision as the weighted CPS cell actually observed**:
+
+$$
+n^{\text{eff}}_{st} = \frac{\left(\sum_{i \in st} w_i\right)^2}{\sum_{i \in st} w_i^2}.
+$$
+
+If all survey weights were equal, then $n^{\text{eff}}_{st}$ would equal the raw respondent count. When weights are unequal, $n^{\text{eff}}_{st}$ is smaller than the raw count because highly unequal weights reduce precision.
+
+For a CPS share such as the new-entrant share, foreign-born share, or noncitizen share, the memo uses
+
+$$
+\hat{p}_{st} = \frac{\sum_{i \in st} w_i \cdot 1\{X_i = 1\}}{\sum_{i \in st} w_i}
+$$
+
+and then approximates uncertainty with
+
+$$
+\text{SE}(\hat{p}_{st}) \approx \sqrt{\frac{\hat{p}_{st}(1-\hat{p}_{st})}{n^{\text{eff}}_{st}}},
+\qquad
+\text{MOE}_{95}(\hat{p}_{st}) \approx 1.96 \times \text{SE}(\hat{p}_{st}).
+$$
+
+These are approximation formulas for relative precision, not design-based CPS standard errors. They account for weight inequality via the Kish effective sample size but do not capture the full CPS variance structure from stratification and clustering, so they may be somewhat optimistic. They are still informative about the tradeoff across panel frequencies. Aggregating from state-month to state-quarter to state-year increases $n^{\text{eff}}_{st}$ and shrinks the expected noise roughly in proportion to $1 / \sqrt{n^{\text{eff}}_{st}}$. That is the core reason the yearly panel is much more stable than the monthly panel, even though it sacrifices short-run time variation.
+
+# Best Version Of The Migrant Story
 
 At monthly frequency, the strongest available versions of the migrant channel are:
 
@@ -298,7 +1568,7 @@ That means the best empirical framing is probably:
 
 This is a stronger design than trying to force a monthly "recent migrant" variable that the data do not naturally support.
 
-## Recommended Baseline Panel
+# Recommended Baseline Panel
 
 ```{r}
 #| tbl-cap: "Recommended baseline panel design."
@@ -314,12 +1584,12 @@ tibble(
     "Useful extensions"
   ),
   Choice = c(
-    "State × month",
-    "Monthly",
+    "State x year-month",
+    "Monthly (with quarterly and yearly robustness panels)",
     "Continued claims / unemployed",
     "New entrant share of unemployed",
-    "Foreign-born or noncitizen share of unemployed",
-    "State FE + month FE",
+    "Noncitizen share of unemployed (foreign-born share as robustness)",
+    "State FE + date FE; SEs clustered by state",
     "State trends, unemployment rate, reason-for-unemployment shares, occupation mix"
   )
 ) |>
@@ -339,7 +1609,7 @@ tibble(
   )
 ```
 
-## Interpretation And Limits
+# Interpretation And Limits
 
 A regression of UI take-up on new entrants and migrant proxies would be informative, but it should be interpreted carefully.
 
@@ -358,7 +1628,11 @@ Those stories are still plausible, but they likely require either:
 - occupation/industry composition interactions, or
 - separate evidence on severance, claim hassle, or expected duration
 
-## Claims Hassle And Administrative Burden
+**Measurement error and attenuation bias.** Because the CPS composition regressors (new entrant share, foreign-born share, noncitizen share) are estimated from survey microdata rather than observed from administrative records, they are measured with nontrivial sampling noise. This creates a classical-style errors-in-variables problem that will tend to **attenuate slope estimates toward zero**, with the bias most severe in small states and at monthly frequency where CPS cell sizes are smallest. If coefficients are larger and more stable at quarterly or yearly frequency, that pattern is *consistent with* reduced measurement error rather than a different underlying relationship. The quarterly and yearly panels are therefore not merely cosmetic robustness checks — they are an important diagnostic for whether monthly noise is washing out real associations. Formal measurement-error corrections (IV, SIMEX) are deferred to the estimation stage; the design memo treats multi-frequency comparison as the primary guard against attenuation.
+
+**Pandemic-era comparability.** The sample covers March 2020 onward, a period of temporary federal UI programs (PUA, PEUC, FPUC), eligibility expansions, administrative disruptions, and unusual CPS measurement conditions. These distortions affect both the outcome (claims ratios) and the composition regressors. The baseline analysis will address this through sample splits or exclusion of the pandemic window (approximately March 2020 through September 2021), with details determined at the estimation stage.
+
+# Claims Hassle And Administrative Burden
 
 The **claims-hassle** story is conceptually plausible, but the main challenge is measurement. FRED and IPUMS CPS do not appear to provide a clean, long monthly state panel of administrative burden.
 
@@ -389,7 +1663,7 @@ The most realistic first-pass empirical strategy is therefore:
 - add any time-varying UI policy variables if they can be assembled
 - discuss claims hassle as an important but imperfectly measured mechanism
 
-### Candidate Burden Measures
+## Candidate Burden Measures
 
 ```{r}
 #| tbl-cap: "Practical ways to incorporate claims hassle into the design."
@@ -432,7 +1706,7 @@ tibble(
   )
 ```
 
-## Occupation Composition And Interaction Terms
+# Occupation Composition And Interaction Terms
 
 The white-collar severance story is better tested through **occupation-composition controls and interactions** than through verbal interpretation alone.
 
@@ -446,7 +1720,7 @@ If white-collar workers are less likely to claim UI because of severance, expect
 
 IPUMS CPS gives a workable path to this because occupation and class-of-worker variables are available in the monthly microdata and can be aggregated to state-month composition measures.
 
-### Useful Occupation And Work-Background Measures
+## Useful Occupation And Work-Background Measures
 
 ```{r}
 #| tbl-cap: "Candidate occupation and work-composition measures from monthly CPS."
@@ -489,7 +1763,7 @@ tibble(
   )
 ```
 
-### Why Interactions Matter
+## Why Interactions Matter
 
 A main-effect occupation variable tells you whether take-up is systematically lower when unemployment is more white-collar. An interaction term goes one step further and asks whether the effect of one composition channel depends on the occupational mix.
 
@@ -500,7 +1774,7 @@ Examples:
 
 The cleanest interaction is probably not with all unemployed persons, but with **job-loser composition**. That keeps the interpretation closer to the set of people who are plausibly UI-eligible.
 
-## Preferred Regression Extensions
+# Preferred Regression Extensions
 
 The baseline model remains:
 
@@ -518,7 +1792,7 @@ $$
 \alpha_s + \gamma_t + \varepsilon_{st}
 $$
 
-To speak more directly to the severance / white-collar mechanism, a better extension is:
+As a suggestive heterogeneity test (not a clean mechanism test for severance), an exploratory extension is:
 
 $$
 \text{takeup}_{st} =
@@ -541,7 +1815,7 @@ $$
 \alpha_s + \gamma_t + \varepsilon_{st}
 $$
 
-### Empirical Priority Order
+## Empirical Priority Order
 
 ```{r}
 #| tbl-cap: "Suggested sequence for moving from baseline to mechanism tests."
@@ -574,7 +1848,7 @@ tibble(
   )
 ```
 
-## Bottom Line
+# Bottom Line
 
 The project is empirically feasible with currently available data.
 
@@ -585,21 +1859,886 @@ The cleanest version of the design is:
 - construct **new entrant share** from `WHYUNEMP`
 - use **foreign-born share** or **noncitizen share** as the migrant proxy
 - add occupation composition and job-loser interactions as the main extension
-- estimate models with **state FE and month FE**
+- estimate models with **state FE and date FE**, clustering standard errors by state
 
-The strongest immediate next step is therefore to move from conceptual discussion to data assembly:
+The strongest immediate next step is therefore to move from conceptual discussion to data assembly and estimation — which follows below.
 
-1. build a monthly state UI outcome panel from FRED
-2. build monthly state composition measures from IPUMS CPS
-3. merge them and estimate the baseline fixed-effects regression
+# Regression Results
 
-## Source Notes
+This section estimates the baseline fixed-effects regressions discussed above using the merged analysis-ready panels. All models use **state fixed effects** and **date fixed effects** (one dummy per period in the panel) with **standard errors clustered by state**. The three outcome variables are:
+
+- **CC/U**: continued claims / unemployed persons (baseline take-up ratio)
+- **IC/U**: initial claims / unemployed persons (flow-based claiming intensity)
+- **IUR**: insured unemployment rate (insured unemployment / covered employment)
+
+Each outcome is estimated at **monthly**, **quarterly**, and **yearly** frequency to (a) check robustness, and (b) diagnose attenuation from CPS measurement error in the composition regressors.
+
+```{r regression-setup}
+library(fixest)
+library(modelsummary)
+
+panel_month <- read_csv(
+  file.path("data", "final", "ui_takeup_panel_state_month_analysis_ready.csv"),
+  show_col_types = FALSE
+) |>
+  mutate(
+    date = as.Date(period_start),
+    year_month = paste0(year, "-", sprintf("%02d", month))
+  )
+
+panel_quarter <- read_csv(
+  file.path("data", "final", "ui_takeup_panel_state_quarter_analysis_ready.csv"),
+  show_col_types = FALSE
+) |>
+  mutate(
+    date = as.Date(period_start),
+    year_quarter = paste0(year, "-Q", quarter)
+  )
+
+panel_year <- read_csv(
+  file.path("data", "final", "ui_takeup_panel_state_year_analysis_ready.csv"),
+  show_col_types = FALSE
+) |>
+  mutate(date = as.Date(period_start))
+
+msummary_styled <- function(models, title, notes) {
+  msummary(
+    models,
+    stars = c("*" = 0.10, "**" = 0.05, "***" = 0.01),
+    gof_map = c("nobs", "r.squared", "adj.r.squared", "within.r.squared"),
+    title = title,
+    notes = notes,
+    output = "gt"
+  ) |>
+    tab_options(table.font.size = px(11))
+}
+
+occupation_controls <- c(
+  "white_collar_share",
+  "service_share",
+  "blue_collar_share"
+)
+
+job_loss_controls <- c(
+  "perm_job_loser_share",
+  "temp_layoff_share",
+  "white_collar_perm_job_loser_share"
+)
+
+fit_fe_model <- function(outcome, data, time_fe, migrant_proxy = "noncitizen_share",
+                         add_occupation = FALSE, add_job_loss = FALSE) {
+  rhs_terms <- c("new_entrant_share", migrant_proxy)
+
+  if (add_occupation) {
+    rhs_terms <- c(rhs_terms, occupation_controls)
+  }
+
+  if (add_job_loss) {
+    rhs_terms <- c(rhs_terms, job_loss_controls)
+  }
+
+  feols(
+    as.formula(
+      paste0(outcome, " ~ ", paste(rhs_terms, collapse = " + "), " | state + ", time_fe)
+    ),
+    data = data,
+    cluster = ~state
+  )
+}
+```
+
+## Continued Claims / Unemployed (CC/U)
+
+::: {.panel-tabset}
+
+### Monthly
+
+```{r reg-ccu-monthly}
+ccu_mo_nc <- feols(continued_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year_month, data = panel_month, cluster = ~state)
+ccu_mo_fb <- feols(continued_claims_per_unemployed ~ new_entrant_share + foreign_born_share | state + year_month, data = panel_month, cluster = ~state)
+ccu_mo_both <- feols(continued_claims_per_unemployed ~ new_entrant_share + noncitizen_share + foreign_born_share | state + year_month, data = panel_month, cluster = ~state)
+
+msummary_styled(
+  list("Noncitizen" = ccu_mo_nc, "Foreign-born" = ccu_mo_fb, "Both" = ccu_mo_both),
+  title = "Monthly: Continued Claims / Unemployed",
+  notes = "State and month-year FE. SEs clustered by state."
+)
+```
+
+### Quarterly
+
+```{r reg-ccu-quarterly}
+ccu_qr_nc <- feols(continued_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year_quarter, data = panel_quarter, cluster = ~state)
+ccu_qr_fb <- feols(continued_claims_per_unemployed ~ new_entrant_share + foreign_born_share | state + year_quarter, data = panel_quarter, cluster = ~state)
+ccu_qr_both <- feols(continued_claims_per_unemployed ~ new_entrant_share + noncitizen_share + foreign_born_share | state + year_quarter, data = panel_quarter, cluster = ~state)
+
+msummary_styled(
+  list("Noncitizen" = ccu_qr_nc, "Foreign-born" = ccu_qr_fb, "Both" = ccu_qr_both),
+  title = "Quarterly: Continued Claims / Unemployed",
+  notes = "State and quarter-year FE. SEs clustered by state."
+)
+```
+
+### Yearly
+
+```{r reg-ccu-yearly}
+ccu_yr_nc <- feols(continued_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year, data = panel_year, cluster = ~state)
+ccu_yr_fb <- feols(continued_claims_per_unemployed ~ new_entrant_share + foreign_born_share | state + year, data = panel_year, cluster = ~state)
+ccu_yr_both <- feols(continued_claims_per_unemployed ~ new_entrant_share + noncitizen_share + foreign_born_share | state + year, data = panel_year, cluster = ~state)
+
+msummary_styled(
+  list("Noncitizen" = ccu_yr_nc, "Foreign-born" = ccu_yr_fb, "Both" = ccu_yr_both),
+  title = "Yearly: Continued Claims / Unemployed",
+  notes = "State and year FE. SEs clustered by state."
+)
+```
+
+:::
+
+## Initial Claims / Unemployed (IC/U)
+
+::: {.panel-tabset}
+
+### Monthly
+
+```{r reg-icu-monthly}
+icu_mo_nc <- feols(initial_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year_month, data = panel_month, cluster = ~state)
+icu_mo_fb <- feols(initial_claims_per_unemployed ~ new_entrant_share + foreign_born_share | state + year_month, data = panel_month, cluster = ~state)
+
+msummary_styled(
+  list("Noncitizen" = icu_mo_nc, "Foreign-born" = icu_mo_fb),
+  title = "Monthly: Initial Claims / Unemployed",
+  notes = "State and month-year FE. SEs clustered by state."
+)
+```
+
+### Quarterly
+
+```{r reg-icu-quarterly}
+icu_qr_nc <- feols(initial_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year_quarter, data = panel_quarter, cluster = ~state)
+icu_qr_fb <- feols(initial_claims_per_unemployed ~ new_entrant_share + foreign_born_share | state + year_quarter, data = panel_quarter, cluster = ~state)
+
+msummary_styled(
+  list("Noncitizen" = icu_qr_nc, "Foreign-born" = icu_qr_fb),
+  title = "Quarterly: Initial Claims / Unemployed",
+  notes = "State and quarter-year FE. SEs clustered by state."
+)
+```
+
+### Yearly
+
+```{r reg-icu-yearly}
+icu_yr_nc <- feols(initial_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year, data = panel_year, cluster = ~state)
+icu_yr_fb <- feols(initial_claims_per_unemployed ~ new_entrant_share + foreign_born_share | state + year, data = panel_year, cluster = ~state)
+
+msummary_styled(
+  list("Noncitizen" = icu_yr_nc, "Foreign-born" = icu_yr_fb),
+  title = "Yearly: Initial Claims / Unemployed",
+  notes = "State and year FE. SEs clustered by state."
+)
+```
+
+:::
+
+## Insured Unemployment Rate (IUR)
+
+::: {.panel-tabset}
+
+### Monthly
+
+```{r reg-iur-monthly}
+iur_mo_nc <- feols(insured_unemployment_rate_share ~ new_entrant_share + noncitizen_share | state + year_month, data = panel_month, cluster = ~state)
+iur_mo_fb <- feols(insured_unemployment_rate_share ~ new_entrant_share + foreign_born_share | state + year_month, data = panel_month, cluster = ~state)
+
+msummary_styled(
+  list("Noncitizen" = iur_mo_nc, "Foreign-born" = iur_mo_fb),
+  title = "Monthly: Insured Unemployment Rate",
+  notes = "State and month-year FE. SEs clustered by state."
+)
+```
+
+### Quarterly
+
+```{r reg-iur-quarterly}
+iur_qr_nc <- feols(insured_unemployment_rate_share ~ new_entrant_share + noncitizen_share | state + year_quarter, data = panel_quarter, cluster = ~state)
+iur_qr_fb <- feols(insured_unemployment_rate_share ~ new_entrant_share + foreign_born_share | state + year_quarter, data = panel_quarter, cluster = ~state)
+
+msummary_styled(
+  list("Noncitizen" = iur_qr_nc, "Foreign-born" = iur_qr_fb),
+  title = "Quarterly: Insured Unemployment Rate",
+  notes = "State and quarter-year FE. SEs clustered by state."
+)
+```
+
+### Yearly
+
+```{r reg-iur-yearly}
+iur_yr_nc <- feols(insured_unemployment_rate_share ~ new_entrant_share + noncitizen_share | state + year, data = panel_year, cluster = ~state)
+iur_yr_fb <- feols(insured_unemployment_rate_share ~ new_entrant_share + foreign_born_share | state + year, data = panel_year, cluster = ~state)
+
+msummary_styled(
+  list("Noncitizen" = iur_yr_nc, "Foreign-born" = iur_yr_fb),
+  title = "Yearly: Insured Unemployment Rate",
+  notes = "State and year FE. SEs clustered by state."
+)
+```
+
+:::
+
+## Occupation Composition And Severance-Channel Extensions
+
+The baseline models above ask whether take-up varies with **new entrant** and **migrant** composition. That is useful for the eligibility story, but it does not directly test the severance / white-collar channel. A better test is to ask whether take-up remains low after controlling for the **occupation mix of unemployment**, and whether it is especially low when unemployment is concentrated among **white-collar permanent job losers** rather than among workers on temporary layoff.
+
+The preferred occupation-control extension therefore adds three broad unemployment-composition controls:
+
+- `white_collar_share`: unemployed workers in broad white-collar occupations (`OCC1990` 3-400)
+- `service_share`: unemployed workers in service occupations (`OCC1990` 401-470)
+- `blue_collar_share`: unemployed workers in blue-collar occupations (`OCC1990` 471-889)
+
+The mechanism-oriented extension then adds:
+
+- `perm_job_loser_share`
+- `temp_layoff_share`
+- `white_collar_perm_job_loser_share`
+
+If the white-collar severance story is important, the expected sign is **negative** on `white_collar_share` or, more directly, on `white_collar_perm_job_loser_share`.
+
+### Monthly Nested Specifications (Preferred Noncitizen Proxy)
+
+```{r occupation-model-setup}
+ccu_mo_occ <- fit_fe_model(
+  "continued_claims_per_unemployed",
+  panel_month,
+  "year_month",
+  add_occupation = TRUE
+)
+ccu_mo_mech <- fit_fe_model(
+  "continued_claims_per_unemployed",
+  panel_month,
+  "year_month",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+
+icu_mo_occ <- fit_fe_model(
+  "initial_claims_per_unemployed",
+  panel_month,
+  "year_month",
+  add_occupation = TRUE
+)
+icu_mo_mech <- fit_fe_model(
+  "initial_claims_per_unemployed",
+  panel_month,
+  "year_month",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+
+iur_mo_occ <- fit_fe_model(
+  "insured_unemployment_rate_share",
+  panel_month,
+  "year_month",
+  add_occupation = TRUE
+)
+iur_mo_mech <- fit_fe_model(
+  "insured_unemployment_rate_share",
+  panel_month,
+  "year_month",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+
+ccu_qr_occ <- fit_fe_model(
+  "continued_claims_per_unemployed",
+  panel_quarter,
+  "year_quarter",
+  add_occupation = TRUE
+)
+ccu_qr_mech <- fit_fe_model(
+  "continued_claims_per_unemployed",
+  panel_quarter,
+  "year_quarter",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+icu_qr_occ <- fit_fe_model(
+  "initial_claims_per_unemployed",
+  panel_quarter,
+  "year_quarter",
+  add_occupation = TRUE
+)
+icu_qr_mech <- fit_fe_model(
+  "initial_claims_per_unemployed",
+  panel_quarter,
+  "year_quarter",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+iur_qr_occ <- fit_fe_model(
+  "insured_unemployment_rate_share",
+  panel_quarter,
+  "year_quarter",
+  add_occupation = TRUE
+)
+iur_qr_mech <- fit_fe_model(
+  "insured_unemployment_rate_share",
+  panel_quarter,
+  "year_quarter",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+
+ccu_yr_occ <- fit_fe_model(
+  "continued_claims_per_unemployed",
+  panel_year,
+  "year",
+  add_occupation = TRUE
+)
+ccu_yr_mech <- fit_fe_model(
+  "continued_claims_per_unemployed",
+  panel_year,
+  "year",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+icu_yr_occ <- fit_fe_model(
+  "initial_claims_per_unemployed",
+  panel_year,
+  "year",
+  add_occupation = TRUE
+)
+icu_yr_mech <- fit_fe_model(
+  "initial_claims_per_unemployed",
+  panel_year,
+  "year",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+iur_yr_occ <- fit_fe_model(
+  "insured_unemployment_rate_share",
+  panel_year,
+  "year",
+  add_occupation = TRUE
+)
+iur_yr_mech <- fit_fe_model(
+  "insured_unemployment_rate_share",
+  panel_year,
+  "year",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+
+ccu_mo_mech_fb <- fit_fe_model(
+  "continued_claims_per_unemployed",
+  panel_month,
+  "year_month",
+  migrant_proxy = "foreign_born_share",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+ccu_qr_mech_fb <- fit_fe_model(
+  "continued_claims_per_unemployed",
+  panel_quarter,
+  "year_quarter",
+  migrant_proxy = "foreign_born_share",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+ccu_yr_mech_fb <- fit_fe_model(
+  "continued_claims_per_unemployed",
+  panel_year,
+  "year",
+  migrant_proxy = "foreign_born_share",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+
+icu_mo_mech_fb <- fit_fe_model(
+  "initial_claims_per_unemployed",
+  panel_month,
+  "year_month",
+  migrant_proxy = "foreign_born_share",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+icu_qr_mech_fb <- fit_fe_model(
+  "initial_claims_per_unemployed",
+  panel_quarter,
+  "year_quarter",
+  migrant_proxy = "foreign_born_share",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+icu_yr_mech_fb <- fit_fe_model(
+  "initial_claims_per_unemployed",
+  panel_year,
+  "year",
+  migrant_proxy = "foreign_born_share",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+
+iur_mo_mech_fb <- fit_fe_model(
+  "insured_unemployment_rate_share",
+  panel_month,
+  "year_month",
+  migrant_proxy = "foreign_born_share",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+iur_qr_mech_fb <- fit_fe_model(
+  "insured_unemployment_rate_share",
+  panel_quarter,
+  "year_quarter",
+  migrant_proxy = "foreign_born_share",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+iur_yr_mech_fb <- fit_fe_model(
+  "insured_unemployment_rate_share",
+  panel_year,
+  "year",
+  migrant_proxy = "foreign_born_share",
+  add_occupation = TRUE,
+  add_job_loss = TRUE
+)
+```
+
+::: {.panel-tabset}
+
+### CC/U
+
+```{r occ-monthly-ccu}
+msummary_styled(
+  list(
+    "Baseline" = ccu_mo_nc,
+    "+ Occupation" = ccu_mo_occ,
+    "+ Job-Loss Mix" = ccu_mo_mech
+  ),
+  title = "Monthly Nested Specifications: Continued Claims / Unemployed",
+  notes = "All models include state and month-year FE with SEs clustered by state. Preferred migrant proxy = noncitizen share."
+)
+```
+
+### IC/U
+
+```{r occ-monthly-icu}
+msummary_styled(
+  list(
+    "Baseline" = icu_mo_nc,
+    "+ Occupation" = icu_mo_occ,
+    "+ Job-Loss Mix" = icu_mo_mech
+  ),
+  title = "Monthly Nested Specifications: Initial Claims / Unemployed",
+  notes = "All models include state and month-year FE with SEs clustered by state. Preferred migrant proxy = noncitizen share."
+)
+```
+
+### IUR
+
+```{r occ-monthly-iur}
+msummary_styled(
+  list(
+    "Baseline" = iur_mo_nc,
+    "+ Occupation" = iur_mo_occ,
+    "+ Job-Loss Mix" = iur_mo_mech
+  ),
+  title = "Monthly Nested Specifications: Insured Unemployment Rate",
+  notes = "All models include state and month-year FE with SEs clustered by state. Preferred migrant proxy = noncitizen share."
+)
+```
+
+:::
+
+### Mechanism-Oriented Specifications Across Frequencies
+
+::: {.panel-tabset}
+
+### CC/U
+
+```{r occ-frequency-ccu}
+msummary_styled(
+  list("Monthly" = ccu_mo_mech, "Quarterly" = ccu_qr_mech, "Yearly" = ccu_yr_mech),
+  title = "Occupation + Job-Loss Controls Across Frequencies: CC/U",
+  notes = "State and date FE. SEs clustered by state. Preferred migrant proxy = noncitizen share."
+)
+```
+
+### IC/U
+
+```{r occ-frequency-icu}
+msummary_styled(
+  list("Monthly" = icu_mo_mech, "Quarterly" = icu_qr_mech, "Yearly" = icu_yr_mech),
+  title = "Occupation + Job-Loss Controls Across Frequencies: IC/U",
+  notes = "State and date FE. SEs clustered by state. Preferred migrant proxy = noncitizen share."
+)
+```
+
+### IUR
+
+```{r occ-frequency-iur}
+msummary_styled(
+  list("Monthly" = iur_mo_mech, "Quarterly" = iur_qr_mech, "Yearly" = iur_yr_mech),
+  title = "Occupation + Job-Loss Controls Across Frequencies: IUR",
+  notes = "State and date FE. SEs clustered by state. Preferred migrant proxy = noncitizen share."
+)
+```
+
+:::
+
+```{r occ-key-results}
+#| tbl-cap: "Key coefficients from the occupation and severance-channel extensions."
+
+occupation_key_results <- bind_rows(
+  broom::tidy(ccu_mo_mech) |> mutate(outcome = "CC/U", frequency = "Monthly"),
+  broom::tidy(ccu_qr_mech) |> mutate(outcome = "CC/U", frequency = "Quarterly"),
+  broom::tidy(ccu_yr_mech) |> mutate(outcome = "CC/U", frequency = "Yearly"),
+  broom::tidy(icu_mo_mech) |> mutate(outcome = "IC/U", frequency = "Monthly"),
+  broom::tidy(icu_qr_mech) |> mutate(outcome = "IC/U", frequency = "Quarterly"),
+  broom::tidy(icu_yr_mech) |> mutate(outcome = "IC/U", frequency = "Yearly"),
+  broom::tidy(iur_mo_mech) |> mutate(outcome = "IUR", frequency = "Monthly"),
+  broom::tidy(iur_qr_mech) |> mutate(outcome = "IUR", frequency = "Quarterly"),
+  broom::tidy(iur_yr_mech) |> mutate(outcome = "IUR", frequency = "Yearly")
+) |>
+  filter(term %in% c(
+    "new_entrant_share",
+    "white_collar_share",
+    "perm_job_loser_share",
+    "temp_layoff_share",
+    "white_collar_perm_job_loser_share"
+  )) |>
+  mutate(
+    term = recode(
+      term,
+      new_entrant_share = "New entrant share",
+      white_collar_share = "White-collar share",
+      perm_job_loser_share = "Permanent job loser share",
+      temp_layoff_share = "Temporary layoff share",
+      white_collar_perm_job_loser_share = "White-collar permanent job loser share"
+    ),
+    estimate_fmt = sprintf("%.3f", estimate),
+    se_fmt = sprintf("(%.3f)", std.error),
+    p_fmt = sprintf("%.3f", p.value)
+  ) |>
+  select(
+    Outcome = outcome,
+    Frequency = frequency,
+    Term = term,
+    Estimate = estimate_fmt,
+    `Std. Error` = se_fmt,
+    `P-value` = p_fmt
+  )
+
+occupation_key_results |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+## Attenuation Diagnostic: Coefficients Across Frequencies
+
+If CPS measurement error is attenuating the monthly estimates, coefficients should grow in magnitude as we move to quarterly and yearly panels where CPS composition shares are less noisy.
+
+```{r reg-coef-comparison}
+coef_comparison <- bind_rows(
+  broom::tidy(ccu_mo_nc, conf.int = TRUE) |> mutate(frequency = "Monthly", outcome = "CC/U"),
+  broom::tidy(ccu_qr_nc, conf.int = TRUE) |> mutate(frequency = "Quarterly", outcome = "CC/U"),
+  broom::tidy(ccu_yr_nc, conf.int = TRUE) |> mutate(frequency = "Yearly", outcome = "CC/U"),
+  broom::tidy(icu_mo_nc, conf.int = TRUE) |> mutate(frequency = "Monthly", outcome = "IC/U"),
+  broom::tidy(icu_qr_nc, conf.int = TRUE) |> mutate(frequency = "Quarterly", outcome = "IC/U"),
+  broom::tidy(icu_yr_nc, conf.int = TRUE) |> mutate(frequency = "Yearly", outcome = "IC/U"),
+  broom::tidy(iur_mo_nc, conf.int = TRUE) |> mutate(frequency = "Monthly", outcome = "IUR"),
+  broom::tidy(iur_qr_nc, conf.int = TRUE) |> mutate(frequency = "Quarterly", outcome = "IUR"),
+  broom::tidy(iur_yr_nc, conf.int = TRUE) |> mutate(frequency = "Yearly", outcome = "IUR")
+) |>
+  filter(term != "(Intercept)") |>
+  mutate(
+    frequency = factor(frequency, levels = c("Monthly", "Quarterly", "Yearly")),
+    term_label = case_when(
+      term == "new_entrant_share" ~ "New Entrant Share",
+      term == "noncitizen_share" ~ "Noncitizen Share",
+      TRUE ~ term
+    )
+  )
+
+ggplot(coef_comparison, aes(x = frequency, y = estimate, color = outcome)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
+  geom_pointrange(
+    aes(ymin = conf.low, ymax = conf.high),
+    position = position_dodge(width = 0.4),
+    size = 0.5
+  ) +
+  facet_wrap(~term_label, scales = "free_y") +
+  scale_color_manual(values = c("CC/U" = "#0073C2", "IC/U" = "#EFC000", "IUR" = "#CD534C")) +
+  labs(
+    title = "Coefficient Estimates Across Panel Frequencies",
+    subtitle = "Point estimates with 95% CIs (state-clustered SEs). Noncitizen proxy specification.",
+    x = "Panel Frequency",
+    y = "Coefficient Estimate",
+    color = "Outcome"
+  ) +
+  theme_report
+```
+
+## Pandemic Sensitivity
+
+The pandemic period (March 2020 through September 2021) involved extraordinary UI program expansions. The tables below re-estimate all three outcomes excluding that window.
+
+::: {.panel-tabset}
+
+### CC/U
+
+```{r reg-pandemic-ccu}
+mo_nopan <- panel_month |> filter(date < as.Date("2020-03-01") | date > as.Date("2021-09-01"))
+qr_nopan <- panel_quarter |> filter(date < as.Date("2020-01-01") | date > as.Date("2021-10-01"))
+
+ccu_nopan_mo <- feols(continued_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year_month, data = mo_nopan, cluster = ~state)
+ccu_nopan_qr <- feols(continued_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year_quarter, data = qr_nopan, cluster = ~state)
+
+msummary_styled(
+  list("Monthly (full)" = ccu_mo_nc, "Monthly (excl.)" = ccu_nopan_mo, "Quarterly (full)" = ccu_qr_nc, "Quarterly (excl.)" = ccu_nopan_qr),
+  title = "Pandemic Sensitivity: CC/U",
+  notes = "Excl. = March 2020 through September 2021 removed. State + date FE. SEs clustered by state."
+)
+```
+
+### IC/U
+
+```{r reg-pandemic-icu}
+icu_nopan_mo <- feols(initial_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year_month, data = mo_nopan, cluster = ~state)
+icu_nopan_qr <- feols(initial_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year_quarter, data = qr_nopan, cluster = ~state)
+
+msummary_styled(
+  list("Monthly (full)" = icu_mo_nc, "Monthly (excl.)" = icu_nopan_mo, "Quarterly (full)" = icu_qr_nc, "Quarterly (excl.)" = icu_nopan_qr),
+  title = "Pandemic Sensitivity: IC/U",
+  notes = "Excl. = March 2020 through September 2021 removed. State + date FE. SEs clustered by state."
+)
+```
+
+### IUR
+
+```{r reg-pandemic-iur}
+iur_nopan_mo <- feols(insured_unemployment_rate_share ~ new_entrant_share + noncitizen_share | state + year_month, data = mo_nopan, cluster = ~state)
+iur_nopan_qr <- feols(insured_unemployment_rate_share ~ new_entrant_share + noncitizen_share | state + year_quarter, data = qr_nopan, cluster = ~state)
+
+msummary_styled(
+  list("Monthly (full)" = iur_mo_nc, "Monthly (excl.)" = iur_nopan_mo, "Quarterly (full)" = iur_qr_nc, "Quarterly (excl.)" = iur_nopan_qr),
+  title = "Pandemic Sensitivity: IUR",
+  notes = "Excl. = March 2020 through September 2021 removed. State + date FE. SEs clustered by state."
+)
+```
+
+:::
+
+## Interaction Models
+
+The design memo proposed exploring interactions between composition regressors to test whether the effect of new entrant share on take-up depends on the migrant composition of unemployment. Specifically, if both new entrants and immigrants contribute independently to low take-up through different mechanisms (eligibility vs. access frictions), we might expect additive effects. If instead the mechanisms interact — for example, if new entrants who are also immigrants are doubly unlikely to file — the interaction should be significant.
+
+::: {.panel-tabset}
+
+### CC/U: NewEntrant x Noncitizen
+
+```{r int-ccu-nc}
+int_ccu_mo_nc <- feols(continued_claims_per_unemployed ~ new_entrant_share * noncitizen_share | state + year_month, data = panel_month, cluster = ~state)
+int_ccu_qr_nc <- feols(continued_claims_per_unemployed ~ new_entrant_share * noncitizen_share | state + year_quarter, data = panel_quarter, cluster = ~state)
+int_ccu_yr_nc <- feols(continued_claims_per_unemployed ~ new_entrant_share * noncitizen_share | state + year, data = panel_year, cluster = ~state)
+
+msummary_styled(
+  list("Monthly" = int_ccu_mo_nc, "Quarterly" = int_ccu_qr_nc, "Yearly" = int_ccu_yr_nc),
+  title = "CC/U: New Entrant Share x Noncitizen Share Interaction",
+  notes = "State + date FE. SEs clustered by state."
+)
+```
+
+### CC/U: NewEntrant x ForeignBorn
+
+```{r int-ccu-fb}
+int_ccu_mo_fb <- feols(continued_claims_per_unemployed ~ new_entrant_share * foreign_born_share | state + year_month, data = panel_month, cluster = ~state)
+int_ccu_qr_fb <- feols(continued_claims_per_unemployed ~ new_entrant_share * foreign_born_share | state + year_quarter, data = panel_quarter, cluster = ~state)
+int_ccu_yr_fb <- feols(continued_claims_per_unemployed ~ new_entrant_share * foreign_born_share | state + year, data = panel_year, cluster = ~state)
+
+msummary_styled(
+  list("Monthly" = int_ccu_mo_fb, "Quarterly" = int_ccu_qr_fb, "Yearly" = int_ccu_yr_fb),
+  title = "CC/U: New Entrant Share x Foreign-Born Share Interaction",
+  notes = "State + date FE. SEs clustered by state."
+)
+```
+
+### IC/U: NewEntrant x Noncitizen
+
+```{r int-icu-nc}
+int_icu_mo_nc <- feols(initial_claims_per_unemployed ~ new_entrant_share * noncitizen_share | state + year_month, data = panel_month, cluster = ~state)
+int_icu_qr_nc <- feols(initial_claims_per_unemployed ~ new_entrant_share * noncitizen_share | state + year_quarter, data = panel_quarter, cluster = ~state)
+int_icu_yr_nc <- feols(initial_claims_per_unemployed ~ new_entrant_share * noncitizen_share | state + year, data = panel_year, cluster = ~state)
+
+msummary_styled(
+  list("Monthly" = int_icu_mo_nc, "Quarterly" = int_icu_qr_nc, "Yearly" = int_icu_yr_nc),
+  title = "IC/U: New Entrant Share x Noncitizen Share Interaction",
+  notes = "State + date FE. SEs clustered by state."
+)
+```
+
+### IC/U: NewEntrant x ForeignBorn
+
+```{r int-icu-fb}
+int_icu_mo_fb <- feols(initial_claims_per_unemployed ~ new_entrant_share * foreign_born_share | state + year_month, data = panel_month, cluster = ~state)
+int_icu_qr_fb <- feols(initial_claims_per_unemployed ~ new_entrant_share * foreign_born_share | state + year_quarter, data = panel_quarter, cluster = ~state)
+int_icu_yr_fb <- feols(initial_claims_per_unemployed ~ new_entrant_share * foreign_born_share | state + year, data = panel_year, cluster = ~state)
+
+msummary_styled(
+  list("Monthly" = int_icu_mo_fb, "Quarterly" = int_icu_qr_fb, "Yearly" = int_icu_yr_fb),
+  title = "IC/U: New Entrant Share x Foreign-Born Share Interaction",
+  notes = "State + date FE. SEs clustered by state."
+)
+```
+
+### IUR: NewEntrant x Noncitizen
+
+```{r int-iur-nc}
+int_iur_mo_nc <- feols(insured_unemployment_rate_share ~ new_entrant_share * noncitizen_share | state + year_month, data = panel_month, cluster = ~state)
+int_iur_qr_nc <- feols(insured_unemployment_rate_share ~ new_entrant_share * noncitizen_share | state + year_quarter, data = panel_quarter, cluster = ~state)
+int_iur_yr_nc <- feols(insured_unemployment_rate_share ~ new_entrant_share * noncitizen_share | state + year, data = panel_year, cluster = ~state)
+
+msummary_styled(
+  list("Monthly" = int_iur_mo_nc, "Quarterly" = int_iur_qr_nc, "Yearly" = int_iur_yr_nc),
+  title = "IUR: New Entrant Share x Noncitizen Share Interaction",
+  notes = "State + date FE. SEs clustered by state."
+)
+```
+
+### IUR: NewEntrant x ForeignBorn
+
+```{r int-iur-fb}
+int_iur_mo_fb <- feols(insured_unemployment_rate_share ~ new_entrant_share * foreign_born_share | state + year_month, data = panel_month, cluster = ~state)
+int_iur_qr_fb <- feols(insured_unemployment_rate_share ~ new_entrant_share * foreign_born_share | state + year_quarter, data = panel_quarter, cluster = ~state)
+int_iur_yr_fb <- feols(insured_unemployment_rate_share ~ new_entrant_share * foreign_born_share | state + year, data = panel_year, cluster = ~state)
+
+msummary_styled(
+  list("Monthly" = int_iur_mo_fb, "Quarterly" = int_iur_qr_fb, "Yearly" = int_iur_yr_fb),
+  title = "IUR: New Entrant Share x Foreign-Born Share Interaction",
+  notes = "State + date FE. SEs clustered by state."
+)
+```
+
+:::
+
+## Interaction Coefficient Plot
+
+```{r int-coef-plot}
+#| fig-height: 7
+
+int_coef <- bind_rows(
+  broom::tidy(int_ccu_mo_nc, conf.int = TRUE) |> mutate(freq = "Monthly", outcome = "CC/U", proxy = "Noncitizen"),
+  broom::tidy(int_ccu_qr_nc, conf.int = TRUE) |> mutate(freq = "Quarterly", outcome = "CC/U", proxy = "Noncitizen"),
+  broom::tidy(int_ccu_yr_nc, conf.int = TRUE) |> mutate(freq = "Yearly", outcome = "CC/U", proxy = "Noncitizen"),
+  broom::tidy(int_icu_mo_nc, conf.int = TRUE) |> mutate(freq = "Monthly", outcome = "IC/U", proxy = "Noncitizen"),
+  broom::tidy(int_icu_qr_nc, conf.int = TRUE) |> mutate(freq = "Quarterly", outcome = "IC/U", proxy = "Noncitizen"),
+  broom::tidy(int_icu_yr_nc, conf.int = TRUE) |> mutate(freq = "Yearly", outcome = "IC/U", proxy = "Noncitizen"),
+  broom::tidy(int_ccu_mo_fb, conf.int = TRUE) |> mutate(freq = "Monthly", outcome = "CC/U", proxy = "Foreign-born"),
+  broom::tidy(int_ccu_qr_fb, conf.int = TRUE) |> mutate(freq = "Quarterly", outcome = "CC/U", proxy = "Foreign-born"),
+  broom::tidy(int_ccu_yr_fb, conf.int = TRUE) |> mutate(freq = "Yearly", outcome = "CC/U", proxy = "Foreign-born"),
+  broom::tidy(int_icu_mo_fb, conf.int = TRUE) |> mutate(freq = "Monthly", outcome = "IC/U", proxy = "Foreign-born"),
+  broom::tidy(int_icu_qr_fb, conf.int = TRUE) |> mutate(freq = "Quarterly", outcome = "IC/U", proxy = "Foreign-born"),
+  broom::tidy(int_icu_yr_fb, conf.int = TRUE) |> mutate(freq = "Yearly", outcome = "IC/U", proxy = "Foreign-born")
+) |>
+  filter(grepl(":", term)) |>
+  mutate(
+    freq = factor(freq, levels = c("Monthly", "Quarterly", "Yearly")),
+    facet_label = paste0(outcome, " x ", proxy)
+  )
+
+ggplot(int_coef, aes(x = freq, y = estimate, color = proxy)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
+  geom_pointrange(
+    aes(ymin = conf.low, ymax = conf.high),
+    position = position_dodge(width = 0.3),
+    size = 0.5
+  ) +
+  facet_wrap(~outcome, scales = "free_y") +
+  scale_color_manual(values = c("Noncitizen" = "#0073C2", "Foreign-born" = "#EFC000")) +
+  labs(
+    title = "Interaction Term Estimates: New Entrant x Migrant Proxy",
+    subtitle = "Point estimates with 95% CIs. Positive interaction = new entrant effect is weaker when migrant share is higher.",
+    x = "Panel Frequency",
+    y = "Interaction Coefficient",
+    color = "Migrant Proxy"
+  ) +
+  theme_report
+```
+
+## Discussion of Regression Findings
+
+The expanded regression section now speaks to two separate mechanisms: the original **eligibility/composition** story based on new entrants and migrant proxies, and the **severance / white-collar** story based on occupation mix and the composition of job losers.
+
+### Baseline Composition Effects
+
+**New entrant share is robustly associated with lower take-up.** Across all three outcomes, the coefficient on new entrant share is negative and statistically significant at monthly and quarterly frequency. The point estimates are substantively meaningful: at monthly frequency, a 10 percentage point increase in the new entrant share of unemployment is associated with a 0.9 pp decrease in the continued claims-to-unemployment ratio (CC/U), a 0.6 pp decrease in the initial claims ratio (IC/U), and a 0.06 pp decrease in the insured unemployment rate (IUR). This is consistent with the core eligibility/composition hypothesis: new entrants have no prior work history and are therefore likely to have weak or zero UI eligibility, so states and months where they constitute a larger share of the unemployed should mechanically exhibit lower UI take-up.
+
+**The new entrant coefficient exhibits a clear attenuation pattern across frequencies.** For CC/U, the coefficient roughly doubles from monthly ($-0.090$) to quarterly ($-0.161$) to yearly ($-0.219$). The same pattern holds for IC/U ($-0.062$ to $-0.095$ to $-0.145$). This is textbook evidence of classical measurement error in CPS-based composition shares. At yearly frequency the estimates lose formal significance in some specifications due to the much smaller sample (1,600 vs. 19,150 obs), but the monotonic magnitude pattern is unambiguous.
+
+### The Migrant Channel: Additive Effects
+
+**Neither noncitizen nor foreign-born share is significantly associated with CC/U or IC/U in the additive baseline.** Coefficients are small, inconsistently signed, and never approach conventional significance. This null is informative: conditional on state and time fixed effects, cross-state variation in the immigrant composition of the unemployed does not independently explain take-up ratio variation.
+
+**The insured unemployment rate (IUR) is an exception.** The IUR outcome shows a weakly positive noncitizen coefficient (p $\approx$ 0.08 monthly, p $\approx$ 0.07 quarterly) and a clearly positive foreign-born coefficient (significant at the 5% level at all three frequencies, growing from 0.006 monthly to 0.012 quarterly to 0.025 yearly). The positive sign is counterintuitive under the eligibility story — higher immigrant unemployment shares are associated with *higher* insured unemployment rates. This likely reflects a denominator difference: CC/U and IC/U divide claims by total CPS unemployment, while IUR divides insured unemployment by covered employment. In states with large immigrant populations, the covered employment base may differ in ways that produce this pattern.
+
+### Occupation Controls And The White-Collar Severance Channel
+
+The occupation-control exercise is motivated by a simple empirical implication of the severance story. If displaced white-collar workers are less likely to file because they receive severance, expect rapid re-employment, or place little value on claiming, then UI take-up should be **lower** when unemployment is more white-collar, especially when unemployment is concentrated among **white-collar permanent job losers** rather than workers on temporary layoff.
+
+**That pattern does not appear in the data.** Once broad occupation-composition controls are added, the coefficient on `white_collar_share` is small and statistically insignificant across CC/U, IC/U, and IUR at monthly, quarterly, and yearly frequency. The same is true for the service share. Blue-collar share is occasionally positive at monthly frequency, but that is not stable across frequencies or outcomes.
+
+**The more mechanism-oriented proxy also fails to support the severance story.** The coefficient on `white_collar_perm_job_loser_share` is never negative and significant. In the preferred noncitizen specification it is slightly **positive** for CC/U at monthly frequency (about 0.047, p $\approx$ 0.055) and otherwise small and insignificant. Replacing noncitizen share with foreign-born share leaves that conclusion unchanged.
+
+**What does matter is the reason-for-unemployment mix, not white-collar composition per se.** `temp_layoff_share` is strongly positive in every outcome and at every frequency. At monthly frequency, a 10 percentage point increase in temporary-layoff share is associated with about a **3.1 pp** higher CC/U ratio, a **1.1 pp** higher IC/U ratio, and a **0.23 pp** higher IUR. `perm_job_loser_share` is also positive for CC/U and IUR, though more modestly.
+
+**The baseline new-entrant effect weakens sharply once occupation and job-loss composition are added.** In the richest occupation-control models, the new-entrant coefficient moves close to zero and loses significance. The most plausible interpretation is that part of the baseline entrant coefficient was proxying for broader labor-force attachment and recent-job-history composition, not that the entrant channel disappears in a structural sense.
+
+### Interaction Effects: New Entrant x Migrant Share
+
+The interaction models reveal a pattern that the additive specifications conceal.
+
+**For CC/U**, the interaction between new entrant share and noncitizen share is **significantly positive** at monthly (coef = 0.975, p = 0.016) and quarterly (coef = 1.768, p = 0.048) frequency. The foreign-born interaction shows a similar pattern (monthly p = 0.038, quarterly p = 0.069). With the interaction included, the main effect of new entrant share becomes more negative ($-0.147$ vs. $-0.090$ at monthly) and the main effect of the migrant proxy turns negative (though not significant), while the interaction pulls the combined effect back toward zero at high values of both shares.
+
+**For IC/U, the interaction effects are the strongest in the entire analysis.** The NewEntrant $\times$ Noncitizen interaction is significant at all three frequencies (monthly p = 0.034, quarterly p = 0.005, yearly p = 0.014), with coefficient magnitudes growing from 0.61 monthly to 3.24 yearly. The NewEntrant $\times$ ForeignBorn interaction is even more striking: at quarterly frequency, all three terms (new entrant, foreign-born, interaction) are significant at the 0.1% level, with a large positive interaction coefficient of 1.61. At yearly frequency, the same triple significance holds (p = 0.001, p = 0.003, p = 0.008).
+
+**For IUR, interactions are insignificant at the 5% level across all specifications**, though the yearly NewEntrant $\times$ ForeignBorn interaction approaches marginal significance (p $\approx$ 0.055). This confirms that the IUR outcome behaves differently from the take-up ratios, where the interaction channel is strong.
+
+**Interpretation.** The positive interaction sign means the negative effect of new entrant share on take-up is *weaker* in state-months where migrant unemployment shares are higher. Put differently, the take-up penalty from having more new entrants is partially offset when the unemployed population also has a larger immigrant share. This is not what a simple "double disadvantage" story would predict. One interpretation is compositional: in states with both high new-entrant and high immigrant unemployment, these groups overlap substantially (immigrant new entrants), and the take-up ratio is already depressed enough that additional compositional shifts have diminishing marginal effects. Another is that immigrant-heavy labor markets have different UI infrastructure or labor-market features that moderate the new-entrant effect.
+
+The interaction pattern is robust across frequencies and strengthens at lower frequencies — consistent with a real relationship being partially masked by CPS measurement error at monthly frequency.
+
+### Pandemic Sensitivity
+
+Removing March 2020 through September 2021 slightly attenuates the new entrant coefficient for CC/U ($-0.090$ to $-0.077$ monthly) but does not change significance or direction. For IUR, the noncitizen coefficient strengthens when the pandemic is excluded (p = 0.08 to p = 0.009 monthly), suggesting the pandemic window added noise to that relationship.
+
+### Within R-Squared and Effect Magnitudes
+
+Within R-squared values are low in the baseline additive models, but they rise meaningfully once occupation and job-loss composition are added. For example, the monthly CC/U specification moves from roughly **0.3%** within-$R^2$ in the baseline to about **7.0%** in the richest occupation/job-loss model, and the yearly IUR specification rises above **12%**. This is still a fixed-effects setting where most variation is absorbed by state and time effects, but it shows that **reason-for-unemployment composition is materially more informative than white-collar occupation mix alone**.
+
+Within R-squared values are low across all specifications (0.1% to 1.7% in baseline, up to 3.4% with interactions at yearly frequency for IUR). This is expected — the fixed effects absorb the vast majority of variation, and what remains is cross-state deviation from the national time path. The composition channel is statistically detectable but a modest contributor to take-up variation relative to state-level institutional differences and common time shocks.
+
+### Summary
+
+The results now point to a more specific conclusion than the original memo. The **new entrant composition story** is present in the baseline regressions, but part of that association overlaps with broader work-history and unemployment-reason composition. The **migrant composition story** remains weak in additive form, though the entrant-by-migrant interactions are still informative for CC/U and IC/U. Most importantly, the **white-collar severance story is not supported by the occupation-control extension**: broad white-collar unemployment shares do not predict lower take-up, and the white-collar permanent-job-loser share is not negative. The dominant measurable composition channel in the richer models is instead the contrast between **temporary layoffs / permanent job losers**, who are much more tightly linked to UI receipt, and the rest of the unemployed population.
+
+The earlier baseline-only summary is now superseded by the occupation-control results above.
+
+# Source Notes
 
 This memo is based on a review of:
 
 - FRED's **State Unemployment Insurance Weekly Claims Report**
-- IPUMS CPS variable availability for `WHYUNEMP`, `STATEFIP`, `NATIVITY`, and `CITIZEN`
+- IPUMS CPS variable availability for `WHYUNEMP`, `STATEFIP`, `NATIVITY`, `CITIZEN`, `OCC1990`, and `CLASSWKR`
 - IPUMS CPS migration-variable availability, including the limits of using `MIGRATE1` in a monthly design
+- All CPS microdata come from a single unified extract (`data/CPS/cps_unified.csv.gz`), shared with `unemployment_decomposition.qmd`. Run `Rscript submit_unified_cps_extract.R` to download or refresh.
 
 Useful source pages:
 
