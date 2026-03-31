@@ -12,10 +12,14 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 library(ipumsr)
+library(here)
 library(tidyverse)
 
-target_ddi <- "data/CPS/cps_unified.xml"
-target_csv <- "data/CPS/cps_unified.csv.gz"
+here::i_am("submit_unified_cps_extract.R")
+
+cps_dir <- here("data", "CPS")
+target_ddi <- here("data", "CPS", "cps_unified.xml")
+target_csv <- here("data", "CPS", "cps_unified.csv.gz")
 
 # ── 0. If unified data already exists locally, skip everything ───────────────
 
@@ -101,15 +105,15 @@ if (is.null(downloadable)) {
 
 # ── 4. Clean up any partial files, then download ────────────────────────────
 
-dir.create("data/CPS", recursive = TRUE, showWarnings = FALSE)
+dir.create(cps_dir, recursive = TRUE, showWarnings = FALSE)
 
-partial_xml <- list.files("data/CPS", pattern = "^cps_\\d+\\.xml$", full.names = TRUE)
-partial_csv <- list.files("data/CPS", pattern = "^cps_\\d+\\.csv\\.gz$", full.names = TRUE)
+partial_xml <- list.files(cps_dir, pattern = "^cps_\\d+\\.xml$", full.names = TRUE)
+partial_csv <- list.files(cps_dir, pattern = "^cps_\\d+\\.csv\\.gz$", full.names = TRUE)
 if (length(c(partial_xml, partial_csv)) > 0) file.remove(c(partial_xml, partial_csv))
 
 for (attempt in 1:5) {
   path_to_ddi <- tryCatch(
-    download_extract(downloadable, download_dir = "data/CPS"),
+    download_extract(downloadable, download_dir = cps_dir),
     error = function(e) {
       if (attempt < 5) {
         message("Download attempt ", attempt, " failed: ", conditionMessage(e))

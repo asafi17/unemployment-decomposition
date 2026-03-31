@@ -27,17 +27,22 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 library(ipumsr)
+library(here)
 library(tidyverse)
+
+here::i_am("build_panels.R")
 
 # ── 0. Paths ────────────────────────────────────────────────────────────────
 
-cps_ddi_path  <- "data/CPS/cps_unified.xml"
-cps_data_path <- "data/CPS/cps_unified.csv.gz"
-fred_path     <- "data/FRED/ui_takeup_fred_monthly_state_panel.csv"
+cps_ddi_path  <- here("data", "CPS", "cps_unified.xml")
+cps_data_path <- here("data", "CPS", "cps_unified.csv.gz")
+fred_path     <- here("data", "FRED", "ui_takeup_fred_monthly_state_panel.csv")
+final_dir     <- here("data", "final")
+cps_panel_path <- here("data", "CPS", "cps_ui_state_month_panel.csv")
 
 stopifnot(file.exists(cps_ddi_path), file.exists(cps_data_path), file.exists(fred_path))
 
-dir.create("data/final", recursive = TRUE, showWarnings = FALSE)
+dir.create(final_dir, recursive = TRUE, showWarnings = FALSE)
 
 # ── 1. STATEFIP lookup (50 states only, no DC/territories) ─────────────────
 
@@ -65,17 +70,26 @@ cps <- cps_raw |>
     is_new_entrant = as.integer(WHYUNEMP == 6L),
     is_foreign_born = as.integer(NATIVITY == 5L),
     is_noncitizen = as.integer(CITIZEN == 5L),
+    is_working_age_25_54 = as.integer(AGE >= 25L & AGE <= 54L),
     is_prof_managerial = as.integer(OCC1990 >= 3L & OCC1990 <= 200L),
-    is_white_collar = as.integer(OCC1990 >= 3L & OCC1990 <= 400L),
-    is_service = as.integer(OCC1990 >= 401L & OCC1990 <= 470L),
-    is_blue_collar = as.integer(OCC1990 >= 471L & OCC1990 <= 889L),
+    # Broad occupation groups follow discontinued BLS NCS 2007 Table 2D:
+    # white-collar = professional/technical, executive/administrative/managerial,
+    # sales, and administrative support; blue-collar = precision production/craft/
+    # repair, machine operators/assemblers/inspectors, transportation/material
+    # moving, and handlers/helpers/laborers. Other services is everyone else.
+    is_white_collar = as.integer(OCC1990 >= 3L & OCC1990 <= 389L),
+    is_service = as.integer(OCC1990 >= 403L & OCC1990 <= 469L),
+    is_blue_collar = as.integer(OCC1990 >= 473L & OCC1990 <= 889L),
+    is_other_occ = as.integer(!(is_white_collar == 1L | is_service == 1L | is_blue_collar == 1L)),
+    is_other_services = as.integer(!(is_white_collar == 1L | is_blue_collar == 1L)),
     is_perm_job_loser = as.integer(WHYUNEMP == 2L),
     is_temp_layoff = as.integer(WHYUNEMP == 1L),
-    is_white_collar_perm_job_loser = as.integer(
-      OCC1990 >= 3L & OCC1990 <= 400L & WHYUNEMP == 2L
-    ),
+    is_white_collar_perm_job_loser = as.integer(is_white_collar == 1L & WHYUNEMP == 2L),
     quarter = as.integer(ceiling(MONTH / 3))
   )
+
+stopifnot(all(cps$is_white_collar + cps$is_blue_collar + cps$is_other_services == 1L))
+stopifnot(all(cps$is_other_services == cps$is_service + cps$is_other_occ))
 
 cat("  Unemployed records (50 states):", nrow(cps), "\n")
 
@@ -91,20 +105,26 @@ compute_cps_aggregates <- function(data, ...) {
       new_entrant_unweighted_n    = sum(is_new_entrant),
       foreign_born_unweighted_n   = sum(is_foreign_born),
       noncitizen_unweighted_n     = sum(is_noncitizen),
+      working_age_25_54_unweighted_n = sum(is_working_age_25_54),
       prof_managerial_unweighted_n = sum(is_prof_managerial),
       white_collar_unweighted_n   = sum(is_white_collar),
       service_unweighted_n        = sum(is_service),
       blue_collar_unweighted_n    = sum(is_blue_collar),
+      other_occ_unweighted_n      = sum(is_other_occ),
+      other_services_unweighted_n = sum(is_other_services),
       perm_job_loser_unweighted_n = sum(is_perm_job_loser),
       temp_layoff_unweighted_n    = sum(is_temp_layoff),
       white_collar_perm_job_loser_unweighted_n = sum(is_white_collar_perm_job_loser),
       new_entrant_share           = sum(WTFINL * is_new_entrant) / sum(WTFINL),
       foreign_born_share          = sum(WTFINL * is_foreign_born) / sum(WTFINL),
       noncitizen_share            = sum(WTFINL * is_noncitizen) / sum(WTFINL),
+      working_age_25_54_share     = sum(WTFINL * is_working_age_25_54) / sum(WTFINL),
       prof_managerial_share       = sum(WTFINL * is_prof_managerial) / sum(WTFINL),
       white_collar_share          = sum(WTFINL * is_white_collar) / sum(WTFINL),
       service_share               = sum(WTFINL * is_service) / sum(WTFINL),
       blue_collar_share           = sum(WTFINL * is_blue_collar) / sum(WTFINL),
+      other_occ_share             = sum(WTFINL * is_other_occ) / sum(WTFINL),
+      other_services_share        = sum(WTFINL * is_other_services) / sum(WTFINL),
       perm_job_loser_share        = sum(WTFINL * is_perm_job_loser) / sum(WTFINL),
       temp_layoff_share           = sum(WTFINL * is_temp_layoff) / sum(WTFINL),
       white_collar_perm_job_loser_share = sum(WTFINL * is_white_collar_perm_job_loser) / sum(WTFINL),
@@ -157,12 +177,13 @@ cps_month |>
     date = period_start,
     state, state_abbr,
     unemployed_total = weighted_unemployed_total,
-    new_entrant_share, foreign_born_share, noncitizen_share,
-    prof_managerial_share, white_collar_share, service_share, blue_collar_share,
+    new_entrant_share, foreign_born_share, noncitizen_share, working_age_25_54_share,
+    prof_managerial_share, white_collar_share, blue_collar_share, other_services_share,
+    service_share, other_occ_share,
     perm_job_loser_share, temp_layoff_share, white_collar_perm_job_loser_share
   ) |>
   arrange(date, state) |>
-  write_csv("data/CPS/cps_ui_state_month_panel.csv")
+  write_csv(cps_panel_path)
 
 # ── 6. Load FRED panel and aggregate ─────────────────────────────────────
 
@@ -175,16 +196,18 @@ fred_month <- fred_raw |>
   transmute(
     period_start = date, state, state_abbr,
     initial_claims, continued_claims, insured_unemployment_rate,
-    unemployed_persons, unemployment_rate
+    covered_employment, unemployed_persons, unemployment_rate, annual_population
   )
 
-# Quarterly FRED: simple means
+# Quarterly FRED: sum monthly flows, average monthly stocks/rates
 fred_quarter <- fred_raw |>
   mutate(year = year(date), quarter = quarter(date)) |>
   group_by(year, quarter, state, state_abbr) |>
   summarise(
-    across(c(initial_claims, continued_claims, insured_unemployment_rate,
+    initial_claims = sum(initial_claims, na.rm = TRUE),
+    across(c(continued_claims, insured_unemployment_rate, covered_employment,
              unemployed_persons, unemployment_rate), \(x) mean(x, na.rm = TRUE)),
+    annual_population = dplyr::first(annual_population),
     .groups = "drop"
   ) |>
   mutate(
@@ -192,13 +215,15 @@ fred_quarter <- fred_raw |>
   ) |>
   select(-year, -quarter)
 
-# Yearly FRED: simple means
+# Yearly FRED: sum monthly flows, average monthly stocks/rates
 fred_year <- fred_raw |>
   mutate(year = year(date)) |>
   group_by(year, state, state_abbr) |>
   summarise(
-    across(c(initial_claims, continued_claims, insured_unemployment_rate,
+    initial_claims = sum(initial_claims, na.rm = TRUE),
+    across(c(continued_claims, insured_unemployment_rate, covered_employment,
              unemployed_persons, unemployment_rate), \(x) mean(x, na.rm = TRUE)),
+    annual_population = dplyr::first(annual_population),
     .groups = "drop"
   ) |>
   mutate(period_start = as.Date(paste(year, "01", "01", sep = "-"))) |>
@@ -210,9 +235,15 @@ merge_and_derive <- function(cps_agg, fred_agg) {
   cps_agg |>
     left_join(fred_agg, by = c("period_start", "state", "state_abbr")) |>
     mutate(
+      insured_unemployment_rate_share  = insured_unemployment_rate / 100,
+      covered_employment               = dplyr::coalesce(
+        covered_employment,
+        continued_claims / insured_unemployment_rate_share
+      ),
+      initial_claims_per_covered_employment   = initial_claims / covered_employment,
+      continued_claims_per_covered_employment = continued_claims / covered_employment,
       initial_claims_per_unemployed    = initial_claims / unemployed_persons,
-      continued_claims_per_unemployed  = continued_claims / unemployed_persons,
-      insured_unemployment_rate_share  = insured_unemployment_rate / 100
+      continued_claims_per_unemployed  = continued_claims / unemployed_persons
     )
 }
 
@@ -221,16 +252,21 @@ panel_cols <- c(
   "period_start", "year", "quarter", "month", "state", "state_abbr",
   "unweighted_unemployed_n", "weighted_unemployed_total", "sum_w_sq", "effective_n",
   "new_entrant_unweighted_n", "foreign_born_unweighted_n", "noncitizen_unweighted_n",
+  "working_age_25_54_unweighted_n",
   "prof_managerial_unweighted_n", "white_collar_unweighted_n", "service_unweighted_n",
-  "blue_collar_unweighted_n", "perm_job_loser_unweighted_n", "temp_layoff_unweighted_n",
+  "blue_collar_unweighted_n", "other_occ_unweighted_n", "other_services_unweighted_n",
+  "perm_job_loser_unweighted_n", "temp_layoff_unweighted_n",
   "white_collar_perm_job_loser_unweighted_n",
-  "new_entrant_share", "foreign_born_share", "noncitizen_share",
-  "prof_managerial_share", "white_collar_share", "service_share", "blue_collar_share",
+  "new_entrant_share", "foreign_born_share", "noncitizen_share", "working_age_25_54_share",
+  "prof_managerial_share", "white_collar_share", "blue_collar_share", "other_services_share",
+  "service_share", "other_occ_share",
   "perm_job_loser_share", "temp_layoff_share", "white_collar_perm_job_loser_share",
   "new_entrant_se", "foreign_born_se", "noncitizen_se",
   "new_entrant_moe95", "foreign_born_moe95", "noncitizen_moe95",
   "initial_claims", "continued_claims", "insured_unemployment_rate",
+  "covered_employment", "annual_population",
   "unemployed_persons", "unemployment_rate",
+  "initial_claims_per_covered_employment", "continued_claims_per_covered_employment",
   "initial_claims_per_unemployed", "continued_claims_per_unemployed",
   "insured_unemployment_rate_share"
 )
@@ -246,10 +282,12 @@ ar_filter <- function(panel, freq = c("month", "quarter", "year")) {
   freq <- match.arg(freq)
   # Numeric columns that must be non-NA and finite for regressions
   numeric_vars <- c(
-    "new_entrant_share", "foreign_born_share", "noncitizen_share",
-    "prof_managerial_share", "white_collar_share", "service_share", "blue_collar_share",
+    "new_entrant_share", "foreign_born_share", "noncitizen_share", "working_age_25_54_share",
+    "prof_managerial_share", "white_collar_share", "blue_collar_share", "other_services_share",
+    "service_share", "other_occ_share",
     "perm_job_loser_share", "temp_layoff_share", "white_collar_perm_job_loser_share",
-    "initial_claims_per_unemployed", "continued_claims_per_unemployed",
+    "annual_population",
+    "initial_claims_per_covered_employment", "continued_claims_per_covered_employment",
     "insured_unemployment_rate_share"
   )
 
@@ -264,12 +302,12 @@ panel_year_ar    <- ar_filter(panel_year_full,     "year")
 # ── 9. Save full and analysis-ready panels ────────────────────────────────
 
 cat("Saving data/final/ panels...\n")
-write_csv(panel_month_full,   "data/final/ui_takeup_panel_state_month.csv")
-write_csv(panel_month_ar,     "data/final/ui_takeup_panel_state_month_analysis_ready.csv")
-write_csv(panel_quarter_full, "data/final/ui_takeup_panel_state_quarter.csv")
-write_csv(panel_quarter_ar,   "data/final/ui_takeup_panel_state_quarter_analysis_ready.csv")
-write_csv(panel_year_full,    "data/final/ui_takeup_panel_state_year.csv")
-write_csv(panel_year_ar,      "data/final/ui_takeup_panel_state_year_analysis_ready.csv")
+write_csv(panel_month_full,   here("data", "final", "ui_takeup_panel_state_month.csv"))
+write_csv(panel_month_ar,     here("data", "final", "ui_takeup_panel_state_month_analysis_ready.csv"))
+write_csv(panel_quarter_full, here("data", "final", "ui_takeup_panel_state_quarter.csv"))
+write_csv(panel_quarter_ar,   here("data", "final", "ui_takeup_panel_state_quarter_analysis_ready.csv"))
+write_csv(panel_year_full,    here("data", "final", "ui_takeup_panel_state_year.csv"))
+write_csv(panel_year_ar,      here("data", "final", "ui_takeup_panel_state_year_analysis_ready.csv"))
 
 # ── 10. Precision diagnostics (CPS-only columns) ─────────────────────────
 
@@ -283,9 +321,9 @@ precision_cols <- c(
 )
 
 cat("Saving precision diagnostics...\n")
-write_csv(panel_month_full   |> select(all_of(precision_cols)), "data/final/cps_month_precision.csv")
-write_csv(panel_quarter_full |> select(all_of(precision_cols)), "data/final/cps_quarter_precision.csv")
-write_csv(panel_year_full    |> select(all_of(precision_cols)), "data/final/cps_year_precision.csv")
+write_csv(panel_month_full   |> select(all_of(precision_cols)), here("data", "final", "cps_month_precision.csv"))
+write_csv(panel_quarter_full |> select(all_of(precision_cols)), here("data", "final", "cps_quarter_precision.csv"))
+write_csv(panel_year_full    |> select(all_of(precision_cols)), here("data", "final", "cps_year_precision.csv"))
 
 # ── 11. Cross-frequency precision comparison (9 rows) ────────────────────
 
@@ -324,7 +362,7 @@ cps_precision_comparison <- bind_rows(
 )
 
 cat("Saving cps_precision_comparison.csv (9 rows)...\n")
-write_csv(cps_precision_comparison, "data/final/cps_precision_comparison.csv")
+write_csv(cps_precision_comparison, here("data", "final", "cps_precision_comparison.csv"))
 
 # ── 12. Monthly-only precision summary (optional, 3 rows) ────────────────
 
@@ -332,7 +370,7 @@ cps_precision_summary <- compute_precision_summary(prec_month, "month") |>
   rename(state_months = periods) |>
   select(-frequency)
 
-write_csv(cps_precision_summary, "data/final/cps_precision_summary.csv")
+write_csv(cps_precision_summary, here("data", "final", "cps_precision_summary.csv"))
 
 # ── 13. Summary ──────────────────────────────────────────────────────────
 

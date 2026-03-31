@@ -1,10 +1,13 @@
 library(data.table)
+library(here)
 
-analysis_dir <- file.path("data", "CPS", "temporary_to_employed")
-extract_csv_path <- file.path(analysis_dir, "cps_temp_to_employed.csv.gz")
-monthly_transition_path <- file.path(analysis_dir, "monthly_transition_rates.csv")
-origin_record_path <- file.path(analysis_dir, "origin_records_with_followup.csv.gz")
-linkage_summary_path <- file.path(analysis_dir, "linkage_summary.csv")
+here::i_am("build_temporary_to_employed_panel.R")
+
+analysis_dir <- here("data", "CPS", "temporary_to_employed")
+extract_csv_path <- here("data", "CPS", "temporary_to_employed", "cps_temp_to_employed.csv.gz")
+monthly_transition_path <- here("data", "CPS", "temporary_to_employed", "monthly_transition_rates.csv")
+origin_record_path <- here("data", "CPS", "temporary_to_employed", "origin_records_with_followup.csv.gz")
+linkage_summary_path <- here("data", "CPS", "temporary_to_employed", "linkage_summary.csv")
 
 if (!file.exists(extract_csv_path)) {
   stop("Temporary-to-employed extract not found in data/CPS/temporary_to_employed.")

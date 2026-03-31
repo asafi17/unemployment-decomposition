@@ -16,41 +16,51 @@ format:
 execute:
   warning: false
   message: false
+execute-dir: project
 ---
 
 # Overview
 
-This memo documents a proposed state-level study of why **UI claims take-up appears low relative to unemployment in recent years**. The core hypothesis is that take-up has fallen partly because the **composition of unemployment** has shifted toward groups that are less likely to be eligible for, or less likely to claim, unemployment insurance.
+This memo documents a proposed state-level study of why **UI claiming intensity appears low in recent years**. The core hypothesis is that take-up has fallen partly because the **composition of unemployment** has shifted toward groups that are less likely to be eligible for, or less likely to claim, unemployment insurance.
 
 Two broad stories motivate the exercise:
 
 1. **Eligibility/composition story**. A larger share of the unemployed may be made up of workers with weak UI eligibility, especially **new entrants** with no prior work history, and possibly some **migrant** groups.
 2. **Claim-propensity story**. Even among plausibly eligible workers, some groups may be less likely to claim UI because the costs of claiming are high relative to the expected benefit. One candidate mechanism is that some displaced white-collar workers receive severance packages or expect rapid re-employment and therefore do not bother filing.
 
-The clean empirical question is therefore not simply why claims are low, but whether **cross-state, over-time variation in the composition of unemployment helps explain variation in UI take-up**.
+The clean empirical question is therefore not simply why claims are low, but whether **cross-state, over-time variation in the composition of unemployment helps explain variation in UI claiming intensity and insured unemployment**.
 
 # Recommended Framing
 
-The most defensible baseline outcome is a **take-up-style ratio**, not raw claims. Raw UI claims combine three things at once: the scale of unemployment, the composition of unemployment, and claiming behavior. A ratio is better aligned with the underlying hypothesis.
+The most defensible baseline outcome is a **normalized claims-intensity measure**, not raw claims. Raw UI claims combine three things at once: the scale of covered employment, the composition of unemployment, and claiming behavior. A ratio is better aligned with the underlying hypothesis.
 
 Recommended outcomes:
 
-- `continued claims / unemployed`
+- `initial claims / covered employment`
 - `insured unemployment rate`
-- `initial claims / unemployed`
+- `continued claims / covered employment` only as an equivalent restatement of the insured unemployment rate, not as a distinct outcome
+
+For population-weighted regressions, the memo also carries **annual state resident population**, repeated within year when the panel is monthly or quarterly.
 
 The first-pass regression should use **state fixed effects** and **date fixed effects**:
 
 $$
-\text{takeup}_{st} = \beta_1 \text{NewEntrantShare}_{st} + \beta_2 \text{MigrantShare}_{st} + \alpha_s + \gamma_t + \varepsilon_{st}
+\text{takeup}_{st} =
+\beta_1 \text{NewEntrantShare}_{st} +
+\beta_2 \text{NoncitizenShare}_{st} +
+\beta_3 \text{BlueCollarShare}_{st} +
+\beta_4 \text{WorkingAgeShare}_{st} +
+\alpha_s + \gamma_t + \varepsilon_{st}
 $$
 
-where $\alpha_s$ are state fixed effects and $\gamma_t$ are date fixed effects — one dummy per period in the panel (month-year for monthly panels, quarter-year for quarterly, year for yearly). These are *not* 12 seasonal dummies; they absorb all common national time variation. Identification therefore comes from **within-period, cross-state variation** in composition after absorbing persistent state differences. Baseline inference uses **standard errors clustered by state** to account for serial correlation within states.
+where `WorkingAgeShare` refers to the unemployed share ages **25-54**, $\alpha_s$ are state fixed effects, and $\gamma_t$ are date fixed effects — one dummy per period in the panel (month-year for monthly panels, quarter-year for quarterly, year for yearly). These are *not* 12 seasonal dummies; they absorb all common national time variation. Identification therefore comes from **within-period, cross-state variation** in composition after absorbing persistent state differences. Baseline inference uses **standard errors clustered by state** and **annual state population weights**.
 
-The two most important design cautions are:
+The key design choices are:
 
 - **New entrants** are a relatively clean mechanism because they are definitionally searching for a first job and are therefore likely to have weak or zero UI eligibility.
-- **Migrants** must be defined carefully. At the monthly state-panel frequency, the most workable proxies are likely **foreign-born share** or **noncitizen share**, not "recent migrant from abroad." Of these, **noncitizen share** is the sharper proxy for the eligibility channel, since naturalized citizens included in the foreign-born measure are fully UI-eligible. Foreign-born share may still matter through broader frictions (language barriers, information costs, institutional unfamiliarity), but the mechanism is different from legal eligibility.
+- **Noncitizen share** is the sharper baseline migrant proxy at monthly frequency. Foreign-born share remains a possible later robustness check, but it is not part of the current baseline.
+- **Blue-collar share** is included to capture shifts in industry and occupation mix.
+- **Working-age (25-54) share** is included to capture changes in the age composition of the unemployed pool.
 
 # Data Feasibility
 
@@ -59,12 +69,16 @@ The short answer is: **yes, the study is feasible with FRED + IPUMS CPS**, but t
 ```{r}
 
 library(tidyverse)
+library(here)
 library(fredr)
 library(gt)
+library(ipumsr)
 library(lubridate)
 library(plotly)
 library(scales)
 library(DT)
+
+here::i_am("ui-takeup-study.qmd")
 
 fredr_set_key("ccd350785a210a7653a20d02ce92d83a")
 
@@ -120,7 +134,7 @@ tibble(
   Feasible = c("Yes", "Yes", "Yes", "Yes, with proxy choice"),
   Notes = c(
     "Can be aggregated to month for state panel construction",
-    "Useful denominator for take-up ratios",
+    "Useful unemployment-side context, but not the preferred claims denominator",
     "Can construct weighted state-month share of unemployed who are new entrants",
     "Best monthly proxies are foreign-born or noncitizen shares; recent-migrant measures are weaker"
   )
@@ -177,37 +191,47 @@ tibble(
     "Initial claims by state",
     "Continued claims by state",
     "Insured unemployment rate by state",
+    "Covered employment by state",
     "State unemployed persons",
-    "State unemployment rate"
+    "State unemployment rate",
+    "Annual state resident population"
   ),
   Definition = c(
     "Number of first-time UI claims filed during the reference week",
     "Number of people receiving UI for a week of unemployment after an initial claim",
     "Insured unemployment as a share of covered employment",
+    "Number of employees covered by state UI programs",
     "Estimated number of unemployed persons in the state",
-    "State unemployment rate from LAUS"
+    "State unemployment rate from LAUS",
+    "Resident population in the state"
   ),
   `What It Captures` = c(
     "Flow into the UI system",
     "Stock of active UI receipt",
     "UI intensity relative to covered jobs",
+    "The insured job base used to normalize claims",
     "Scale of unemployment in the state labor market",
-    "Overall labor-market slack"
+    "Overall labor-market slack",
+    "State size for regression weighting"
   ),
-  Frequency = c("Weekly", "Weekly", "Weekly", "Monthly", "Monthly"),
+  Frequency = c("Weekly", "Weekly", "Weekly", "Weekly", "Monthly", "Monthly", "Annual"),
   `Statistical Utility` = c(
     "Alternative flow-style outcome; useful robustness check",
     "Preferred stock-style UI receipt measure for baseline regressions",
     "Direct take-up/intensity outcome that avoids constructing a ratio",
-    "Natural denominator for take-up ratios such as continued claims / unemployed",
-    "Control variable and descriptive labor-market context"
+    "Preferred denominator for initial-claims and continued-claims normalization",
+    "Useful labor-market context, but not the preferred denominator for claims normalization",
+    "Control variable and descriptive labor-market context",
+    "Population weight for state-level regressions"
   ),
   `Preferred Role` = c(
     "Robustness",
     "Baseline outcome",
     "Alternative baseline outcome",
     "Baseline denominator",
-    "Control / context"
+    "Baseline denominator",
+    "Control / context",
+    "Regression weight"
   )
 ) |>
   gt() |>
@@ -230,18 +254,19 @@ tibble(
   )
 ```
 
-The memo now pulls these FRED inputs for **all 50 states**. For the weekly UI series, the state-level naming pattern is consistent across the FRED release (`XXICLAIMS`, `XXCCLAIMS`, `XXINSUREDUR`). For the monthly LAUS inputs, the state unemployment rate is `XXUR` and the seasonally adjusted unemployed-persons series follows the `LASST{state_fips}0000000000004` pattern.
+The memo now pulls these FRED inputs for **all 50 states**. For the weekly UI series, the state-level naming pattern is consistent across the FRED release (`XXICLAIMS`, `XXCCLAIMS`, `XXINSUREDUR`, `XXCEMPLOY`). For the monthly LAUS inputs, the state unemployment rate is `XXUR` and the seasonally adjusted unemployed-persons series follows the `LASST{state_fips}0000000000004` pattern.
+For annual population, the memo uses the FRED state resident population series `XXPOP`.
 
 The table below is a **pre-pull inspection table** so you can verify the exact series IDs for every state before the live FRED pull runs.
 
 ```{r fred-all-states-pull}
 #| cache: true
 
-fred_dir <- file.path("data", "FRED")
-fred_panel_path <- file.path(fred_dir, "ui_takeup_fred_monthly_state_panel.csv")
-fred_catalog_path <- file.path(fred_dir, "ui_takeup_fred_series_catalog.csv")
-fred_meta_path <- file.path(fred_dir, "ui_takeup_fred_pull_version.txt")
-fred_pull_version <- "earliest_available_v1"
+fred_dir <- here("data", "FRED")
+fred_panel_path <- here("data", "FRED", "ui_takeup_fred_monthly_state_panel.csv")
+fred_catalog_path <- here("data", "FRED", "ui_takeup_fred_series_catalog.csv")
+fred_meta_path <- here("data", "FRED", "ui_takeup_fred_pull_version.txt")
+fred_pull_version <- "earliest_available_v2_population"
 
 dir.create(fred_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -251,9 +276,10 @@ weekly_catalog <- state_meta |>
       measure = c(
         "Initial Claims",
         "Continued Claims",
-        "Insured Unemployment Rate"
+        "Insured Unemployment Rate",
+        "Covered Employment"
       ),
-      suffix = c("ICLAIMS", "CCLAIMS", "INSUREDUR"),
+      suffix = c("ICLAIMS", "CCLAIMS", "INSUREDUR", "CEMPLOY"),
       frequency = "Weekly"
     )
   ) |>
@@ -276,14 +302,20 @@ monthly_catalog <- state_meta |>
   ) |>
   select(state, abb, measure, series_id, frequency)
 
-fred_catalog <- bind_rows(weekly_catalog, monthly_catalog)
+annual_catalog <- state_meta |>
+  transmute(
+    state,
+    abb,
+    measure = "Annual Population",
+    series_id = paste0(abb, "POP"),
+    frequency = "Annual"
+  )
+
+fred_catalog <- bind_rows(weekly_catalog, monthly_catalog, annual_catalog)
 fred_catalog_export <- fred_catalog |>
   mutate(series_url = paste0("https://fred.stlouisfed.org/series/", series_id)) |>
   arrange(state, frequency, measure)
-
-if (!file.exists(fred_catalog_path)) {
-  write_csv(fred_catalog_export, fred_catalog_path)
-}
+write_csv(fred_catalog_export, fred_catalog_path)
 
 pull_fred_series <- function(series_id, state, abb, measure, frequency) {
   fredr(
@@ -301,14 +333,134 @@ pull_fred_series <- function(series_id, state, abb, measure, frequency) {
     )
 }
 
-needs_fred_download <- !file.exists(fred_panel_path) ||
-  !file.exists(fred_meta_path) ||
-  !identical(readLines(fred_meta_path, warn = FALSE, n = 1), fred_pull_version)
+validate_saved_fred_panel <- function(panel, state_meta) {
+  required_columns <- c(
+    "date", "state", "state_abbr",
+    "initial_claims", "continued_claims", "insured_unemployment_rate",
+    "covered_employment", "unemployed_persons", "unemployment_rate", "annual_population"
+  )
 
-if (!needs_fred_download) {
+  validation <- list(ok = TRUE, reasons = character())
+
+  missing_columns <- setdiff(required_columns, names(panel))
+  if (length(missing_columns) > 0) {
+    validation$ok <- FALSE
+    validation$reasons <- c(
+      validation$reasons,
+      paste0("Missing required columns: ", paste(missing_columns, collapse = ", "))
+    )
+    return(validation)
+  }
+
+  if (n_distinct(panel$state) != nrow(state_meta)) {
+    validation$ok <- FALSE
+    validation$reasons <- c(validation$reasons, "Saved panel does not contain all 50 states.")
+  }
+
+  if (n_distinct(panel$state_abbr) != nrow(state_meta)) {
+    validation$ok <- FALSE
+    validation$reasons <- c(validation$reasons, "Saved panel does not contain all 50 state abbreviations.")
+  }
+
+  duplicate_rows <- panel |>
+    count(state, state_abbr, date, name = "n") |>
+    filter(n > 1)
+  if (nrow(duplicate_rows) > 0) {
+    validation$ok <- FALSE
+    validation$reasons <- c(validation$reasons, "Saved panel has duplicate state-month rows.")
+  }
+
+  full_months <- tibble(date = seq(min(panel$date, na.rm = TRUE), max(panel$date, na.rm = TRUE), by = "month"))
+  expected_grid <- state_meta |>
+    transmute(state, state_abbr = abb) |>
+    crossing(full_months)
+
+  missing_state_months <- expected_grid |>
+    anti_join(panel |> select(state, state_abbr, date), by = c("state", "state_abbr", "date"))
+  if (nrow(missing_state_months) > 0) {
+    validation$ok <- FALSE
+    validation$reasons <- c(validation$reasons, "Saved panel is missing some state-month combinations.")
+  }
+
+  claim_vars <- c("initial_claims", "continued_claims", "insured_unemployment_rate", "covered_employment")
+  context_vars <- c("unemployed_persons", "unemployment_rate", "annual_population")
+
+  for (var in claim_vars) {
+    if (!any(is.finite(panel[[var]]) & !is.na(panel[[var]]))) {
+      validation$ok <- FALSE
+      validation$reasons <- c(validation$reasons, paste0("No usable observations found for ", var, "."))
+    }
+  }
+
+  for (var in context_vars) {
+    if (!any(is.finite(panel[[var]]) & !is.na(panel[[var]]))) {
+      validation$ok <- FALSE
+      validation$reasons <- c(validation$reasons, paste0("No usable observations found for ", var, "."))
+    }
+  }
+
+  latest_claim_month <- panel |>
+    filter(if_all(all_of(claim_vars), ~ is.finite(.) & !is.na(.))) |>
+    summarise(date = max(date, na.rm = TRUE)) |>
+    pull(date)
+  if (length(latest_claim_month) == 0 || is.na(latest_claim_month)) {
+    validation$ok <- FALSE
+    validation$reasons <- c(validation$reasons, "Could not locate a complete latest claim-side month.")
+  } else {
+    latest_claim_coverage <- panel |>
+      filter(date == latest_claim_month) |>
+      summarise(across(all_of(claim_vars), ~ sum(is.finite(.) & !is.na(.))))
+    if (any(latest_claim_coverage[1, ] < nrow(state_meta))) {
+      validation$ok <- FALSE
+      validation$reasons <- c(validation$reasons, "Latest complete claim-side month is not fully populated across states.")
+    }
+  }
+
+  latest_context_month <- panel |>
+    filter(if_all(all_of(context_vars), ~ is.finite(.) & !is.na(.))) |>
+    summarise(date = max(date, na.rm = TRUE)) |>
+    pull(date)
+  if (length(latest_context_month) == 0 || is.na(latest_context_month)) {
+    validation$ok <- FALSE
+    validation$reasons <- c(validation$reasons, "Could not locate a complete latest unemployment-context month.")
+  } else {
+    latest_context_coverage <- panel |>
+      filter(date == latest_context_month) |>
+      summarise(across(all_of(context_vars), ~ sum(is.finite(.) & !is.na(.))))
+    if (any(latest_context_coverage[1, ] < nrow(state_meta))) {
+      validation$ok <- FALSE
+      validation$reasons <- c(validation$reasons, "Latest complete unemployment-context month is not fully populated across states.")
+    }
+  }
+
+  validation
+}
+
+panel_file_exists <- file.exists(fred_panel_path)
+meta_file_exists <- file.exists(fred_meta_path)
+meta_matches <- meta_file_exists &&
+  identical(readLines(fred_meta_path, warn = FALSE, n = 1), fred_pull_version)
+
+fred_validation <- list(ok = FALSE, reasons = "Saved FRED panel not yet checked.")
+
+if (panel_file_exists) {
   fred_state_month_panel <- read_csv(fred_panel_path, show_col_types = FALSE) |>
     mutate(date = as.Date(date))
+  fred_validation <- validate_saved_fred_panel(fred_state_month_panel, state_meta)
+}
+
+needs_fred_download <- !panel_file_exists || !meta_file_exists || !meta_matches || !fred_validation$ok
+
+if (!needs_fred_download) {
+  message("Saved FRED panel passed validation checks; using local file.")
 } else {
+  if (panel_file_exists) {
+    message("Saved FRED panel failed validation or version checks. Refreshing pull.")
+    if (length(fred_validation$reasons) > 0) {
+      message("Validation details: ", paste(fred_validation$reasons, collapse = " | "))
+    }
+  }
+
   fred_panel <- pmap_dfr(
     fred_catalog,
     pull_fred_series
@@ -334,8 +486,16 @@ if (!needs_fred_download) {
     summarise(value = dplyr::first(value), .groups = "drop") |>
     pivot_wider(names_from = measure, values_from = value)
 
+  annual_state_year <- fred_panel |>
+    filter(frequency == "Annual", measure == "Annual Population") |>
+    mutate(year = year(date)) |>
+    group_by(state, abb, year) |>
+    summarise(annual_population = dplyr::first(value), .groups = "drop")
+
   fred_state_month_panel <- weekly_state_month |>
     full_join(monthly_state_month, by = c("state", "abb", "date")) |>
+    mutate(year = year(date)) |>
+    left_join(annual_state_year, by = c("state", "abb", "year")) |>
     rename(
       state_abbr = abb,
       initial_claims = `Initial Claims`,
@@ -351,6 +511,7 @@ if (!needs_fred_download) {
       initial_claims,
       continued_claims,
       insured_unemployment_rate,
+      annual_population,
       unemployed_persons,
       unemployment_rate
     ) |>
@@ -359,6 +520,29 @@ if (!needs_fred_download) {
   write_csv(fred_state_month_panel, fred_panel_path)
   writeLines(fred_pull_version, fred_meta_path)
 }
+
+fred_state_month_panel <- fred_state_month_panel |>
+  mutate(
+    covered_employment = if_else(
+      is.finite(insured_unemployment_rate) & insured_unemployment_rate > 0,
+      continued_claims / (insured_unemployment_rate / 100),
+      NA_real_
+    )
+  ) |>
+  select(
+    date,
+    state,
+    state_abbr,
+    initial_claims,
+    continued_claims,
+    insured_unemployment_rate,
+    covered_employment,
+    annual_population,
+    unemployed_persons,
+    unemployment_rate
+  )
+
+write_csv(fred_state_month_panel, fred_panel_path)
 
 fred_latest <- fred_state_month_panel |>
   group_by(state, state_abbr) |>
@@ -435,6 +619,8 @@ tibble(
     "initial_claims",
     "continued_claims",
     "insured_unemployment_rate",
+    "covered_employment",
+    "annual_population",
     "unemployed_persons",
     "unemployment_rate"
   ),
@@ -445,6 +631,8 @@ tibble(
     "Sum of weekly initial claims within month",
     "Average weekly continued claims within month",
     "Average weekly insured unemployment rate within month",
+    "Implied covered employment = continued claims / (insured unemployment rate / 100)",
+    "Annual state resident population, repeated across months within the same year",
     "Monthly unemployed persons",
     "Monthly unemployment rate"
   )
@@ -474,6 +662,7 @@ state_meta |>
     `Initial Claims` = paste0("[", abb, "ICLAIMS](https://fred.stlouisfed.org/series/", abb, "ICLAIMS)"),
     `Continued Claims` = paste0("[", abb, "CCLAIMS](https://fred.stlouisfed.org/series/", abb, "CCLAIMS)"),
     `Insured UR` = paste0("[", abb, "INSUREDUR](https://fred.stlouisfed.org/series/", abb, "INSUREDUR)"),
+    `Covered Employment` = paste0("[", abb, "CEMPLOY](https://fred.stlouisfed.org/series/", abb, "CEMPLOY)"),
     `Unemployed Persons` = paste0("[LASST", fips, "0000000000004](https://fred.stlouisfed.org/series/LASST", fips, "0000000000004)"),
     `Unemployment Rate` = paste0("[", abb, "UR](https://fred.stlouisfed.org/series/", abb, "UR)")
   ) |>
@@ -482,6 +671,7 @@ state_meta |>
     `Initial Claims`,
     `Continued Claims`,
     `Insured UR`,
+    `Covered Employment`,
     `Unemployed Persons`,
     `Unemployment Rate`
   )) |>
@@ -499,24 +689,25 @@ state_meta |>
     `Initial Claims` ~ px(120),
     `Continued Claims` ~ px(130),
     `Insured UR` ~ px(110),
+    `Covered Employment` ~ px(135),
     `Unemployed Persons` ~ px(150),
     `Unemployment Rate` ~ px(120)
   ) |>
   tab_source_note(
-    source_note = md("These links point to the exact FRED series IDs used in the all-state pull above.")
+    source_note = md("These links point to the FRED series IDs relevant to the all-state UI panel above, including covered employment used to normalize claims.")
   )
 ```
 
 ```{r fred-panel-helpers}
 fred_analysis_specs <- tibble(
   variable = c(
-    "initial_claims_per_unemployed",
-    "continued_claims_per_unemployed",
+    "initial_claims_per_covered_employment",
+    "continued_claims_per_covered_employment",
     "insured_unemployment_rate_share"
   ),
   label = c(
-    "Initial Claims / Unemployed Persons",
-    "Continued Claims / Unemployed Persons",
+    "Initial Claims / Covered Employment",
+    "Continued Claims / Covered Employment",
     "Insured Unemployment Rate"
   ),
   p10_color = c("#4c78a8", "#b2477c", "#2f6f4f"),
@@ -526,8 +717,8 @@ fred_analysis_specs <- tibble(
 
 fred_analysis_panel <- fred_state_month_panel |>
   mutate(
-    initial_claims_per_unemployed = initial_claims / unemployed_persons,
-    continued_claims_per_unemployed = continued_claims / unemployed_persons,
+    initial_claims_per_covered_employment = initial_claims / covered_employment,
+    continued_claims_per_covered_employment = continued_claims / covered_employment,
     insured_unemployment_rate_share = insured_unemployment_rate / 100
   ) |>
   pivot_longer(
@@ -726,66 +917,66 @@ build_fred_analysis_summary_table <- function(var_id) {
 
 California was gray in the earlier initial-claims map because the state initial-claims series does not begin until **February 1986** in the saved panel, so any earlier animation year has missing values and Plotly renders those states in gray. The normalized claims sections below only use nonmissing years for the mapped variable.
 
-The claims ratios can exceed the monthly number of unemployed persons because the numerator and denominator are not the same concept. `Initial claims` is a **monthly flow** formed by summing weekly filings across the month, while `unemployed persons` is a **monthly stock** from LAUS/CPS. `Continued claims` is an insured-unemployment administrative measure tied to UI eligibility and covered employment, not the same population as total unemployed persons. So these ratios are useful normalization devices, but they are not bounded by 1.
+The covered-employment normalization is cleaner for the administrative claims series. `Initial claims` is a **monthly flow** formed by summing weekly filings across the month, while `covered employment` is the insured job base. That ratio can still be fairly large in recessions, but it no longer mixes a monthly claims flow with a CPS/LAUS unemployment stock. `Continued claims / covered employment` is mechanically the same object as the insured unemployment rate in share form.
 
-The normalized ratio sections end in **December 2025** because the weekly UI series continue through **March 2026**, but the monthly state `unemployed persons` and `unemployment rate` LAUS series in the saved FRED pull currently stop at **2025-12-01**.
+The covered-employment-normalized claims sections extend through the end of the weekly UI data because both `initial claims / covered employment` and `continued claims / covered employment` can be constructed from the UI release itself. The unemployment-based context series still stop at **2025-12-01** in the saved LAUS pull.
 
-## Initial Claims Adjusted by Unemployed Persons
+## Initial Claims Adjusted by Covered Employment
 
 ::: {.panel-tabset}
 
 ### Time Series
 
 ```{r initial-claims-adjusted-timeseries}
-build_fred_analysis_time_series_plot("initial_claims_per_unemployed")
+build_fred_analysis_time_series_plot("initial_claims_per_covered_employment")
 ```
 
 ### Time Series - Trim Y
 
 ```{r initial-claims-adjusted-timeseries-trim}
-build_fred_analysis_time_series_plot("initial_claims_per_unemployed", y_range = c(0, 1))
+build_fred_analysis_time_series_plot("initial_claims_per_covered_employment", y_range = c(0, 0.1))
 ```
 
 ### Interactive Map
 
 ```{r initial-claims-adjusted-map}
-build_fred_analysis_map_plot("initial_claims_per_unemployed")
+build_fred_analysis_map_plot("initial_claims_per_covered_employment")
 ```
 
 ### Summary Statistics
 
 ```{r initial-claims-adjusted-summary}
-build_fred_analysis_summary_table("initial_claims_per_unemployed")
+build_fred_analysis_summary_table("initial_claims_per_covered_employment")
 ```
 
 :::
 
-## Continued Claims Adjusted by Unemployed Persons
+## Continued Claims Adjusted by Covered Employment
 
 ::: {.panel-tabset}
 
 ### Time Series
 
 ```{r continued-claims-adjusted-timeseries}
-build_fred_analysis_time_series_plot("continued_claims_per_unemployed")
+build_fred_analysis_time_series_plot("continued_claims_per_covered_employment")
 ```
 
 ### Time Series - Trim Y
 
 ```{r continued-claims-adjusted-timeseries-trim}
-build_fred_analysis_time_series_plot("continued_claims_per_unemployed", y_range = c(0, 1))
+build_fred_analysis_time_series_plot("continued_claims_per_covered_employment", y_range = c(0, 0.1))
 ```
 
 ### Interactive Map
 
 ```{r continued-claims-adjusted-map}
-build_fred_analysis_map_plot("continued_claims_per_unemployed")
+build_fred_analysis_map_plot("continued_claims_per_covered_employment")
 ```
 
 ### Summary Statistics
 
 ```{r continued-claims-adjusted-summary}
-build_fred_analysis_summary_table("continued_claims_per_unemployed")
+build_fred_analysis_summary_table("continued_claims_per_covered_employment")
 ```
 
 :::
@@ -916,9 +1107,17 @@ Monthly CPS does **not** provide a clean long panel of UI claiming, claims burde
 
 The CPS state-month composition panel is saved locally, so the memo can load the aggregated panel directly without rereading the raw microdata each time. The saved state-month panel used below is `data/CPS/cps_ui_state_month_panel.csv`. The underlying microdata comes from the unified CPS extract at `data/CPS/cps_unified.csv.gz` (shared with `unemployment_decomposition.qmd`; run `Rscript submit_unified_cps_extract.R` to download or refresh).
 
+```{r rebuild-panels-before-cps-load}
+#| echo: false
+
+invisible(capture.output(
+  source(here("build_panels.R"), local = new.env(parent = globalenv()))
+))
+```
+
 ```{r cps-panel-load}
-cps_dir <- file.path("data", "CPS")
-cps_panel_path <- file.path(cps_dir, "cps_ui_state_month_panel.csv")
+cps_dir <- here("data", "CPS")
+cps_panel_path <- here("data", "CPS", "cps_ui_state_month_panel.csv")
 
 cps_state_month_panel <- read_csv(cps_panel_path, show_col_types = FALSE) |>
   mutate(date = as.Date(date))
@@ -961,6 +1160,8 @@ cps_state_month_panel |>
   )
 ```
 
+White-collar and blue-collar assignments follow the discontinued BLS National Compensation Survey mapping in 2007 Table 2D, which groups occupations into white-collar, blue-collar, and service categories.[BLS Table 2D occupation group definitions](https://www.bls.gov/eci/factsheets/national-compensation-survey-classification-systems-mapping-files.htm) The memo’s `other_services_share` then absorbs everyone not classified as white-collar or blue-collar, so it includes the BLS service occupations plus residual NIU / military / no-usable-prior-occupation cases.
+
 ```{r}
 #| tbl-cap: "Saved CPS panel columns."
 
@@ -973,9 +1174,12 @@ tibble(
     "new_entrant_share",
     "foreign_born_share",
     "noncitizen_share",
+    "working_age_25_54_share",
     "white_collar_share",
-    "service_share",
     "blue_collar_share",
+    "other_services_share",
+    "service_share",
+    "other_occ_share",
     "perm_job_loser_share",
     "temp_layoff_share",
     "white_collar_perm_job_loser_share"
@@ -988,9 +1192,12 @@ tibble(
     "Weighted share of unemployed persons who are new entrants",
     "Weighted share of unemployed persons who are foreign born",
     "Weighted share of unemployed persons who are noncitizens",
-    "Weighted share of unemployed persons in broad white-collar occupations (OCC1990 3-400)",
-    "Weighted share of unemployed persons in service occupations (OCC1990 401-470)",
-    "Weighted share of unemployed persons in blue-collar occupations (OCC1990 471-889)",
+    "Weighted share of unemployed persons ages 25 to 54",
+    "Weighted share of unemployed persons in BLS-style white-collar occupations: professional / technical, executive / administrative / managerial, sales, and administrative support jobs",
+    "Weighted share of unemployed persons in BLS-style blue-collar occupations: precision production, craft, repair, machine operators, inspectors, assemblers, transportation / material moving, and handlers / helpers / laborers",
+    "Weighted share of unemployed persons not classified as white-collar or blue-collar. This `Other Services` bucket includes BLS service occupations plus residual NIU / military / no-usable-prior-occupation cases",
+    "Diagnostic component of `other_services_share`: the subset in BLS service occupations",
+    "Diagnostic component of `other_services_share`: residual non-white / non-blue cases, mainly NIU / no usable prior occupation and military cases",
     "Weighted share of unemployed persons who are permanent job losers",
     "Weighted share of unemployed persons on temporary layoff",
     "Weighted share of unemployed persons who are white-collar permanent job losers"
@@ -1017,21 +1224,39 @@ cps_analysis_specs <- tibble(
   variable = c(
     "new_entrant_share",
     "foreign_born_share",
-    "noncitizen_share"
+    "noncitizen_share",
+    "white_collar_share",
+    "blue_collar_share",
+    "other_services_share",
+    "perm_job_loser_share",
+    "temp_layoff_share",
+    "white_collar_perm_job_loser_share"
   ),
   label = c(
     "Share of Unemployed Who Are New Entrants",
     "Share of Unemployed Who Are Foreign Born",
-    "Share of Unemployed Who Are Noncitizens"
+    "Share of Unemployed Who Are Noncitizens",
+    "Share of Unemployed in White-Collar Occupations",
+    "Share of Unemployed in Blue-Collar Occupations",
+    "Share of Unemployed in Other Services",
+    "Share of Unemployed Who Are Permanent Job Losers",
+    "Share of Unemployed on Temporary Layoff",
+    "Share of Unemployed Who Are White-Collar Permanent Job Losers"
   ),
   map_label = c(
     "New entrant share",
     "Foreign-born share",
-    "Noncitizen share"
+    "Noncitizen share",
+    "White-collar share",
+    "Blue-collar share",
+    "Other-services share",
+    "Permanent job loser share",
+    "Temporary layoff share",
+    "White-collar permanent job loser share"
   ),
-  p10_color = c("#4c78a8", "#2a9d8f", "#b2477c"),
-  p50_color = c("#0b3c5d", "#1b4332", "#7a1f52"),
-  p90_color = c("#3f88c5", "#52b788", "#e56b6f")
+  p10_color = c("#4c78a8", "#2a9d8f", "#b2477c", "#8c6d31", "#3a7d44", "#577590", "#7f5539", "#b56576", "#457b9d"),
+  p50_color = c("#0b3c5d", "#1b4332", "#7a1f52", "#5f4b08", "#1b5e20", "#355070", "#5c4033", "#7d3c4c", "#1d3557"),
+  p90_color = c("#3f88c5", "#52b788", "#e56b6f", "#d4a373", "#74c69d", "#98c1d9", "#b08968", "#e5989b", "#4ea8de")
 )
 
 cps_panel_long <- cps_state_month_panel |>
@@ -1231,6 +1456,44 @@ build_cps_summary_table <- function(var_id) {
 }
 ```
 
+```{r cps-occupation-partition-check}
+#| tbl-cap: "Check that the three broad occupation groups are mutually exclusive and exhaustive in the saved CPS panel."
+
+occupation_partition_check <- cps_state_month_panel |>
+  transmute(
+    occupation_share_total = white_collar_share + blue_collar_share + other_services_share
+  ) |>
+  summarise(
+    `Minimum Sum` = min(occupation_share_total, na.rm = TRUE),
+    `P1 Sum` = quantile(occupation_share_total, 0.01, na.rm = TRUE),
+    `Median Sum` = quantile(occupation_share_total, 0.50, na.rm = TRUE),
+    `P99 Sum` = quantile(occupation_share_total, 0.99, na.rm = TRUE),
+    `Maximum Sum` = max(occupation_share_total, na.rm = TRUE)
+  ) |>
+  mutate(
+    `Minimum Sum` = percent(`Minimum Sum`, accuracy = 0.1),
+    `P1 Sum` = percent(`P1 Sum`, accuracy = 0.1),
+    `Median Sum` = percent(`Median Sum`, accuracy = 0.1),
+    `P99 Sum` = percent(`P99 Sum`, accuracy = 0.1),
+    `Maximum Sum` = percent(`Maximum Sum`, accuracy = 0.1)
+  )
+
+occupation_partition_check |>
+  gt() |>
+  tab_source_note(
+    source_note = md("The build pipeline enforces a row-level integrity check before aggregation: each unemployed record must fall into exactly one of `white_collar`, `blue_collar`, or `other_services`, where `other_services = service + other_occ`.")
+  ) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
 ## New Entrant Share
 
 ::: {.panel-tabset}
@@ -1303,13 +1566,169 @@ build_cps_summary_table("noncitizen_share")
 
 :::
 
+## White-Collar Share
+
+::: {.panel-tabset}
+
+### Time Series
+
+```{r cps-white-collar-timeseries}
+build_cps_time_series_plot("white_collar_share")
+```
+
+### Interactive Map
+
+```{r cps-white-collar-map}
+build_cps_map_plot("white_collar_share")
+```
+
+### Summary Statistics
+
+```{r cps-white-collar-summary}
+build_cps_summary_table("white_collar_share")
+```
+
+:::
+
+## Other-Services Share
+
+::: {.panel-tabset}
+
+### Time Series
+
+```{r cps-other-services-timeseries}
+build_cps_time_series_plot("other_services_share")
+```
+
+### Interactive Map
+
+```{r cps-other-services-map}
+build_cps_map_plot("other_services_share")
+```
+
+### Summary Statistics
+
+```{r cps-other-services-summary}
+build_cps_summary_table("other_services_share")
+```
+
+:::
+
+## Blue-Collar Share
+
+::: {.panel-tabset}
+
+### Time Series
+
+```{r cps-blue-collar-timeseries}
+build_cps_time_series_plot("blue_collar_share")
+```
+
+### Interactive Map
+
+```{r cps-blue-collar-map}
+build_cps_map_plot("blue_collar_share")
+```
+
+### Summary Statistics
+
+```{r cps-blue-collar-summary}
+build_cps_summary_table("blue_collar_share")
+```
+
+:::
+
+## Permanent Job Loser Share
+
+::: {.panel-tabset}
+
+### Time Series
+
+```{r cps-perm-job-loser-timeseries}
+build_cps_time_series_plot("perm_job_loser_share")
+```
+
+### Interactive Map
+
+```{r cps-perm-job-loser-map}
+build_cps_map_plot("perm_job_loser_share")
+```
+
+### Summary Statistics
+
+```{r cps-perm-job-loser-summary}
+build_cps_summary_table("perm_job_loser_share")
+```
+
+:::
+
+## Temporary Layoff Share
+
+::: {.panel-tabset}
+
+### Time Series
+
+```{r cps-temp-layoff-timeseries}
+build_cps_time_series_plot("temp_layoff_share")
+```
+
+### Interactive Map
+
+```{r cps-temp-layoff-map}
+build_cps_map_plot("temp_layoff_share")
+```
+
+### Summary Statistics
+
+```{r cps-temp-layoff-summary}
+build_cps_summary_table("temp_layoff_share")
+```
+
+:::
+
+## White-Collar Permanent Job Loser Share
+
+::: {.panel-tabset}
+
+### Time Series
+
+```{r cps-wc-perm-job-loser-timeseries}
+build_cps_time_series_plot("white_collar_perm_job_loser_share")
+```
+
+### Interactive Map
+
+```{r cps-wc-perm-job-loser-map}
+build_cps_map_plot("white_collar_perm_job_loser_share")
+```
+
+### Summary Statistics
+
+```{r cps-wc-perm-job-loser-summary}
+build_cps_summary_table("white_collar_perm_job_loser_share")
+```
+
+:::
+
 # Final Merged Panel
 
 The final merged panel combines the saved FRED outcome-side panel with the saved CPS composition-side panel. The purpose is to produce a single analysis-ready dataset that can be estimated at multiple time aggregations depending on the tradeoff between identification and precision.
 
-The monthly panel preserves the most within-state time variation, the quarterly panel provides a middle ground, and the yearly panel substantially improves the precision of the CPS composition estimates. All three are saved under `data/final` so that the merged panel does not need to be rebuilt during routine memo renders.
+The monthly panel preserves the most within-state time variation, the quarterly panel provides a middle ground, and the yearly panel substantially improves the precision of the CPS composition estimates. All three are saved under `data/final`, and this memo now refreshes them during render so the downstream analysis stays synchronized with the current source panels.
+
+The aggregation procedure differs by data source because the inputs have different statistical meaning:
+
+- **CPS composition variables** are rebuilt directly from the microdata at each frequency. Monthly panels group by `YEAR, MONTH`; quarterly panels regroup the underlying person records by `YEAR, quarter`; annual panels regroup by `YEAR`. So quarterly and annual shares are recomputed from pooled unemployed persons, not formed by averaging monthly shares.
+- **FRED outcome variables** start from the saved monthly state panel. When moving from month to quarter or year, `initial_claims` is treated as a **flow** and therefore summed across months within the period. By contrast, `continued_claims`, `insured_unemployment_rate`, `covered_employment`, `unemployed_persons`, and `unemployment_rate` are treated as **stock/rate-style monthly measures** and are averaged across months within the period. `annual_population` is carried from the annual state population series and repeated within year for monthly and quarterly analysis.
+- The merged quarterly and annual panels are created only after those frequency-specific CPS and FRED aggregations are complete. Derived outcomes such as `initial_claims_per_covered_employment` and `continued_claims_per_covered_employment` are then computed from the aggregated ingredients.
 
 ## Final Panel Outputs
+
+```{r rebuild-final-panels}
+#| echo: false
+
+invisible(NULL)
+```
 
 ```{r}
 #| tbl-cap: "Saved final merged panel outputs."
@@ -1383,37 +1802,37 @@ preview_final_dataset <- function(path) {
 ### State-Month Full
 
 ```{r final-preview-month-full}
-preview_final_dataset(file.path("data", "final", "ui_takeup_panel_state_month.csv"))
+preview_final_dataset(here("data", "final", "ui_takeup_panel_state_month.csv"))
 ```
 
 ### State-Month Analysis Ready
 
 ```{r final-preview-month-ar}
-preview_final_dataset(file.path("data", "final", "ui_takeup_panel_state_month_analysis_ready.csv"))
+preview_final_dataset(here("data", "final", "ui_takeup_panel_state_month_analysis_ready.csv"))
 ```
 
 ### State-Quarter Full
 
 ```{r final-preview-quarter-full}
-preview_final_dataset(file.path("data", "final", "ui_takeup_panel_state_quarter.csv"))
+preview_final_dataset(here("data", "final", "ui_takeup_panel_state_quarter.csv"))
 ```
 
 ### State-Quarter Analysis Ready
 
 ```{r final-preview-quarter-ar}
-preview_final_dataset(file.path("data", "final", "ui_takeup_panel_state_quarter_analysis_ready.csv"))
+preview_final_dataset(here("data", "final", "ui_takeup_panel_state_quarter_analysis_ready.csv"))
 ```
 
 ### State-Year Full
 
 ```{r final-preview-year-full}
-preview_final_dataset(file.path("data", "final", "ui_takeup_panel_state_year.csv"))
+preview_final_dataset(here("data", "final", "ui_takeup_panel_state_year.csv"))
 ```
 
 ### State-Year Analysis Ready
 
 ```{r final-preview-year-ar}
-preview_final_dataset(file.path("data", "final", "ui_takeup_panel_state_year_analysis_ready.csv"))
+preview_final_dataset(here("data", "final", "ui_takeup_panel_state_year_analysis_ready.csv"))
 ```
 
 :::
@@ -1439,7 +1858,7 @@ This makes the panel tradeoff transparent: moving from month to quarter or year 
 ```{r}
 #| tbl-cap: "Approximate CPS precision by aggregation frequency."
 
-read_csv(file.path("data", "final", "cps_precision_comparison.csv"), show_col_types = FALSE) |>
+read_csv(here("data", "final", "cps_precision_comparison.csv"), show_col_types = FALSE) |>
   mutate(
     Measure = recode(
       measure,
@@ -1494,7 +1913,7 @@ read_csv(file.path("data", "final", "cps_precision_comparison.csv"), show_col_ty
 ```{r}
 #| tbl-cap: "Frequency-level tradeoff summary using the CPS precision diagnostics."
 
-read_csv(file.path("data", "final", "cps_precision_comparison.csv"), show_col_types = FALSE) |>
+read_csv(here("data", "final", "cps_precision_comparison.csv"), show_col_types = FALSE) |>
   group_by(frequency) |>
   summarise(
     `Median Eff. N` = median(median_effective_n),
@@ -1536,7 +1955,7 @@ $$
 
 If all survey weights were equal, then $n^{\text{eff}}_{st}$ would equal the raw respondent count. When weights are unequal, $n^{\text{eff}}_{st}$ is smaller than the raw count because highly unequal weights reduce precision.
 
-For a CPS share such as the new-entrant share, foreign-born share, or noncitizen share, the memo uses
+For a CPS share such as the new-entrant share, noncitizen share, blue-collar share, or working-age 25-54 share, the memo uses
 
 $$
 \hat{p}_{st} = \frac{\sum_{i \in st} w_i \cdot 1\{X_i = 1\}}{\sum_{i \in st} w_i}
@@ -1564,9 +1983,10 @@ These are not perfect measures of UI ineligibility, but they are plausible and m
 That means the best empirical framing is probably:
 
 - **primary composition channel**: new entrants
-- **secondary composition channel**: foreign-born or noncitizen unemployment share
+- **baseline migrant control**: noncitizen unemployment share
+- **later robustness version**: foreign-born unemployment share
 
-This is a stronger design than trying to force a monthly "recent migrant" variable that the data do not naturally support.
+This is a stronger design than trying to force a monthly "recent migrant" variable that the data do not naturally support, and it matches the current regression code, which uses **noncitizen share** in the baseline specification.
 
 # Recommended Baseline Panel
 
@@ -1577,20 +1997,26 @@ tibble(
   Component = c(
     "Unit of observation",
     "Time frequency",
-    "Outcome",
-    "Main regressor 1",
-    "Main regressor 2",
+    "Outcomes",
+    "Baseline control 1",
+    "Baseline control 2",
+    "Baseline control 3",
+    "Baseline control 4",
     "Fixed effects",
-    "Useful extensions"
+    "Weighting",
+    "Near-term next step"
   ),
   Choice = c(
     "State x year-month",
     "Monthly (with quarterly and yearly robustness panels)",
-    "Continued claims / unemployed",
+    "CC/CE, IC/CE, and IUR",
     "New entrant share of unemployed",
-    "Noncitizen share of unemployed (foreign-born share as robustness)",
+    "Noncitizen share of unemployed",
+    "Blue-collar share of unemployed",
+    "Working-age (25-54) share of unemployed",
     "State FE + date FE; SEs clustered by state",
-    "State trends, unemployment rate, reason-for-unemployment shares, occupation mix"
+    "Annual state population, repeated within year for monthly and quarterly panels",
+    "Pandemic-window robustness using the same baseline controls"
   )
 ) |>
   gt() |>
@@ -1611,12 +2037,14 @@ tibble(
 
 # Interpretation And Limits
 
-A regression of UI take-up on new entrants and migrant proxies would be informative, but it should be interpreted carefully.
+A regression of UI take-up on the current baseline controls would be informative, but it should be interpreted carefully.
 
 What it can say:
 
 - whether states/months with more **new entrants** have lower measured UI take-up
-- whether states/months with larger **foreign-born** or **noncitizen** unemployment shares also have lower measured take-up
+- whether states/months with larger **noncitizen** unemployment shares also have lower measured take-up
+- whether states/months with more **blue-collar unemployment** differ systematically in claims intensity
+- whether states/months with a larger **prime-age (25-54) unemployment share** differ systematically in claims intensity
 
 What it cannot say by itself:
 
@@ -1628,9 +2056,9 @@ Those stories are still plausible, but they likely require either:
 - occupation/industry composition interactions, or
 - separate evidence on severance, claim hassle, or expected duration
 
-**Measurement error and attenuation bias.** Because the CPS composition regressors (new entrant share, foreign-born share, noncitizen share) are estimated from survey microdata rather than observed from administrative records, they are measured with nontrivial sampling noise. This creates a classical-style errors-in-variables problem that will tend to **attenuate slope estimates toward zero**, with the bias most severe in small states and at monthly frequency where CPS cell sizes are smallest. If coefficients are larger and more stable at quarterly or yearly frequency, that pattern is *consistent with* reduced measurement error rather than a different underlying relationship. The quarterly and yearly panels are therefore not merely cosmetic robustness checks — they are an important diagnostic for whether monthly noise is washing out real associations. Formal measurement-error corrections (IV, SIMEX) are deferred to the estimation stage; the design memo treats multi-frequency comparison as the primary guard against attenuation.
+**Measurement error and attenuation bias.** Because the CPS composition regressors in the current baseline (new entrant share, noncitizen share, blue-collar share, and working-age 25-54 share) are estimated from survey microdata rather than observed from administrative records, they are measured with nontrivial sampling noise. This creates a classical-style errors-in-variables problem that will tend to **attenuate slope estimates toward zero**, with the bias most severe in small states and at monthly frequency where CPS cell sizes are smallest. If coefficients are larger and more stable at quarterly or yearly frequency, that pattern is *consistent with* reduced measurement error rather than a different underlying relationship. The quarterly and yearly panels are therefore not merely cosmetic robustness checks — they are an important diagnostic for whether monthly noise is washing out real associations. Formal measurement-error corrections (IV, SIMEX) are deferred to the estimation stage; the design memo treats multi-frequency comparison as the primary guard against attenuation.
 
-**Pandemic-era comparability.** The sample covers March 2020 onward, a period of temporary federal UI programs (PUA, PEUC, FPUC), eligibility expansions, administrative disruptions, and unusual CPS measurement conditions. These distortions affect both the outcome (claims ratios) and the composition regressors. The baseline analysis will address this through sample splits or exclusion of the pandemic window (approximately March 2020 through September 2021), with details determined at the estimation stage.
+**Pandemic-era comparability.** The sample covers March 2020 onward, a period of temporary federal UI programs (PUA, PEUC, FPUC), eligibility expansions, administrative disruptions, and unusual CPS measurement conditions. These distortions affect both the outcome (claims ratios) and the composition regressors. The baseline analysis therefore reports a pandemic-robustness comparison that excludes March 2020 through December 2021 in the monthly panel, 2020 Q1 through 2021 Q4 in the quarterly panel, and calendar years 2020-2021 in the annual panel.
 
 # Claims Hassle And Administrative Burden
 
@@ -1720,6 +2148,91 @@ If white-collar workers are less likely to claim UI because of severance, expect
 
 IPUMS CPS gives a workable path to this because occupation and class-of-worker variables are available in the monthly microdata and can be aggregated to state-month composition measures.
 
+## Occupation Group Definitions
+
+For the broad occupation controls, the key identification point is simple: the panel now uses a three-way occupation partition:
+
+- `white_collar_share`
+- `blue_collar_share`
+- `other_services_share`
+
+White-collar and blue-collar are defined to match the discontinued BLS National Compensation Survey Table 2D groupings as closely as possible in `OCC1990`: white collar covers professional / technical, executive / administrative / managerial, sales, and administrative support occupations; blue collar covers precision production, craft, repair, machine operators / inspectors / assemblers, transportation / material moving, and handlers / helpers / laborers. `other_services_share` is then defined as **everyone else**. These three groups are constructed to be **mutually exclusive and exhaustive** for the unemployed sample. In the fuller occupation-control regressions below, **Other Services is the omitted reference category**.
+
+```{r}
+#| tbl-cap: "Plain-language definitions for the broad occupation groups used in the regressions."
+
+tibble(
+  `Regression Variable` = c(
+    "`white_collar_share`",
+    "`blue_collar_share`",
+    "`other_services_share`"
+  ),
+  `Broad Occupation Types Included` = c(
+    "Professional / technical, executive / administrative / managerial, sales, and administrative support occupations",
+    "Precision production, craft, repair, machine operators / inspectors / assemblers, transportation / material moving, and handlers / helpers / laborers",
+    "Everyone else: BLS service occupations plus residual NIU / military / no-usable-prior-occupation cases"
+  ),
+  Examples = c(
+    "Managers, accountants, lawyers, engineers, teachers, computer workers, technicians, sales workers, clerks, and administrative assistants",
+    "Electricians, carpenters, mechanics, machinists, assemblers, truck drivers, warehouse movers, equipment cleaners, helpers, and laborers",
+    "Police and firefighters, cooks and servers, janitors, nursing aides, childcare workers, hairstylists, household workers, NIU-coded cases, and military occupations"
+  ),
+  `Regression Role` = c(
+    "Estimated relative to Other Services",
+    "Estimated relative to Other Services",
+    "Omitted reference category"
+  )
+) |>
+  gt() |>
+  tab_source_note(
+    source_note = md("White-collar and blue-collar definitions follow the discontinued BLS National Compensation Survey Table 2D groupings, with `other_services_share` defined as the residual category: [BLS Table 2D](https://www.bls.gov/eci/factsheets/national-compensation-survey-classification-systems-mapping-files.htm).")
+  ) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  cols_width(
+    `Regression Variable` ~ px(140),
+    `Broad Occupation Types Included` ~ px(300),
+    Examples ~ px(260),
+    `Regression Role` ~ px(140)
+  )
+```
+
+```{r}
+#| tbl-cap: "Exact OCC1990-to-broad-occupation crosswalk used in the memo."
+
+cps_occ_codebook <- ipums_val_labels(
+  read_ipums_ddi(here("data", "CPS", "cps_unified.xml")),
+  "OCC1990"
+) |>
+  transmute(
+    occ1990 = val,
+    occ1990_name = lbl,
+    broad_group = case_when(
+      between(val, 3, 389) ~ "White Collar",
+      between(val, 473, 889) ~ "Blue Collar",
+      TRUE ~ "Other Services"
+    )
+  )
+
+datatable(
+  cps_occ_codebook,
+  rownames = FALSE,
+  filter = "top",
+  options = list(pageLength = 20, scrollX = TRUE),
+  caption = htmltools::tags$caption(
+    style = "caption-side: top; text-align: left;",
+    "Each OCC1990 code, its IPUMS occupation label, and the broad category assignment used in the memo."
+  )
+)
+```
+
 ## Useful Occupation And Work-Background Measures
 
 ```{r}
@@ -1727,25 +2240,25 @@ IPUMS CPS gives a workable path to this because occupation and class-of-worker v
 
 tibble(
   Measure = c(
-    "Professional / managerial share of unemployed",
-    "Service share of unemployed",
     "Blue-collar share of unemployed",
+    "White-collar share of unemployed",
+    "Other-services share of unemployed",
     "Private-sector share of unemployed with prior job",
     "Professional / managerial share of permanent job losers",
     "Professional / managerial share of temporary layoffs"
   ),
   `Why It Helps` = c(
-    "Captures white-collar unemployment concentration",
-    "Contrasts lower-wage service-sector unemployment",
     "Captures construction / manufacturing / production exposure",
+    "Captures professional, technical, managerial, sales, and administrative-support unemployment concentration",
+    "Provides the omitted comparison group for the broad occupation split",
     "Separates private-sector from other prior-job backgrounds",
     "Targets the severance/claim-propensity story more directly",
     "Helps distinguish furlough-style layoffs from permanent separations"
   ),
   `Use In Regression` = c(
-    "Main effect or interaction",
     "Control",
-    "Control",
+    "Preferred next extension",
+    "Omitted reference category",
     "Control",
     "Preferred interaction variable",
     "Robustness / mechanism"
@@ -1776,44 +2289,39 @@ The cleanest interaction is probably not with all unemployed persons, but with *
 
 # Preferred Regression Extensions
 
-The baseline model remains:
-
-$$
-\text{takeup}_{st} = \beta_1 \text{NewEntrantShare}_{st} + \beta_2 \text{MigrantShare}_{st} + \alpha_s + \gamma_t + \varepsilon_{st}
-$$
-
-The next useful extension is:
+The implemented baseline model is:
 
 $$
 \text{takeup}_{st} =
 \beta_1 \text{NewEntrantShare}_{st} +
-\beta_2 \text{MigrantShare}_{st} +
-\beta_3 \text{WhiteCollarShare}_{st} +
+\beta_2 \text{NoncitizenShare}_{st} +
+\beta_3 \text{BlueCollarShare}_{st} +
+\beta_4 \text{WorkingAgeShare}_{st} +
 \alpha_s + \gamma_t + \varepsilon_{st}
 $$
 
-As a suggestive heterogeneity test (not a clean mechanism test for severance), an exploratory extension is:
+This is a deliberately conservative first step:
+
+- `new_entrant_share` gets at places with more first-time job seekers and turnover near the edge of UI eligibility
+- `noncitizen_share` gets at places with larger immigrant unemployment shares and potentially larger access or eligibility frictions
+- `blue_collar_share` gets at shifts in industry and occupation mix
+- `working_age_25_54_share` gets at age composition in the unemployed pool
+
+All specifications are estimated with **annual state population weights**, repeated within year for monthly and quarterly panels.
+
+The next useful extension, once this baseline has been digested, is:
 
 $$
 \text{takeup}_{st} =
 \beta_1 \text{NewEntrantShare}_{st} +
-\beta_2 \text{MigrantShare}_{st} +
-\beta_3 \text{WhiteCollarJobLoserShare}_{st} +
-\beta_4 \left(\text{MigrantShare}_{st} \times \text{WhiteCollarJobLoserShare}_{st}\right) +
+\beta_2 \text{NoncitizenShare}_{st} +
+\beta_3 \text{BlueCollarShare}_{st} +
+\beta_4 \text{WorkingAgeShare}_{st} +
+\beta_5 \text{WhiteCollarShare}_{st} +
 \alpha_s + \gamma_t + \varepsilon_{st}
 $$
 
-And the most mechanism-oriented version would add controls for reason-for-unemployment composition:
-
-$$
-\text{takeup}_{st} =
-\beta_1 \text{NewEntrantShare}_{st} +
-\beta_2 \text{MigrantShare}_{st} +
-\beta_3 \text{PermanentLoserShare}_{st} +
-\beta_4 \text{TempLayoffShare}_{st} +
-\beta_5 \text{WhiteCollarPermanentLoserShare}_{st} +
-\alpha_s + \gamma_t + \varepsilon_{st}
-$$
+where `WorkingAgeShare` refers to the unemployed share ages **25-54**. This fuller occupation split omits `OtherServicesShare`, so the coefficients on `BlueCollarShare` and `WhiteCollarShare` are both interpreted relative to the residual Other Services group.
 
 ## Empirical Priority Order
 
@@ -1823,17 +2331,17 @@ $$
 tibble(
   Step = c(
     "1. Baseline composition model",
-    "2. Add occupation controls",
-    "3. Add job-loser occupation interactions",
-    "4. Add UI policy / burden controls",
-    "5. Explore richer industry composition"
+    "2. Pandemic robustness",
+    "3. Add white-collar share",
+    "4. Add job-loser mechanism variables",
+    "5. Add UI policy / burden controls"
   ),
   Purpose = c(
-    "Test whether take-up covaries with new entrants and migrant proxies",
-    "Check whether white-collar composition matters directly",
-    "Probe severance / claim-propensity mechanisms",
-    "Separate composition effects from administrative-friction effects",
-    "Assess whether occupation or industry detail changes the story"
+    "Estimate the weighted four-control baseline: new entrants, noncitizens, blue-collar share, and prime-age share",
+    "Check whether the baseline survives excluding the pandemic-distortion window",
+    "Then estimate the fuller three-way occupation split by adding white-collar share, so that white-collar and blue-collar unemployment are both interpreted relative to omitted Other Services",
+    "Then probe severance / claim-propensity channels through permanent job losers, temporary layoffs, and white-collar permanent job losers",
+    "Only after that, separate composition effects from administrative-friction effects"
   )
 ) |>
   gt() |>
@@ -1855,51 +2363,82 @@ The project is empirically feasible with currently available data.
 The cleanest version of the design is:
 
 - build a **monthly state panel**
-- use a **take-up ratio** as the outcome
+- use a **covered-employment-normalized claims outcome** as the baseline administrative scale
 - construct **new entrant share** from `WHYUNEMP`
-- use **foreign-born share** or **noncitizen share** as the migrant proxy
-- add occupation composition and job-loser interactions as the main extension
-- estimate models with **state FE and date FE**, clustering standard errors by state
+- use **noncitizen share** as the baseline migrant proxy
+- control for **blue-collar share** and **working-age (25-54) share**
+- estimate models with **state FE and date FE**, clustering standard errors by state and weighting by annual state population
 
 The strongest immediate next step is therefore to move from conceptual discussion to data assembly and estimation — which follows below.
 
 # Regression Results
 
-This section estimates the baseline fixed-effects regressions discussed above using the merged analysis-ready panels. All models use **state fixed effects** and **date fixed effects** (one dummy per period in the panel) with **standard errors clustered by state**. The three outcome variables are:
+This section now focuses on a single baseline specification. All regressions use **state fixed effects** and **date fixed effects** with **standard errors clustered by state**. The two reported outcomes are:
 
-- **CC/U**: continued claims / unemployed persons (baseline take-up ratio)
-- **IC/U**: initial claims / unemployed persons (flow-based claiming intensity)
-- **IUR**: insured unemployment rate (insured unemployment / covered employment)
+- **CC/CE**: continued claims / covered employment
+- **IC/CE**: initial claims / covered employment
 
-Each outcome is estimated at **monthly**, **quarterly**, and **yearly** frequency to (a) check robustness, and (b) diagnose attenuation from CPS measurement error in the composition regressors.
+`IUR` is omitted from the regression tables because it is redundant with `CC/CE` in this setup. Each reported outcome is estimated at **monthly**, **quarterly**, and **annual** frequency. The estimation sample is restricted to observations through **December 2025** and then further restricted to **balanced panels** with all 50 states present in every included month, quarter, or year.
 
 ```{r regression-setup}
 library(fixest)
 library(modelsummary)
 
-panel_month <- read_csv(
-  file.path("data", "final", "ui_takeup_panel_state_month_analysis_ready.csv"),
+panel_month_raw <- read_csv(
+  here("data", "final", "ui_takeup_panel_state_month_analysis_ready.csv"),
   show_col_types = FALSE
 ) |>
   mutate(
     date = as.Date(period_start),
-    year_month = paste0(year, "-", sprintf("%02d", month))
+    year_month = paste0(year, "-", sprintf("%02d", month)),
+    post_2020 = as.integer(year >= 2021L),
+    post_2022 = as.integer(year >= 2023L)
   )
 
-panel_quarter <- read_csv(
-  file.path("data", "final", "ui_takeup_panel_state_quarter_analysis_ready.csv"),
+panel_quarter_raw <- read_csv(
+  here("data", "final", "ui_takeup_panel_state_quarter_analysis_ready.csv"),
   show_col_types = FALSE
 ) |>
   mutate(
     date = as.Date(period_start),
-    year_quarter = paste0(year, "-Q", quarter)
+    year_quarter = paste0(year, "-Q", quarter),
+    post_2020 = as.integer(year >= 2021L),
+    post_2022 = as.integer(year >= 2023L)
   )
 
-panel_year <- read_csv(
-  file.path("data", "final", "ui_takeup_panel_state_year_analysis_ready.csv"),
+panel_year_raw <- read_csv(
+  here("data", "final", "ui_takeup_panel_state_year_analysis_ready.csv"),
   show_col_types = FALSE
 ) |>
-  mutate(date = as.Date(period_start))
+  mutate(
+    date = as.Date(period_start),
+    post_2020 = as.integer(year >= 2021L),
+    post_2022 = as.integer(year >= 2023L)
+  )
+
+sample_end_date <- as.Date("2025-12-31")
+expected_states <- nrow(state_meta)
+
+keep_balanced_periods <- function(data, period_var) {
+  balanced_periods <- data |>
+    count(.data[[period_var]], name = "state_count") |>
+    filter(state_count == expected_states) |>
+    pull(.data[[period_var]])
+
+  data |>
+    filter(.data[[period_var]] %in% balanced_periods)
+}
+
+panel_month_cutoff <- panel_month_raw |>
+  filter(date <= sample_end_date)
+panel_quarter_cutoff <- panel_quarter_raw |>
+  filter(date <= sample_end_date)
+panel_year_cutoff <- panel_year_raw |>
+  filter(date <= sample_end_date)
+
+panel_month <- keep_balanced_periods(panel_month_cutoff, "year_month")
+panel_quarter <- keep_balanced_periods(panel_quarter_cutoff, "year_quarter")
+panel_year <- keep_balanced_periods(panel_year_cutoff, "year")
 
 msummary_styled <- function(models, title, notes) {
   msummary(
@@ -1913,523 +2452,112 @@ msummary_styled <- function(models, title, notes) {
     tab_options(table.font.size = px(11))
 }
 
-occupation_controls <- c(
-  "white_collar_share",
-  "service_share",
-  "blue_collar_share"
+baseline_rhs <- paste(
+  "new_entrant_share",
+  "noncitizen_share",
+  "blue_collar_share",
+  "working_age_25_54_share",
+  sep = " + "
 )
 
-job_loss_controls <- c(
-  "perm_job_loser_share",
-  "temp_layoff_share",
-  "white_collar_perm_job_loser_share"
-)
-
-fit_fe_model <- function(outcome, data, time_fe, migrant_proxy = "noncitizen_share",
-                         add_occupation = FALSE, add_job_loss = FALSE) {
-  rhs_terms <- c("new_entrant_share", migrant_proxy)
-
-  if (add_occupation) {
-    rhs_terms <- c(rhs_terms, occupation_controls)
-  }
-
-  if (add_job_loss) {
-    rhs_terms <- c(rhs_terms, job_loss_controls)
-  }
-
+fit_baseline <- function(outcome, data, time_fe) {
   feols(
-    as.formula(
-      paste0(outcome, " ~ ", paste(rhs_terms, collapse = " + "), " | state + ", time_fe)
-    ),
+    as.formula(paste0(outcome, " ~ ", baseline_rhs, " | state + ", time_fe)),
     data = data,
+    weights = ~annual_population,
     cluster = ~state
   )
 }
 ```
 
-## Continued Claims / Unemployed (CC/U)
+## Baseline Controls
 
-::: {.panel-tabset}
+The baseline control set is intentionally simple and maps directly to the mechanisms discussed above.
 
-### Monthly
+```{r}
+#| tbl-cap: "Baseline controls carried in every regression."
 
-```{r reg-ccu-monthly}
-ccu_mo_nc <- feols(continued_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year_month, data = panel_month, cluster = ~state)
-ccu_mo_fb <- feols(continued_claims_per_unemployed ~ new_entrant_share + foreign_born_share | state + year_month, data = panel_month, cluster = ~state)
-ccu_mo_both <- feols(continued_claims_per_unemployed ~ new_entrant_share + noncitizen_share + foreign_born_share | state + year_month, data = panel_month, cluster = ~state)
-
-msummary_styled(
-  list("Noncitizen" = ccu_mo_nc, "Foreign-born" = ccu_mo_fb, "Both" = ccu_mo_both),
-  title = "Monthly: Continued Claims / Unemployed",
-  notes = "State and month-year FE. SEs clustered by state."
-)
-```
-
-### Quarterly
-
-```{r reg-ccu-quarterly}
-ccu_qr_nc <- feols(continued_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year_quarter, data = panel_quarter, cluster = ~state)
-ccu_qr_fb <- feols(continued_claims_per_unemployed ~ new_entrant_share + foreign_born_share | state + year_quarter, data = panel_quarter, cluster = ~state)
-ccu_qr_both <- feols(continued_claims_per_unemployed ~ new_entrant_share + noncitizen_share + foreign_born_share | state + year_quarter, data = panel_quarter, cluster = ~state)
-
-msummary_styled(
-  list("Noncitizen" = ccu_qr_nc, "Foreign-born" = ccu_qr_fb, "Both" = ccu_qr_both),
-  title = "Quarterly: Continued Claims / Unemployed",
-  notes = "State and quarter-year FE. SEs clustered by state."
-)
-```
-
-### Yearly
-
-```{r reg-ccu-yearly}
-ccu_yr_nc <- feols(continued_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year, data = panel_year, cluster = ~state)
-ccu_yr_fb <- feols(continued_claims_per_unemployed ~ new_entrant_share + foreign_born_share | state + year, data = panel_year, cluster = ~state)
-ccu_yr_both <- feols(continued_claims_per_unemployed ~ new_entrant_share + noncitizen_share + foreign_born_share | state + year, data = panel_year, cluster = ~state)
-
-msummary_styled(
-  list("Noncitizen" = ccu_yr_nc, "Foreign-born" = ccu_yr_fb, "Both" = ccu_yr_both),
-  title = "Yearly: Continued Claims / Unemployed",
-  notes = "State and year FE. SEs clustered by state."
-)
-```
-
-:::
-
-## Initial Claims / Unemployed (IC/U)
-
-::: {.panel-tabset}
-
-### Monthly
-
-```{r reg-icu-monthly}
-icu_mo_nc <- feols(initial_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year_month, data = panel_month, cluster = ~state)
-icu_mo_fb <- feols(initial_claims_per_unemployed ~ new_entrant_share + foreign_born_share | state + year_month, data = panel_month, cluster = ~state)
-
-msummary_styled(
-  list("Noncitizen" = icu_mo_nc, "Foreign-born" = icu_mo_fb),
-  title = "Monthly: Initial Claims / Unemployed",
-  notes = "State and month-year FE. SEs clustered by state."
-)
-```
-
-### Quarterly
-
-```{r reg-icu-quarterly}
-icu_qr_nc <- feols(initial_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year_quarter, data = panel_quarter, cluster = ~state)
-icu_qr_fb <- feols(initial_claims_per_unemployed ~ new_entrant_share + foreign_born_share | state + year_quarter, data = panel_quarter, cluster = ~state)
-
-msummary_styled(
-  list("Noncitizen" = icu_qr_nc, "Foreign-born" = icu_qr_fb),
-  title = "Quarterly: Initial Claims / Unemployed",
-  notes = "State and quarter-year FE. SEs clustered by state."
-)
-```
-
-### Yearly
-
-```{r reg-icu-yearly}
-icu_yr_nc <- feols(initial_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year, data = panel_year, cluster = ~state)
-icu_yr_fb <- feols(initial_claims_per_unemployed ~ new_entrant_share + foreign_born_share | state + year, data = panel_year, cluster = ~state)
-
-msummary_styled(
-  list("Noncitizen" = icu_yr_nc, "Foreign-born" = icu_yr_fb),
-  title = "Yearly: Initial Claims / Unemployed",
-  notes = "State and year FE. SEs clustered by state."
-)
-```
-
-:::
-
-## Insured Unemployment Rate (IUR)
-
-::: {.panel-tabset}
-
-### Monthly
-
-```{r reg-iur-monthly}
-iur_mo_nc <- feols(insured_unemployment_rate_share ~ new_entrant_share + noncitizen_share | state + year_month, data = panel_month, cluster = ~state)
-iur_mo_fb <- feols(insured_unemployment_rate_share ~ new_entrant_share + foreign_born_share | state + year_month, data = panel_month, cluster = ~state)
-
-msummary_styled(
-  list("Noncitizen" = iur_mo_nc, "Foreign-born" = iur_mo_fb),
-  title = "Monthly: Insured Unemployment Rate",
-  notes = "State and month-year FE. SEs clustered by state."
-)
-```
-
-### Quarterly
-
-```{r reg-iur-quarterly}
-iur_qr_nc <- feols(insured_unemployment_rate_share ~ new_entrant_share + noncitizen_share | state + year_quarter, data = panel_quarter, cluster = ~state)
-iur_qr_fb <- feols(insured_unemployment_rate_share ~ new_entrant_share + foreign_born_share | state + year_quarter, data = panel_quarter, cluster = ~state)
-
-msummary_styled(
-  list("Noncitizen" = iur_qr_nc, "Foreign-born" = iur_qr_fb),
-  title = "Quarterly: Insured Unemployment Rate",
-  notes = "State and quarter-year FE. SEs clustered by state."
-)
-```
-
-### Yearly
-
-```{r reg-iur-yearly}
-iur_yr_nc <- feols(insured_unemployment_rate_share ~ new_entrant_share + noncitizen_share | state + year, data = panel_year, cluster = ~state)
-iur_yr_fb <- feols(insured_unemployment_rate_share ~ new_entrant_share + foreign_born_share | state + year, data = panel_year, cluster = ~state)
-
-msummary_styled(
-  list("Noncitizen" = iur_yr_nc, "Foreign-born" = iur_yr_fb),
-  title = "Yearly: Insured Unemployment Rate",
-  notes = "State and year FE. SEs clustered by state."
-)
-```
-
-:::
-
-## Occupation Composition And Severance-Channel Extensions
-
-The baseline models above ask whether take-up varies with **new entrant** and **migrant** composition. That is useful for the eligibility story, but it does not directly test the severance / white-collar channel. A better test is to ask whether take-up remains low after controlling for the **occupation mix of unemployment**, and whether it is especially low when unemployment is concentrated among **white-collar permanent job losers** rather than among workers on temporary layoff.
-
-The preferred occupation-control extension therefore adds three broad unemployment-composition controls:
-
-- `white_collar_share`: unemployed workers in broad white-collar occupations (`OCC1990` 3-400)
-- `service_share`: unemployed workers in service occupations (`OCC1990` 401-470)
-- `blue_collar_share`: unemployed workers in blue-collar occupations (`OCC1990` 471-889)
-
-The mechanism-oriented extension then adds:
-
-- `perm_job_loser_share`
-- `temp_layoff_share`
-- `white_collar_perm_job_loser_share`
-
-If the white-collar severance story is important, the expected sign is **negative** on `white_collar_share` or, more directly, on `white_collar_perm_job_loser_share`.
-
-### Monthly Nested Specifications (Preferred Noncitizen Proxy)
-
-```{r occupation-model-setup}
-ccu_mo_occ <- fit_fe_model(
-  "continued_claims_per_unemployed",
-  panel_month,
-  "year_month",
-  add_occupation = TRUE
-)
-ccu_mo_mech <- fit_fe_model(
-  "continued_claims_per_unemployed",
-  panel_month,
-  "year_month",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-
-icu_mo_occ <- fit_fe_model(
-  "initial_claims_per_unemployed",
-  panel_month,
-  "year_month",
-  add_occupation = TRUE
-)
-icu_mo_mech <- fit_fe_model(
-  "initial_claims_per_unemployed",
-  panel_month,
-  "year_month",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-
-iur_mo_occ <- fit_fe_model(
-  "insured_unemployment_rate_share",
-  panel_month,
-  "year_month",
-  add_occupation = TRUE
-)
-iur_mo_mech <- fit_fe_model(
-  "insured_unemployment_rate_share",
-  panel_month,
-  "year_month",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-
-ccu_qr_occ <- fit_fe_model(
-  "continued_claims_per_unemployed",
-  panel_quarter,
-  "year_quarter",
-  add_occupation = TRUE
-)
-ccu_qr_mech <- fit_fe_model(
-  "continued_claims_per_unemployed",
-  panel_quarter,
-  "year_quarter",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-icu_qr_occ <- fit_fe_model(
-  "initial_claims_per_unemployed",
-  panel_quarter,
-  "year_quarter",
-  add_occupation = TRUE
-)
-icu_qr_mech <- fit_fe_model(
-  "initial_claims_per_unemployed",
-  panel_quarter,
-  "year_quarter",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-iur_qr_occ <- fit_fe_model(
-  "insured_unemployment_rate_share",
-  panel_quarter,
-  "year_quarter",
-  add_occupation = TRUE
-)
-iur_qr_mech <- fit_fe_model(
-  "insured_unemployment_rate_share",
-  panel_quarter,
-  "year_quarter",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-
-ccu_yr_occ <- fit_fe_model(
-  "continued_claims_per_unemployed",
-  panel_year,
-  "year",
-  add_occupation = TRUE
-)
-ccu_yr_mech <- fit_fe_model(
-  "continued_claims_per_unemployed",
-  panel_year,
-  "year",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-icu_yr_occ <- fit_fe_model(
-  "initial_claims_per_unemployed",
-  panel_year,
-  "year",
-  add_occupation = TRUE
-)
-icu_yr_mech <- fit_fe_model(
-  "initial_claims_per_unemployed",
-  panel_year,
-  "year",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-iur_yr_occ <- fit_fe_model(
-  "insured_unemployment_rate_share",
-  panel_year,
-  "year",
-  add_occupation = TRUE
-)
-iur_yr_mech <- fit_fe_model(
-  "insured_unemployment_rate_share",
-  panel_year,
-  "year",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-
-ccu_mo_mech_fb <- fit_fe_model(
-  "continued_claims_per_unemployed",
-  panel_month,
-  "year_month",
-  migrant_proxy = "foreign_born_share",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-ccu_qr_mech_fb <- fit_fe_model(
-  "continued_claims_per_unemployed",
-  panel_quarter,
-  "year_quarter",
-  migrant_proxy = "foreign_born_share",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-ccu_yr_mech_fb <- fit_fe_model(
-  "continued_claims_per_unemployed",
-  panel_year,
-  "year",
-  migrant_proxy = "foreign_born_share",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-
-icu_mo_mech_fb <- fit_fe_model(
-  "initial_claims_per_unemployed",
-  panel_month,
-  "year_month",
-  migrant_proxy = "foreign_born_share",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-icu_qr_mech_fb <- fit_fe_model(
-  "initial_claims_per_unemployed",
-  panel_quarter,
-  "year_quarter",
-  migrant_proxy = "foreign_born_share",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-icu_yr_mech_fb <- fit_fe_model(
-  "initial_claims_per_unemployed",
-  panel_year,
-  "year",
-  migrant_proxy = "foreign_born_share",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-
-iur_mo_mech_fb <- fit_fe_model(
-  "insured_unemployment_rate_share",
-  panel_month,
-  "year_month",
-  migrant_proxy = "foreign_born_share",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-iur_qr_mech_fb <- fit_fe_model(
-  "insured_unemployment_rate_share",
-  panel_quarter,
-  "year_quarter",
-  migrant_proxy = "foreign_born_share",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-iur_yr_mech_fb <- fit_fe_model(
-  "insured_unemployment_rate_share",
-  panel_year,
-  "year",
-  migrant_proxy = "foreign_born_share",
-  add_occupation = TRUE,
-  add_job_loss = TRUE
-)
-```
-
-::: {.panel-tabset}
-
-### CC/U
-
-```{r occ-monthly-ccu}
-msummary_styled(
-  list(
-    "Baseline" = ccu_mo_nc,
-    "+ Occupation" = ccu_mo_occ,
-    "+ Job-Loss Mix" = ccu_mo_mech
+tibble(
+  Control = c(
+    "`new_entrant_share`",
+    "`noncitizen_share`",
+    "`blue_collar_share`",
+    "`working_age_25_54_share`"
   ),
-  title = "Monthly Nested Specifications: Continued Claims / Unemployed",
-  notes = "All models include state and month-year FE with SEs clustered by state. Preferred migrant proxy = noncitizen share."
-)
-```
-
-### IC/U
-
-```{r occ-monthly-icu}
-msummary_styled(
-  list(
-    "Baseline" = icu_mo_nc,
-    "+ Occupation" = icu_mo_occ,
-    "+ Job-Loss Mix" = icu_mo_mech
-  ),
-  title = "Monthly Nested Specifications: Initial Claims / Unemployed",
-  notes = "All models include state and month-year FE with SEs clustered by state. Preferred migrant proxy = noncitizen share."
-)
-```
-
-### IUR
-
-```{r occ-monthly-iur}
-msummary_styled(
-  list(
-    "Baseline" = iur_mo_nc,
-    "+ Occupation" = iur_mo_occ,
-    "+ Job-Loss Mix" = iur_mo_mech
-  ),
-  title = "Monthly Nested Specifications: Insured Unemployment Rate",
-  notes = "All models include state and month-year FE with SEs clustered by state. Preferred migrant proxy = noncitizen share."
-)
-```
-
-:::
-
-### Mechanism-Oriented Specifications Across Frequencies
-
-::: {.panel-tabset}
-
-### CC/U
-
-```{r occ-frequency-ccu}
-msummary_styled(
-  list("Monthly" = ccu_mo_mech, "Quarterly" = ccu_qr_mech, "Yearly" = ccu_yr_mech),
-  title = "Occupation + Job-Loss Controls Across Frequencies: CC/U",
-  notes = "State and date FE. SEs clustered by state. Preferred migrant proxy = noncitizen share."
-)
-```
-
-### IC/U
-
-```{r occ-frequency-icu}
-msummary_styled(
-  list("Monthly" = icu_mo_mech, "Quarterly" = icu_qr_mech, "Yearly" = icu_yr_mech),
-  title = "Occupation + Job-Loss Controls Across Frequencies: IC/U",
-  notes = "State and date FE. SEs clustered by state. Preferred migrant proxy = noncitizen share."
-)
-```
-
-### IUR
-
-```{r occ-frequency-iur}
-msummary_styled(
-  list("Monthly" = iur_mo_mech, "Quarterly" = iur_qr_mech, "Yearly" = iur_yr_mech),
-  title = "Occupation + Job-Loss Controls Across Frequencies: IUR",
-  notes = "State and date FE. SEs clustered by state. Preferred migrant proxy = noncitizen share."
-)
-```
-
-:::
-
-```{r occ-key-results}
-#| tbl-cap: "Key coefficients from the occupation and severance-channel extensions."
-
-occupation_key_results <- bind_rows(
-  broom::tidy(ccu_mo_mech) |> mutate(outcome = "CC/U", frequency = "Monthly"),
-  broom::tidy(ccu_qr_mech) |> mutate(outcome = "CC/U", frequency = "Quarterly"),
-  broom::tidy(ccu_yr_mech) |> mutate(outcome = "CC/U", frequency = "Yearly"),
-  broom::tidy(icu_mo_mech) |> mutate(outcome = "IC/U", frequency = "Monthly"),
-  broom::tidy(icu_qr_mech) |> mutate(outcome = "IC/U", frequency = "Quarterly"),
-  broom::tidy(icu_yr_mech) |> mutate(outcome = "IC/U", frequency = "Yearly"),
-  broom::tidy(iur_mo_mech) |> mutate(outcome = "IUR", frequency = "Monthly"),
-  broom::tidy(iur_qr_mech) |> mutate(outcome = "IUR", frequency = "Quarterly"),
-  broom::tidy(iur_yr_mech) |> mutate(outcome = "IUR", frequency = "Yearly")
+  `What It Proxies For` = c(
+    "Places with more first-time job seekers and more labor-market turnover at the margin of UI eligibility",
+    "Places with larger immigrant unemployment shares and potentially larger access / eligibility frictions",
+    "Changes in industry / occupation mix toward blue-collar unemployment",
+    "Age composition of unemployment, captured as the share of unemployed workers ages 25 to 54"
+  )
 ) |>
-  filter(term %in% c(
-    "new_entrant_share",
-    "white_collar_share",
-    "perm_job_loser_share",
-    "temp_layoff_share",
-    "white_collar_perm_job_loser_share"
-  )) |>
-  mutate(
-    term = recode(
-      term,
-      new_entrant_share = "New entrant share",
-      white_collar_share = "White-collar share",
-      perm_job_loser_share = "Permanent job loser share",
-      temp_layoff_share = "Temporary layoff share",
-      white_collar_perm_job_loser_share = "White-collar permanent job loser share"
-    ),
-    estimate_fmt = sprintf("%.3f", estimate),
-    se_fmt = sprintf("(%.3f)", std.error),
-    p_fmt = sprintf("%.3f", p.value)
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
   ) |>
-  select(
-    Outcome = outcome,
-    Frequency = frequency,
-    Term = term,
-    Estimate = estimate_fmt,
-    `Std. Error` = se_fmt,
-    `P-value` = p_fmt
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  cols_width(
+    Control ~ px(160),
+    `What It Proxies For` ~ px(520)
+  )
+```
+
+## Panel Balance Checks
+
+```{r regression-balance-checks}
+balance_summary <- bind_rows(
+  tibble(
+    Frequency = "Monthly",
+    Sample = c("Through 2025 cutoff", "Balanced through 2025"),
+    States = c(n_distinct(panel_month_cutoff$state), n_distinct(panel_month$state)),
+    Periods = c(n_distinct(panel_month_cutoff$year_month), n_distinct(panel_month$year_month)),
+    Rows = c(nrow(panel_month_cutoff), nrow(panel_month)),
+    `Expected Rows` = c(
+      n_distinct(panel_month_cutoff$year_month) * expected_states,
+      n_distinct(panel_month$year_month) * expected_states
+    )
+  ),
+  tibble(
+    Frequency = "Quarterly",
+    Sample = c("Through 2025 cutoff", "Balanced through 2025"),
+    States = c(n_distinct(panel_quarter_cutoff$state), n_distinct(panel_quarter$state)),
+    Periods = c(n_distinct(panel_quarter_cutoff$year_quarter), n_distinct(panel_quarter$year_quarter)),
+    Rows = c(nrow(panel_quarter_cutoff), nrow(panel_quarter)),
+    `Expected Rows` = c(
+      n_distinct(panel_quarter_cutoff$year_quarter) * expected_states,
+      n_distinct(panel_quarter$year_quarter) * expected_states
+    )
+  ),
+  tibble(
+    Frequency = "Annual",
+    Sample = c("Through 2025 cutoff", "Balanced through 2025"),
+    States = c(n_distinct(panel_year_cutoff$state), n_distinct(panel_year$state)),
+    Periods = c(n_distinct(panel_year_cutoff$year), n_distinct(panel_year$year)),
+    Rows = c(nrow(panel_year_cutoff), nrow(panel_year)),
+    `Expected Rows` = c(
+      n_distinct(panel_year_cutoff$year) * expected_states,
+      n_distinct(panel_year$year) * expected_states
+    )
+  )
+) |>
+  mutate(
+    Balanced = if_else(Rows == `Expected Rows`, "Yes", "No"),
+    `Rows Lost vs Cutoff` = c(
+      0L,
+      nrow(panel_month_cutoff) - nrow(panel_month),
+      0L,
+      nrow(panel_quarter_cutoff) - nrow(panel_quarter),
+      0L,
+      nrow(panel_year_cutoff) - nrow(panel_year)
+    )
   )
 
-occupation_key_results |>
+balance_summary |>
   gt() |>
   tab_options(
     table.font.size = px(11),
@@ -2442,294 +2570,469 @@ occupation_key_results |>
   )
 ```
 
-## Attenuation Diagnostic: Coefficients Across Frequencies
+## Baseline Estimates
 
-If CPS measurement error is attenuating the monthly estimates, coefficients should grow in magnitude as we move to quarterly and yearly panels where CPS composition shares are less noisy.
+```{r baseline-models}
+ccu_mo_base <- fit_baseline("continued_claims_per_covered_employment", panel_month, "year_month")
+ccu_qr_base <- fit_baseline("continued_claims_per_covered_employment", panel_quarter, "year_quarter")
+ccu_yr_base <- fit_baseline("continued_claims_per_covered_employment", panel_year, "year")
 
-```{r reg-coef-comparison}
-coef_comparison <- bind_rows(
-  broom::tidy(ccu_mo_nc, conf.int = TRUE) |> mutate(frequency = "Monthly", outcome = "CC/U"),
-  broom::tidy(ccu_qr_nc, conf.int = TRUE) |> mutate(frequency = "Quarterly", outcome = "CC/U"),
-  broom::tidy(ccu_yr_nc, conf.int = TRUE) |> mutate(frequency = "Yearly", outcome = "CC/U"),
-  broom::tidy(icu_mo_nc, conf.int = TRUE) |> mutate(frequency = "Monthly", outcome = "IC/U"),
-  broom::tidy(icu_qr_nc, conf.int = TRUE) |> mutate(frequency = "Quarterly", outcome = "IC/U"),
-  broom::tidy(icu_yr_nc, conf.int = TRUE) |> mutate(frequency = "Yearly", outcome = "IC/U"),
-  broom::tidy(iur_mo_nc, conf.int = TRUE) |> mutate(frequency = "Monthly", outcome = "IUR"),
-  broom::tidy(iur_qr_nc, conf.int = TRUE) |> mutate(frequency = "Quarterly", outcome = "IUR"),
-  broom::tidy(iur_yr_nc, conf.int = TRUE) |> mutate(frequency = "Yearly", outcome = "IUR")
-) |>
-  filter(term != "(Intercept)") |>
-  mutate(
-    frequency = factor(frequency, levels = c("Monthly", "Quarterly", "Yearly")),
-    term_label = case_when(
-      term == "new_entrant_share" ~ "New Entrant Share",
-      term == "noncitizen_share" ~ "Noncitizen Share",
-      TRUE ~ term
-    )
-  )
-
-ggplot(coef_comparison, aes(x = frequency, y = estimate, color = outcome)) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
-  geom_pointrange(
-    aes(ymin = conf.low, ymax = conf.high),
-    position = position_dodge(width = 0.4),
-    size = 0.5
-  ) +
-  facet_wrap(~term_label, scales = "free_y") +
-  scale_color_manual(values = c("CC/U" = "#0073C2", "IC/U" = "#EFC000", "IUR" = "#CD534C")) +
-  labs(
-    title = "Coefficient Estimates Across Panel Frequencies",
-    subtitle = "Point estimates with 95% CIs (state-clustered SEs). Noncitizen proxy specification.",
-    x = "Panel Frequency",
-    y = "Coefficient Estimate",
-    color = "Outcome"
-  ) +
-  theme_report
+icu_mo_base <- fit_baseline("initial_claims_per_covered_employment", panel_month, "year_month")
+icu_qr_base <- fit_baseline("initial_claims_per_covered_employment", panel_quarter, "year_quarter")
+icu_yr_base <- fit_baseline("initial_claims_per_covered_employment", panel_year, "year")
 ```
 
-## Pandemic Sensitivity
+The tables below use the full-sample versus pandemic-exclusion comparison as the main presentation of the baseline estimates, since that contains the baseline coefficients and the robustness check in one place. The pandemic period involved extraordinary temporary UI expansions and administrative disruption, so the second column for each frequency excludes the main pandemic-distortion window.
 
-The pandemic period (March 2020 through September 2021) involved extraordinary UI program expansions. The tables below re-estimate all three outcomes excluding that window.
+```{r pandemic-samples}
+mo_nopan <- panel_month |>
+  filter(date < as.Date("2020-03-01") | date > as.Date("2021-12-01")) |>
+  keep_balanced_periods("year_month")
+
+qr_nopan <- panel_quarter |>
+  filter(date < as.Date("2020-01-01") | date > as.Date("2022-01-01")) |>
+  keep_balanced_periods("year_quarter")
+
+yr_nopan <- panel_year |>
+  filter(!year %in% c(2020L, 2021L)) |>
+  keep_balanced_periods("year")
+
+ccu_nopan_mo <- fit_baseline("continued_claims_per_covered_employment", mo_nopan, "year_month")
+ccu_nopan_qr <- fit_baseline("continued_claims_per_covered_employment", qr_nopan, "year_quarter")
+ccu_nopan_yr <- fit_baseline("continued_claims_per_covered_employment", yr_nopan, "year")
+
+icu_nopan_mo <- fit_baseline("initial_claims_per_covered_employment", mo_nopan, "year_month")
+icu_nopan_qr <- fit_baseline("initial_claims_per_covered_employment", qr_nopan, "year_quarter")
+icu_nopan_yr <- fit_baseline("initial_claims_per_covered_employment", yr_nopan, "year")
+```
 
 ::: {.panel-tabset}
 
-### CC/U
+### CC/CE
 
 ```{r reg-pandemic-ccu}
-mo_nopan <- panel_month |> filter(date < as.Date("2020-03-01") | date > as.Date("2021-09-01"))
-qr_nopan <- panel_quarter |> filter(date < as.Date("2020-01-01") | date > as.Date("2021-10-01"))
-
-ccu_nopan_mo <- feols(continued_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year_month, data = mo_nopan, cluster = ~state)
-ccu_nopan_qr <- feols(continued_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year_quarter, data = qr_nopan, cluster = ~state)
-
 msummary_styled(
-  list("Monthly (full)" = ccu_mo_nc, "Monthly (excl.)" = ccu_nopan_mo, "Quarterly (full)" = ccu_qr_nc, "Quarterly (excl.)" = ccu_nopan_qr),
-  title = "Pandemic Sensitivity: CC/U",
-  notes = "Excl. = March 2020 through September 2021 removed. State + date FE. SEs clustered by state."
+  list(
+    "Monthly Full" = ccu_mo_base,
+    "Monthly Excl. Pandemic" = ccu_nopan_mo,
+    "Quarterly Full" = ccu_qr_base,
+    "Quarterly Excl. Pandemic" = ccu_nopan_qr,
+    "Annual Full" = ccu_yr_base,
+    "Annual Excl. Pandemic" = ccu_nopan_yr
+  ),
+  title = "Baseline Estimates and Pandemic Robustness: Continued Claims / Covered Employment",
+  notes = "Monthly robustness excludes March 2020 through December 2021. Quarterly robustness excludes 2020 Q1 through 2021 Q4. Annual robustness excludes 2020 and 2021. The control set is unchanged, and all regressions remain weighted by annual state population."
 )
 ```
 
-### IC/U
+### IC/CE
 
 ```{r reg-pandemic-icu}
-icu_nopan_mo <- feols(initial_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year_month, data = mo_nopan, cluster = ~state)
-icu_nopan_qr <- feols(initial_claims_per_unemployed ~ new_entrant_share + noncitizen_share | state + year_quarter, data = qr_nopan, cluster = ~state)
-
 msummary_styled(
-  list("Monthly (full)" = icu_mo_nc, "Monthly (excl.)" = icu_nopan_mo, "Quarterly (full)" = icu_qr_nc, "Quarterly (excl.)" = icu_nopan_qr),
-  title = "Pandemic Sensitivity: IC/U",
-  notes = "Excl. = March 2020 through September 2021 removed. State + date FE. SEs clustered by state."
-)
-```
-
-### IUR
-
-```{r reg-pandemic-iur}
-iur_nopan_mo <- feols(insured_unemployment_rate_share ~ new_entrant_share + noncitizen_share | state + year_month, data = mo_nopan, cluster = ~state)
-iur_nopan_qr <- feols(insured_unemployment_rate_share ~ new_entrant_share + noncitizen_share | state + year_quarter, data = qr_nopan, cluster = ~state)
-
-msummary_styled(
-  list("Monthly (full)" = iur_mo_nc, "Monthly (excl.)" = iur_nopan_mo, "Quarterly (full)" = iur_qr_nc, "Quarterly (excl.)" = iur_nopan_qr),
-  title = "Pandemic Sensitivity: IUR",
-  notes = "Excl. = March 2020 through September 2021 removed. State + date FE. SEs clustered by state."
+  list(
+    "Monthly Full" = icu_mo_base,
+    "Monthly Excl. Pandemic" = icu_nopan_mo,
+    "Quarterly Full" = icu_qr_base,
+    "Quarterly Excl. Pandemic" = icu_nopan_qr,
+    "Annual Full" = icu_yr_base,
+    "Annual Excl. Pandemic" = icu_nopan_yr
+  ),
+  title = "Baseline Estimates and Pandemic Robustness: Initial Claims / Covered Employment",
+  notes = "Monthly robustness excludes March 2020 through December 2021. Quarterly robustness excludes 2020 Q1 through 2021 Q4. Annual robustness excludes 2020 and 2021. The control set is unchanged, and all regressions remain weighted by annual state population."
 )
 ```
 
 :::
 
-## Interaction Models
+## Occupation Extension
 
-The design memo proposed exploring interactions between composition regressors to test whether the effect of new entrant share on take-up depends on the migrant composition of unemployment. Specifically, if both new entrants and immigrants contribute independently to low take-up through different mechanisms (eligibility vs. access frictions), we might expect additive effects. If instead the mechanisms interact — for example, if new entrants who are also immigrants are doubly unlikely to file — the interaction should be significant.
+This extension adds `white_collar_share` to the baseline while keeping `blue_collar_share` in the model. The omitted occupation category is therefore `other_services_share`, so the white-collar and blue-collar coefficients are both interpreted relative to Other Services.
+
+```{r occupation-extension-models}
+fit_occupation_extension <- function(outcome, data, time_fe) {
+  feols(
+    as.formula(
+      paste0(
+        outcome,
+        " ~ ", baseline_rhs, " + white_collar_share | state + ",
+        time_fe
+      )
+    ),
+    data = data,
+    weights = ~annual_population,
+    cluster = ~state
+  )
+}
+
+ccu_mo_occ <- fit_occupation_extension("continued_claims_per_covered_employment", panel_month, "year_month")
+ccu_qr_occ <- fit_occupation_extension("continued_claims_per_covered_employment", panel_quarter, "year_quarter")
+ccu_yr_occ <- fit_occupation_extension("continued_claims_per_covered_employment", panel_year, "year")
+
+icu_mo_occ <- fit_occupation_extension("initial_claims_per_covered_employment", panel_month, "year_month")
+icu_qr_occ <- fit_occupation_extension("initial_claims_per_covered_employment", panel_quarter, "year_quarter")
+icu_yr_occ <- fit_occupation_extension("initial_claims_per_covered_employment", panel_year, "year")
+```
 
 ::: {.panel-tabset}
 
-### CC/U: NewEntrant x Noncitizen
+### CC/CE
 
-```{r int-ccu-nc}
-int_ccu_mo_nc <- feols(continued_claims_per_unemployed ~ new_entrant_share * noncitizen_share | state + year_month, data = panel_month, cluster = ~state)
-int_ccu_qr_nc <- feols(continued_claims_per_unemployed ~ new_entrant_share * noncitizen_share | state + year_quarter, data = panel_quarter, cluster = ~state)
-int_ccu_yr_nc <- feols(continued_claims_per_unemployed ~ new_entrant_share * noncitizen_share | state + year, data = panel_year, cluster = ~state)
-
+```{r occupation-extension-ccce}
 msummary_styled(
-  list("Monthly" = int_ccu_mo_nc, "Quarterly" = int_ccu_qr_nc, "Yearly" = int_ccu_yr_nc),
-  title = "CC/U: New Entrant Share x Noncitizen Share Interaction",
-  notes = "State + date FE. SEs clustered by state."
+  list("Monthly" = ccu_mo_occ, "Quarterly" = ccu_qr_occ, "Annual" = ccu_yr_occ),
+  title = "Occupation Extension with Other Services Omitted: Continued Claims / Covered Employment",
+  notes = "All models include state and date fixed effects with state-clustered standard errors and annual state population weights. `blue_collar_share` remains in the model, `white_collar_share` is added, and the omitted occupation category is `other_services_share`."
 )
 ```
 
-### CC/U: NewEntrant x ForeignBorn
+- `new_entrant_share` is negative at monthly, quarterly, and annual frequency, with the quarterly estimate especially informative because pooling months likely reduces CPS measurement noise.
+- `white_collar_share` is also negative and statistically significant across all three frequencies, indicating lower continuing-claims take-up where unemployment is more white collar, relative to the omitted Other Services category.
+- `working_age_25_54_share` is positive, which is consistent with higher take-up where the unemployed pool contains more prime-age workers who are more plausibly attached to the labor market and therefore more likely to claim UI.
+- `noncitizen_share` remains close to zero and statistically insignificant, suggesting little evidence that take-up variation is being driven by the migrant-eligibility channel, at least as captured by this proxy.
+- `blue_collar_share` is not precisely different from Other Services once `white_collar_share` is included, suggesting the main occupation result is really about lower take-up in white-collar unemployment rather than unusually high take-up in blue-collar unemployment.
 
-```{r int-ccu-fb}
-int_ccu_mo_fb <- feols(continued_claims_per_unemployed ~ new_entrant_share * foreign_born_share | state + year_month, data = panel_month, cluster = ~state)
-int_ccu_qr_fb <- feols(continued_claims_per_unemployed ~ new_entrant_share * foreign_born_share | state + year_quarter, data = panel_quarter, cluster = ~state)
-int_ccu_yr_fb <- feols(continued_claims_per_unemployed ~ new_entrant_share * foreign_born_share | state + year, data = panel_year, cluster = ~state)
+### IC/CE
 
+```{r occupation-extension-icce}
 msummary_styled(
-  list("Monthly" = int_ccu_mo_fb, "Quarterly" = int_ccu_qr_fb, "Yearly" = int_ccu_yr_fb),
-  title = "CC/U: New Entrant Share x Foreign-Born Share Interaction",
-  notes = "State + date FE. SEs clustered by state."
+  list("Monthly" = icu_mo_occ, "Quarterly" = icu_qr_occ, "Annual" = icu_yr_occ),
+  title = "Occupation Extension with Other Services Omitted: Initial Claims / Covered Employment",
+  notes = "All models include state and date fixed effects with state-clustered standard errors and annual state population weights. `blue_collar_share` remains in the model, `white_collar_share` is added, and the omitted occupation category is `other_services_share`."
 )
 ```
 
-### IC/U: NewEntrant x Noncitizen
-
-```{r int-icu-nc}
-int_icu_mo_nc <- feols(initial_claims_per_unemployed ~ new_entrant_share * noncitizen_share | state + year_month, data = panel_month, cluster = ~state)
-int_icu_qr_nc <- feols(initial_claims_per_unemployed ~ new_entrant_share * noncitizen_share | state + year_quarter, data = panel_quarter, cluster = ~state)
-int_icu_yr_nc <- feols(initial_claims_per_unemployed ~ new_entrant_share * noncitizen_share | state + year, data = panel_year, cluster = ~state)
-
-msummary_styled(
-  list("Monthly" = int_icu_mo_nc, "Quarterly" = int_icu_qr_nc, "Yearly" = int_icu_yr_nc),
-  title = "IC/U: New Entrant Share x Noncitizen Share Interaction",
-  notes = "State + date FE. SEs clustered by state."
-)
-```
-
-### IC/U: NewEntrant x ForeignBorn
-
-```{r int-icu-fb}
-int_icu_mo_fb <- feols(initial_claims_per_unemployed ~ new_entrant_share * foreign_born_share | state + year_month, data = panel_month, cluster = ~state)
-int_icu_qr_fb <- feols(initial_claims_per_unemployed ~ new_entrant_share * foreign_born_share | state + year_quarter, data = panel_quarter, cluster = ~state)
-int_icu_yr_fb <- feols(initial_claims_per_unemployed ~ new_entrant_share * foreign_born_share | state + year, data = panel_year, cluster = ~state)
-
-msummary_styled(
-  list("Monthly" = int_icu_mo_fb, "Quarterly" = int_icu_qr_fb, "Yearly" = int_icu_yr_fb),
-  title = "IC/U: New Entrant Share x Foreign-Born Share Interaction",
-  notes = "State + date FE. SEs clustered by state."
-)
-```
-
-### IUR: NewEntrant x Noncitizen
-
-```{r int-iur-nc}
-int_iur_mo_nc <- feols(insured_unemployment_rate_share ~ new_entrant_share * noncitizen_share | state + year_month, data = panel_month, cluster = ~state)
-int_iur_qr_nc <- feols(insured_unemployment_rate_share ~ new_entrant_share * noncitizen_share | state + year_quarter, data = panel_quarter, cluster = ~state)
-int_iur_yr_nc <- feols(insured_unemployment_rate_share ~ new_entrant_share * noncitizen_share | state + year, data = panel_year, cluster = ~state)
-
-msummary_styled(
-  list("Monthly" = int_iur_mo_nc, "Quarterly" = int_iur_qr_nc, "Yearly" = int_iur_yr_nc),
-  title = "IUR: New Entrant Share x Noncitizen Share Interaction",
-  notes = "State + date FE. SEs clustered by state."
-)
-```
-
-### IUR: NewEntrant x ForeignBorn
-
-```{r int-iur-fb}
-int_iur_mo_fb <- feols(insured_unemployment_rate_share ~ new_entrant_share * foreign_born_share | state + year_month, data = panel_month, cluster = ~state)
-int_iur_qr_fb <- feols(insured_unemployment_rate_share ~ new_entrant_share * foreign_born_share | state + year_quarter, data = panel_quarter, cluster = ~state)
-int_iur_yr_fb <- feols(insured_unemployment_rate_share ~ new_entrant_share * foreign_born_share | state + year, data = panel_year, cluster = ~state)
-
-msummary_styled(
-  list("Monthly" = int_iur_mo_fb, "Quarterly" = int_iur_qr_fb, "Yearly" = int_iur_yr_fb),
-  title = "IUR: New Entrant Share x Foreign-Born Share Interaction",
-  notes = "State + date FE. SEs clustered by state."
-)
-```
+- `new_entrant_share` is much smaller for `IC/CE` and is not a stable statistical predictor across frequencies, which complicates a simple work-history ineligibility story for initial claims.
+- `noncitizen_share` remains close to zero and statistically insignificant, suggesting little evidence that migrant-related eligibility frictions are a major driver of variation in initial claims take-up in this specification.
+- `blue_collar_share` is also muted once `white_collar_share` is included, indicating that the occupation result is not really about unusually high initial claiming in blue-collar unemployment.
+- `working_age_25_54_share` weakens as the panel is aggregated, which is striking because it suggests that larger prime-age shares of the unemployed do not robustly predict more initial claiming.
+- One possible interpretation is that, because this outcome is **initial claims**, prime-age workers with relatively strong labor-market attachment may still delay or forgo filing if they expect to find work quickly.
+- `white_collar_share` is the clearest negative signal, especially at annual frequency, which is consistent with a low-takeup story rooted in severance, lower filing urgency, or easier expected reemployment among white-collar workers.
 
 :::
 
-## Interaction Coefficient Plot
+## Interactions: Claim-Propensity Story
 
-```{r int-coef-plot}
-#| fig-height: 7
+The claim-propensity story focuses on unemployed workers with clearer prior attachment. `perm_job_loser_share` is useful here because permanent job losers are the group most plausibly positioned to claim UI if they choose to file. The interaction below asks whether the white-collar shortfall is especially pronounced when unemployment is more concentrated among permanent job losers. A **negative** interaction would be consistent with lower filing propensity, severance, or faster expected reemployment among otherwise attached white-collar job losers.
 
-int_coef <- bind_rows(
-  broom::tidy(int_ccu_mo_nc, conf.int = TRUE) |> mutate(freq = "Monthly", outcome = "CC/U", proxy = "Noncitizen"),
-  broom::tidy(int_ccu_qr_nc, conf.int = TRUE) |> mutate(freq = "Quarterly", outcome = "CC/U", proxy = "Noncitizen"),
-  broom::tidy(int_ccu_yr_nc, conf.int = TRUE) |> mutate(freq = "Yearly", outcome = "CC/U", proxy = "Noncitizen"),
-  broom::tidy(int_icu_mo_nc, conf.int = TRUE) |> mutate(freq = "Monthly", outcome = "IC/U", proxy = "Noncitizen"),
-  broom::tidy(int_icu_qr_nc, conf.int = TRUE) |> mutate(freq = "Quarterly", outcome = "IC/U", proxy = "Noncitizen"),
-  broom::tidy(int_icu_yr_nc, conf.int = TRUE) |> mutate(freq = "Yearly", outcome = "IC/U", proxy = "Noncitizen"),
-  broom::tidy(int_ccu_mo_fb, conf.int = TRUE) |> mutate(freq = "Monthly", outcome = "CC/U", proxy = "Foreign-born"),
-  broom::tidy(int_ccu_qr_fb, conf.int = TRUE) |> mutate(freq = "Quarterly", outcome = "CC/U", proxy = "Foreign-born"),
-  broom::tidy(int_ccu_yr_fb, conf.int = TRUE) |> mutate(freq = "Yearly", outcome = "CC/U", proxy = "Foreign-born"),
-  broom::tidy(int_icu_mo_fb, conf.int = TRUE) |> mutate(freq = "Monthly", outcome = "IC/U", proxy = "Foreign-born"),
-  broom::tidy(int_icu_qr_fb, conf.int = TRUE) |> mutate(freq = "Quarterly", outcome = "IC/U", proxy = "Foreign-born"),
-  broom::tidy(int_icu_yr_fb, conf.int = TRUE) |> mutate(freq = "Yearly", outcome = "IC/U", proxy = "Foreign-born")
-) |>
-  filter(grepl(":", term)) |>
-  mutate(
-    freq = factor(freq, levels = c("Monthly", "Quarterly", "Yearly")),
-    facet_label = paste0(outcome, " x ", proxy)
+```{r claim-propensity-interaction-models}
+fit_claim_propensity_interaction <- function(outcome, data, time_fe) {
+  feols(
+    as.formula(
+      paste0(
+        outcome,
+        " ~ ", baseline_rhs, " + white_collar_share + perm_job_loser_share + perm_job_loser_share:white_collar_share | state + ",
+        time_fe
+      )
+    ),
+    data = data,
+    weights = ~annual_population,
+    cluster = ~state
   )
+}
 
-ggplot(int_coef, aes(x = freq, y = estimate, color = proxy)) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
-  geom_pointrange(
-    aes(ymin = conf.low, ymax = conf.high),
-    position = position_dodge(width = 0.3),
-    size = 0.5
-  ) +
-  facet_wrap(~outcome, scales = "free_y") +
-  scale_color_manual(values = c("Noncitizen" = "#0073C2", "Foreign-born" = "#EFC000")) +
-  labs(
-    title = "Interaction Term Estimates: New Entrant x Migrant Proxy",
-    subtitle = "Point estimates with 95% CIs. Positive interaction = new entrant effect is weaker when migrant share is higher.",
-    x = "Panel Frequency",
-    y = "Interaction Coefficient",
-    color = "Migrant Proxy"
-  ) +
-  theme_report
+ccu_mo_claim <- fit_claim_propensity_interaction("continued_claims_per_covered_employment", panel_month, "year_month")
+ccu_qr_claim <- fit_claim_propensity_interaction("continued_claims_per_covered_employment", panel_quarter, "year_quarter")
+ccu_yr_claim <- fit_claim_propensity_interaction("continued_claims_per_covered_employment", panel_year, "year")
+
+icu_mo_claim <- fit_claim_propensity_interaction("initial_claims_per_covered_employment", panel_month, "year_month")
+icu_qr_claim <- fit_claim_propensity_interaction("initial_claims_per_covered_employment", panel_quarter, "year_quarter")
+icu_yr_claim <- fit_claim_propensity_interaction("initial_claims_per_covered_employment", panel_year, "year")
 ```
 
-## Discussion of Regression Findings
+::: {.panel-tabset}
 
-The expanded regression section now speaks to two separate mechanisms: the original **eligibility/composition** story based on new entrants and migrant proxies, and the **severance / white-collar** story based on occupation mix and the composition of job losers.
+### CC/CE
 
-### Baseline Composition Effects
+```{r claim-propensity-interaction-ccce}
+msummary_styled(
+  list("Monthly" = ccu_mo_claim, "Quarterly" = ccu_qr_claim, "Annual" = ccu_yr_claim),
+  title = "Claim-Propensity Interaction: Continued Claims / Covered Employment",
+  notes = "Each model adds `white_collar_share`, `perm_job_loser_share`, and `perm_job_loser_share × white_collar_share` to the weighted baseline specification. A negative interaction indicates that the relationship between permanent job losers and take-up is weaker in whiter-collar unemployment pools."
+)
+```
 
-**New entrant share is robustly associated with lower take-up.** Across all three outcomes, the coefficient on new entrant share is negative and statistically significant at monthly and quarterly frequency. The point estimates are substantively meaningful: at monthly frequency, a 10 percentage point increase in the new entrant share of unemployment is associated with a 0.9 pp decrease in the continued claims-to-unemployment ratio (CC/U), a 0.6 pp decrease in the initial claims ratio (IC/U), and a 0.06 pp decrease in the insured unemployment rate (IUR). This is consistent with the core eligibility/composition hypothesis: new entrants have no prior work history and are therefore likely to have weak or zero UI eligibility, so states and months where they constitute a larger share of the unemployed should mechanically exhibit lower UI take-up.
+In the **annual CC/CE** regression, `perm_job_loser_share` is positive and statistically significant, while the interaction `white_collar_share x perm_job_loser_share` is negative and statistically significant. This implies that state-years with larger shares of unemployed workers who are permanent job losers have higher continuing-claims take-up, consistent with stronger prior attachment and a greater propensity to claim UI. But that positive relationship is weaker in state-years where the unemployed pool is more white collar, which fits the idea that even among high-attachment unemployed workers, whiter-collar labor markets generate less continuing-claims take-up.
 
-**The new entrant coefficient exhibits a clear attenuation pattern across frequencies.** For CC/U, the coefficient roughly doubles from monthly ($-0.090$) to quarterly ($-0.161$) to yearly ($-0.219$). The same pattern holds for IC/U ($-0.062$ to $-0.095$ to $-0.145$). This is textbook evidence of classical measurement error in CPS-based composition shares. At yearly frequency the estimates lose formal significance in some specifications due to the much smaller sample (1,600 vs. 19,150 obs), but the monotonic magnitude pattern is unambiguous.
+### IC/CE
 
-### The Migrant Channel: Additive Effects
+```{r claim-propensity-interaction-icce}
+msummary_styled(
+  list("Monthly" = icu_mo_claim, "Quarterly" = icu_qr_claim, "Annual" = icu_yr_claim),
+  title = "Claim-Propensity Interaction: Initial Claims / Covered Employment",
+  notes = "Each model adds `white_collar_share`, `perm_job_loser_share`, and `perm_job_loser_share × white_collar_share` to the weighted baseline specification. A negative interaction indicates that the relationship between permanent job losers and take-up is weaker in whiter-collar unemployment pools."
+)
+```
 
-**Neither noncitizen nor foreign-born share is significantly associated with CC/U or IC/U in the additive baseline.** Coefficients are small, inconsistently signed, and never approach conventional significance. This null is informative: conditional on state and time fixed effects, cross-state variation in the immigrant composition of the unemployed does not independently explain take-up ratio variation.
+For **IC/CE**, the annual regression points in the same direction, though a bit less cleanly. Higher `perm_job_loser_share` predicts more initial claiming, but the interaction with `white_collar_share` is negative, indicating that this positive relationship is muted in whiter-collar unemployment environments. That pattern is consistent with a story in which even relatively attached white-collar workers file less aggressively, perhaps because of severance, lower filing urgency, or easier expected reemployment.
 
-**The insured unemployment rate (IUR) is an exception.** The IUR outcome shows a weakly positive noncitizen coefficient (p $\approx$ 0.08 monthly, p $\approx$ 0.07 quarterly) and a clearly positive foreign-born coefficient (significant at the 5% level at all three frequencies, growing from 0.006 monthly to 0.012 quarterly to 0.025 yearly). The positive sign is counterintuitive under the eligibility story — higher immigrant unemployment shares are associated with *higher* insured unemployment rates. This likely reflects a denominator difference: CC/U and IC/U divide claims by total CPS unemployment, while IUR divides insured unemployment by covered employment. In states with large immigrant populations, the covered employment base may differ in ways that produce this pattern.
+:::
 
-### Occupation Controls And The White-Collar Severance Channel
+## Interactions: New Entrants x Permanent Job Losers
 
-The occupation-control exercise is motivated by a simple empirical implication of the severance story. If displaced white-collar workers are less likely to file because they receive severance, expect rapid re-employment, or place little value on claiming, then UI take-up should be **lower** when unemployment is more white-collar, especially when unemployment is concentrated among **white-collar permanent job losers** rather than workers on temporary layoff.
+This interaction asks whether the new-entrant margin matters differently depending on how much of the unemployed pool consists of **permanent job losers**. A **negative** interaction would mean that the low-take-up association of new entrants is even stronger when the rest of the unemployment pool is more concentrated among plausibly attached job losers.
 
-**That pattern does not appear in the data.** Once broad occupation-composition controls are added, the coefficient on `white_collar_share` is small and statistically insignificant across CC/U, IC/U, and IUR at monthly, quarterly, and yearly frequency. The same is true for the service share. Blue-collar share is occasionally positive at monthly frequency, but that is not stable across frequencies or outcomes.
+```{r new-entrant-perm-job-loser-interaction-models}
+fit_newentrant_permjobloser_interaction <- function(outcome, data, time_fe) {
+  feols(
+    as.formula(
+      paste0(
+        outcome,
+        " ~ ", baseline_rhs, " + perm_job_loser_share + new_entrant_share:perm_job_loser_share | state + ",
+        time_fe
+      )
+    ),
+    data = data,
+    weights = ~annual_population,
+    cluster = ~state
+  )
+}
 
-**The more mechanism-oriented proxy also fails to support the severance story.** The coefficient on `white_collar_perm_job_loser_share` is never negative and significant. In the preferred noncitizen specification it is slightly **positive** for CC/U at monthly frequency (about 0.047, p $\approx$ 0.055) and otherwise small and insignificant. Replacing noncitizen share with foreign-born share leaves that conclusion unchanged.
+ccu_mo_newent_perm <- fit_newentrant_permjobloser_interaction("continued_claims_per_covered_employment", panel_month, "year_month")
+ccu_qr_newent_perm <- fit_newentrant_permjobloser_interaction("continued_claims_per_covered_employment", panel_quarter, "year_quarter")
+ccu_yr_newent_perm <- fit_newentrant_permjobloser_interaction("continued_claims_per_covered_employment", panel_year, "year")
 
-**What does matter is the reason-for-unemployment mix, not white-collar composition per se.** `temp_layoff_share` is strongly positive in every outcome and at every frequency. At monthly frequency, a 10 percentage point increase in temporary-layoff share is associated with about a **3.1 pp** higher CC/U ratio, a **1.1 pp** higher IC/U ratio, and a **0.23 pp** higher IUR. `perm_job_loser_share` is also positive for CC/U and IUR, though more modestly.
+icu_mo_newent_perm <- fit_newentrant_permjobloser_interaction("initial_claims_per_covered_employment", panel_month, "year_month")
+icu_qr_newent_perm <- fit_newentrant_permjobloser_interaction("initial_claims_per_covered_employment", panel_quarter, "year_quarter")
+icu_yr_newent_perm <- fit_newentrant_permjobloser_interaction("initial_claims_per_covered_employment", panel_year, "year")
+```
 
-**The baseline new-entrant effect weakens sharply once occupation and job-loss composition are added.** In the richest occupation-control models, the new-entrant coefficient moves close to zero and loses significance. The most plausible interpretation is that part of the baseline entrant coefficient was proxying for broader labor-force attachment and recent-job-history composition, not that the entrant channel disappears in a structural sense.
+:::: {.panel-tabset}
 
-### Interaction Effects: New Entrant x Migrant Share
+### CC/CE
 
-The interaction models reveal a pattern that the additive specifications conceal.
+```{r new-entrant-perm-job-loser-interaction-ccce}
+msummary_styled(
+  list("Monthly" = ccu_mo_newent_perm, "Quarterly" = ccu_qr_newent_perm, "Annual" = ccu_yr_newent_perm),
+  title = "New Entrants x Permanent Job Losers: Continued Claims / Covered Employment",
+  notes = "Each model adds `perm_job_loser_share` and `new_entrant_share x perm_job_loser_share` to the weighted baseline specification. A negative interaction indicates that the new-entrant penalty is stronger when unemployment is more concentrated among permanent job losers."
+)
+```
 
-**For CC/U**, the interaction between new entrant share and noncitizen share is **significantly positive** at monthly (coef = 0.975, p = 0.016) and quarterly (coef = 1.768, p = 0.048) frequency. The foreign-born interaction shows a similar pattern (monthly p = 0.038, quarterly p = 0.069). With the interaction included, the main effect of new entrant share becomes more negative ($-0.147$ vs. $-0.090$ at monthly) and the main effect of the migrant proxy turns negative (though not significant), while the interaction pulls the combined effect back toward zero at high values of both shares.
+### IC/CE
 
-**For IC/U, the interaction effects are the strongest in the entire analysis.** The NewEntrant $\times$ Noncitizen interaction is significant at all three frequencies (monthly p = 0.034, quarterly p = 0.005, yearly p = 0.014), with coefficient magnitudes growing from 0.61 monthly to 3.24 yearly. The NewEntrant $\times$ ForeignBorn interaction is even more striking: at quarterly frequency, all three terms (new entrant, foreign-born, interaction) are significant at the 0.1% level, with a large positive interaction coefficient of 1.61. At yearly frequency, the same triple significance holds (p = 0.001, p = 0.003, p = 0.008).
+```{r new-entrant-perm-job-loser-interaction-icce}
+msummary_styled(
+  list("Monthly" = icu_mo_newent_perm, "Quarterly" = icu_qr_newent_perm, "Annual" = icu_yr_newent_perm),
+  title = "New Entrants x Permanent Job Losers: Initial Claims / Covered Employment",
+  notes = "Each model adds `perm_job_loser_share` and `new_entrant_share x perm_job_loser_share` to the weighted baseline specification. A negative interaction indicates that the new-entrant penalty is stronger when unemployment is more concentrated among permanent job losers."
+)
+```
 
-**For IUR, interactions are insignificant at the 5% level across all specifications**, though the yearly NewEntrant $\times$ ForeignBorn interaction approaches marginal significance (p $\approx$ 0.055). This confirms that the IUR outcome behaves differently from the take-up ratios, where the interaction channel is strong.
+::::
 
-**Interpretation.** The positive interaction sign means the negative effect of new entrant share on take-up is *weaker* in state-months where migrant unemployment shares are higher. Put differently, the take-up penalty from having more new entrants is partially offset when the unemployed population also has a larger immigrant share. This is not what a simple "double disadvantage" story would predict. One interpretation is compositional: in states with both high new-entrant and high immigrant unemployment, these groups overlap substantially (immigrant new entrants), and the take-up ratio is already depressed enough that additional compositional shifts have diminishing marginal effects. Another is that immigrant-heavy labor markets have different UI infrastructure or labor-market features that moderate the new-entrant effect.
+- From the `new_entrant_share` perspective, a positive interaction means the depressing effect of new entrants on aggregate take-up is smaller when the unemployed pool contains more permanent job losers, because the claimant margin is then driven more by attached workers who are plausibly eligible to file.
+- From the `perm_job_loser_share` perspective, the same interaction means the positive take-up effect of permanent job losers is strongest when they are not being offset by a large weak-attachment new-entrant margin; in that sense, the coefficient captures a composition-offset relationship between highly claim-relevant and weakly claim-relevant unemployed workers.
+## Interactions: New Entrants x Post-2020
 
-The interaction pattern is robust across frequencies and strengthens at lower frequencies — consistent with a real relationship being partially masked by CPS measurement error at monthly frequency.
+This interaction asks whether the relationship between `new_entrant_share` and UI take-up changed after **2020**. Here `post_2020` equals one for **2021 onward**. A **negative** interaction would mean that the low-take-up association of new entrants became even stronger in the post-2020 period.
 
-### Pandemic Sensitivity
+```{r new-entrant-post2020-interaction-models}
+fit_newentrant_post2020_interaction <- function(outcome, data, time_fe) {
+  feols(
+    as.formula(
+      paste0(
+        outcome,
+        " ~ ", baseline_rhs, " + post_2020 + new_entrant_share:post_2020 | state + ",
+        time_fe
+      )
+    ),
+    data = data,
+    weights = ~annual_population,
+    cluster = ~state
+  )
+}
 
-Removing March 2020 through September 2021 slightly attenuates the new entrant coefficient for CC/U ($-0.090$ to $-0.077$ monthly) but does not change significance or direction. For IUR, the noncitizen coefficient strengthens when the pandemic is excluded (p = 0.08 to p = 0.009 monthly), suggesting the pandemic window added noise to that relationship.
+ccu_mo_newent_post <- fit_newentrant_post2020_interaction("continued_claims_per_covered_employment", panel_month, "year_month")
+ccu_qr_newent_post <- fit_newentrant_post2020_interaction("continued_claims_per_covered_employment", panel_quarter, "year_quarter")
+ccu_yr_newent_post <- fit_newentrant_post2020_interaction("continued_claims_per_covered_employment", panel_year, "year")
 
-### Within R-Squared and Effect Magnitudes
+icu_mo_newent_post <- fit_newentrant_post2020_interaction("initial_claims_per_covered_employment", panel_month, "year_month")
+icu_qr_newent_post <- fit_newentrant_post2020_interaction("initial_claims_per_covered_employment", panel_quarter, "year_quarter")
+icu_yr_newent_post <- fit_newentrant_post2020_interaction("initial_claims_per_covered_employment", panel_year, "year")
+```
 
-Within R-squared values are low in the baseline additive models, but they rise meaningfully once occupation and job-loss composition are added. For example, the monthly CC/U specification moves from roughly **0.3%** within-$R^2$ in the baseline to about **7.0%** in the richest occupation/job-loss model, and the yearly IUR specification rises above **12%**. This is still a fixed-effects setting where most variation is absorbed by state and time effects, but it shows that **reason-for-unemployment composition is materially more informative than white-collar occupation mix alone**.
+:::: {.panel-tabset}
 
-Within R-squared values are low across all specifications (0.1% to 1.7% in baseline, up to 3.4% with interactions at yearly frequency for IUR). This is expected — the fixed effects absorb the vast majority of variation, and what remains is cross-state deviation from the national time path. The composition channel is statistically detectable but a modest contributor to take-up variation relative to state-level institutional differences and common time shocks.
+### CC/CE
 
-### Summary
+```{r new-entrant-post2020-interaction-ccce}
+msummary_styled(
+  list("Monthly" = ccu_mo_newent_post, "Quarterly" = ccu_qr_newent_post, "Annual" = ccu_yr_newent_post),
+  title = "New Entrants x Post-2020: Continued Claims / Covered Employment",
+  notes = "Each model adds `post_2020` and `new_entrant_share x post_2020` to the weighted baseline specification. Here `post_2020` is an indicator for 2021 onward. A negative interaction indicates that the new-entrant penalty became stronger after 2020."
+)
+```
 
-The results now point to a more specific conclusion than the original memo. The **new entrant composition story** is present in the baseline regressions, but part of that association overlaps with broader work-history and unemployment-reason composition. The **migrant composition story** remains weak in additive form, though the entrant-by-migrant interactions are still informative for CC/U and IC/U. Most importantly, the **white-collar severance story is not supported by the occupation-control extension**: broad white-collar unemployment shares do not predict lower take-up, and the white-collar permanent-job-loser share is not negative. The dominant measurable composition channel in the richer models is instead the contrast between **temporary layoffs / permanent job losers**, who are much more tightly linked to UI receipt, and the rest of the unemployed population.
+### IC/CE
 
-The earlier baseline-only summary is now superseded by the occupation-control results above.
+```{r new-entrant-post2020-interaction-icce}
+msummary_styled(
+  list("Monthly" = icu_mo_newent_post, "Quarterly" = icu_qr_newent_post, "Annual" = icu_yr_newent_post),
+  title = "New Entrants x Post-2020: Initial Claims / Covered Employment",
+  notes = "Each model adds `post_2020` and `new_entrant_share x post_2020` to the weighted baseline specification. Here `post_2020` is an indicator for 2021 onward. A negative interaction indicates that the new-entrant penalty became stronger after 2020."
+)
+```
+
+::::
+
+## Interactions: New Entrants x Post-2022
+
+This interaction asks whether the relationship between `new_entrant_share` and UI take-up changed after **2022**. Here `post_2022` equals one for **2023 onward**. The motivating question is whether the post-2022 environment, including possible changes in job search and white-collar labor-market dynamics, altered the relationship between new entrants and claiming behavior. A **negative** interaction would mean that the low-take-up association of new entrants became even stronger from 2023 onward.
+
+```{r new-entrant-post2022-interaction-models}
+fit_newentrant_post2022_interaction <- function(outcome, data, time_fe) {
+  feols(
+    as.formula(
+      paste0(
+        outcome,
+        " ~ ", baseline_rhs, " + post_2022 + new_entrant_share:post_2022 | state + ",
+        time_fe
+      )
+    ),
+    data = data,
+    weights = ~annual_population,
+    cluster = ~state
+  )
+}
+
+ccu_mo_newent_post2022 <- fit_newentrant_post2022_interaction("continued_claims_per_covered_employment", panel_month, "year_month")
+ccu_qr_newent_post2022 <- fit_newentrant_post2022_interaction("continued_claims_per_covered_employment", panel_quarter, "year_quarter")
+ccu_yr_newent_post2022 <- fit_newentrant_post2022_interaction("continued_claims_per_covered_employment", panel_year, "year")
+
+icu_mo_newent_post2022 <- fit_newentrant_post2022_interaction("initial_claims_per_covered_employment", panel_month, "year_month")
+icu_qr_newent_post2022 <- fit_newentrant_post2022_interaction("initial_claims_per_covered_employment", panel_quarter, "year_quarter")
+icu_yr_newent_post2022 <- fit_newentrant_post2022_interaction("initial_claims_per_covered_employment", panel_year, "year")
+```
+
+:::: {.panel-tabset}
+
+### CC/CE
+
+```{r new-entrant-post2022-interaction-ccce}
+msummary_styled(
+  list("Monthly" = ccu_mo_newent_post2022, "Quarterly" = ccu_qr_newent_post2022, "Annual" = ccu_yr_newent_post2022),
+  title = "New Entrants x Post-2022: Continued Claims / Covered Employment",
+  notes = "Each model adds `post_2022` and `new_entrant_share x post_2022` to the weighted baseline specification. Here `post_2022` is an indicator for 2023 onward. A negative interaction indicates that the new-entrant penalty became stronger after 2022."
+)
+```
+
+### IC/CE
+
+```{r new-entrant-post2022-interaction-icce}
+msummary_styled(
+  list("Monthly" = icu_mo_newent_post2022, "Quarterly" = icu_qr_newent_post2022, "Annual" = icu_yr_newent_post2022),
+  title = "New Entrants x Post-2022: Initial Claims / Covered Employment",
+  notes = "Each model adds `post_2022` and `new_entrant_share x post_2022` to the weighted baseline specification. Here `post_2022` is an indicator for 2023 onward. A negative interaction indicates that the new-entrant penalty became stronger after 2022."
+)
+```
+
+::::
+
+## Interactions: White-Collar Share x Post-2020
+
+This interaction asks whether the relationship between `white_collar_share` and UI take-up changed after **2020**. Here `post_2020` equals one for **2021 onward**. A **negative** interaction would mean that the low-take-up association of white-collar unemployment became even stronger in the post-2020 period, consistent with pandemic-era shifts in white-collar labor markets (remote work, tech layoffs, reduced filing urgency).
+
+```{r white-collar-post2020-interaction-models}
+fit_whitecollar_post2020_interaction <- function(outcome, data, time_fe) {
+  feols(
+    as.formula(
+      paste0(
+        outcome,
+        " ~ ", baseline_rhs, " + white_collar_share + post_2020 + white_collar_share:post_2020 | state + ",
+        time_fe
+      )
+    ),
+    data = data,
+    weights = ~annual_population,
+    cluster = ~state
+  )
+}
+
+ccu_mo_wc_post2020 <- fit_whitecollar_post2020_interaction("continued_claims_per_covered_employment", panel_month, "year_month")
+ccu_qr_wc_post2020 <- fit_whitecollar_post2020_interaction("continued_claims_per_covered_employment", panel_quarter, "year_quarter")
+ccu_yr_wc_post2020 <- fit_whitecollar_post2020_interaction("continued_claims_per_covered_employment", panel_year, "year")
+
+icu_mo_wc_post2020 <- fit_whitecollar_post2020_interaction("initial_claims_per_covered_employment", panel_month, "year_month")
+icu_qr_wc_post2020 <- fit_whitecollar_post2020_interaction("initial_claims_per_covered_employment", panel_quarter, "year_quarter")
+icu_yr_wc_post2020 <- fit_whitecollar_post2020_interaction("initial_claims_per_covered_employment", panel_year, "year")
+```
+
+:::: {.panel-tabset}
+
+### CC/CE
+
+```{r white-collar-post2020-interaction-ccce}
+msummary_styled(
+  list("Monthly" = ccu_mo_wc_post2020, "Quarterly" = ccu_qr_wc_post2020, "Annual" = ccu_yr_wc_post2020),
+  title = "White-Collar Share x Post-2020: Continued Claims / Covered Employment",
+  notes = "Each model adds `white_collar_share`, `post_2020`, and `white_collar_share x post_2020` to the weighted baseline specification. Here `post_2020` is an indicator for 2021 onward. A negative interaction indicates that the white-collar take-up penalty became stronger after 2020."
+)
+```
+
+### IC/CE
+
+```{r white-collar-post2020-interaction-icce}
+msummary_styled(
+  list("Monthly" = icu_mo_wc_post2020, "Quarterly" = icu_qr_wc_post2020, "Annual" = icu_yr_wc_post2020),
+  title = "White-Collar Share x Post-2020: Initial Claims / Covered Employment",
+  notes = "Each model adds `white_collar_share`, `post_2020`, and `white_collar_share x post_2020` to the weighted baseline specification. Here `post_2020` is an indicator for 2021 onward. A negative interaction indicates that the white-collar take-up penalty became stronger after 2020."
+)
+```
+
+::::
+
+## Interactions: White-Collar Share x Post-2022
+
+This interaction asks whether the relationship between `white_collar_share` and UI take-up changed after **2022**. Here `post_2022` equals one for **2023 onward**. The motivating question is whether white-collar labor-market dynamics in the post-2022 period — including tech-sector layoffs and shifting remote-work norms — altered the relationship between white-collar unemployment composition and claiming behavior. A **negative** interaction would mean that the low-take-up association of white-collar unemployment became even stronger from 2023 onward.
+
+```{r white-collar-post2022-interaction-models}
+fit_whitecollar_post2022_interaction <- function(outcome, data, time_fe) {
+  feols(
+    as.formula(
+      paste0(
+        outcome,
+        " ~ ", baseline_rhs, " + white_collar_share + post_2022 + white_collar_share:post_2022 | state + ",
+        time_fe
+      )
+    ),
+    data = data,
+    weights = ~annual_population,
+    cluster = ~state
+  )
+}
+
+ccu_mo_wc_post2022 <- fit_whitecollar_post2022_interaction("continued_claims_per_covered_employment", panel_month, "year_month")
+ccu_qr_wc_post2022 <- fit_whitecollar_post2022_interaction("continued_claims_per_covered_employment", panel_quarter, "year_quarter")
+ccu_yr_wc_post2022 <- fit_whitecollar_post2022_interaction("continued_claims_per_covered_employment", panel_year, "year")
+
+icu_mo_wc_post2022 <- fit_whitecollar_post2022_interaction("initial_claims_per_covered_employment", panel_month, "year_month")
+icu_qr_wc_post2022 <- fit_whitecollar_post2022_interaction("initial_claims_per_covered_employment", panel_quarter, "year_quarter")
+icu_yr_wc_post2022 <- fit_whitecollar_post2022_interaction("initial_claims_per_covered_employment", panel_year, "year")
+```
+
+:::: {.panel-tabset}
+
+### CC/CE
+
+```{r white-collar-post2022-interaction-ccce}
+msummary_styled(
+  list("Monthly" = ccu_mo_wc_post2022, "Quarterly" = ccu_qr_wc_post2022, "Annual" = ccu_yr_wc_post2022),
+  title = "White-Collar Share x Post-2022: Continued Claims / Covered Employment",
+  notes = "Each model adds `white_collar_share`, `post_2022`, and `white_collar_share x post_2022` to the weighted baseline specification. Here `post_2022` is an indicator for 2023 onward. A negative interaction indicates that the white-collar take-up penalty became stronger after 2022."
+)
+```
+
+### IC/CE
+
+```{r white-collar-post2022-interaction-icce}
+msummary_styled(
+  list("Monthly" = icu_mo_wc_post2022, "Quarterly" = icu_qr_wc_post2022, "Annual" = icu_yr_wc_post2022),
+  title = "White-Collar Share x Post-2022: Initial Claims / Covered Employment",
+  notes = "Each model adds `white_collar_share`, `post_2022`, and `white_collar_share x post_2022` to the weighted baseline specification. Here `post_2022` is an indicator for 2023 onward. A negative interaction indicates that the white-collar take-up penalty became stronger after 2022."
+)
+```
+
+::::
 
 # Source Notes
 

@@ -42,10 +42,13 @@ So this report does **not** measure "employed within the next 6 calendar months"
 
 ```{r setup}
 library(tidyverse)
+library(here)
 library(ipumsr)
 library(lubridate)
 library(gt)
 library(scales)
+
+here::i_am("temporary_to_employed.qmd")
 
 theme_report <- theme_minimal(base_size = 11, base_family = "sans") +
   theme(
@@ -63,14 +66,14 @@ theme_report <- theme_minimal(base_size = 11, base_family = "sans") +
 
 theme_set(theme_report)
 
-analysis_dir <- file.path("data", "CPS", "temporary_to_employed")
+analysis_dir <- here("data", "CPS", "temporary_to_employed")
 dir.create(analysis_dir, recursive = TRUE, showWarnings = FALSE)
 
-extract_ddi_path <- file.path(analysis_dir, "cps_temp_to_employed.xml")
-extract_csv_path <- file.path(analysis_dir, "cps_temp_to_employed.csv.gz")
-monthly_transition_path <- file.path(analysis_dir, "monthly_transition_rates.csv")
-origin_record_path <- file.path(analysis_dir, "origin_records_with_followup.csv.gz")
-linkage_summary_path <- file.path(analysis_dir, "linkage_summary.csv")
+extract_ddi_path <- here("data", "CPS", "temporary_to_employed", "cps_temp_to_employed.xml")
+extract_csv_path <- here("data", "CPS", "temporary_to_employed", "cps_temp_to_employed.csv.gz")
+monthly_transition_path <- here("data", "CPS", "temporary_to_employed", "monthly_transition_rates.csv")
+origin_record_path <- here("data", "CPS", "temporary_to_employed", "origin_records_with_followup.csv.gz")
+linkage_summary_path <- here("data", "CPS", "temporary_to_employed", "linkage_summary.csv")
 ```
 
 ## Extract Definition
