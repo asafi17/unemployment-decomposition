@@ -2542,8 +2542,7 @@ plot_dominant_radar_delta <- function(profile_df, cause_name, subtitle, max_abs_
     y = 0.02,
     label = paste0(
       if_else(radial_breaks > 0, "+", ""),
-      scales::number(radial_breaks * 100, accuracy = 0.1),
-      " pp"
+      scales::number(radial_breaks * 100, accuracy = 0.1)
     )
   )
 
@@ -2557,8 +2556,8 @@ plot_dominant_radar_delta <- function(profile_df, cause_name, subtitle, max_abs_
     geom_path(
       data = filter(ring_df, abs(ring_value) <= 1e-9),
       aes(x = x, y = y, group = ring_value),
-      color = "grey55",
-      linewidth = 0.32,
+      color = "grey78",
+      linewidth = 0.30,
       linetype = "22"
     ) +
     geom_segment(
@@ -2690,7 +2689,7 @@ plot_dominant_radar_single(
 plot_dominant_radar_delta(
   dominant_profile_delta_2025,
   cause_name = "Temporary Layoff",
-  subtitle = "Calendar year 2025 minus pooled share of the same group"
+  subtitle = "Calendar year 2025 minus pooled share of the same group, percentage points"
 )
 ```
 
@@ -2738,7 +2737,7 @@ plot_dominant_radar_single(
 plot_dominant_radar_delta(
   dominant_profile_delta_2025,
   cause_name = "Permanent Job Losers",
-  subtitle = "Calendar year 2025 minus pooled share of the same group"
+  subtitle = "Calendar year 2025 minus pooled share of the same group, percentage points"
 )
 ```
 
@@ -2786,7 +2785,7 @@ plot_dominant_radar_single(
 plot_dominant_radar_delta(
   dominant_profile_delta_2025,
   cause_name = "Completed Temp Job",
-  subtitle = "Calendar year 2025 minus pooled share of the same group"
+  subtitle = "Calendar year 2025 minus pooled share of the same group, percentage points"
 )
 ```
 
@@ -2834,7 +2833,7 @@ plot_dominant_radar_single(
 plot_dominant_radar_delta(
   dominant_profile_delta_2025,
   cause_name = "Job Leavers",
-  subtitle = "Calendar year 2025 minus pooled share of the same group"
+  subtitle = "Calendar year 2025 minus pooled share of the same group, percentage points"
 )
 ```
 
@@ -2882,7 +2881,7 @@ plot_dominant_radar_single(
 plot_dominant_radar_delta(
   dominant_profile_delta_2025,
   cause_name = "Reentrants",
-  subtitle = "Calendar year 2025 minus pooled share of the same group"
+  subtitle = "Calendar year 2025 minus pooled share of the same group, percentage points"
 )
 ```
 
@@ -2930,7 +2929,7 @@ plot_dominant_radar_single(
 plot_dominant_radar_delta(
   dominant_profile_delta_2025,
   cause_name = "New Entrants",
-  subtitle = "Calendar year 2025 minus pooled share of the same group"
+  subtitle = "Calendar year 2025 minus pooled share of the same group, percentage points"
 )
 ```
 
