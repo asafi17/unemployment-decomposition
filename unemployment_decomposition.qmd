@@ -30,6 +30,7 @@ This report decomposes the unemployment rate along these dimensions to answer a 
 #| label: setup
 
 library(tidyverse)
+library(here)
 library(fredr)
 library(ggsci)      # for scale_*_jco()
 library(scales)
@@ -37,6 +38,8 @@ library(gt)
 library(lubridate)
 library(ipumsr)
 library(patchwork)
+
+here::i_am("unemployment_decomposition.qmd")
 
 # ── FRED API key ─────────────────────────────────────────────────────────
 # Set your FRED API key. Get one free at https://fred.stlouisfed.org/docs/api/api_key.html
@@ -994,8 +997,8 @@ tibble(
 # The extract includes: YEAR, MONTH, WTFINL, STATEFIP, AGE, SEX, RACE, HISPAN,
 #   EDUC, EMPSTAT, WHYUNEMP (cases 1-6), OCC1990, CLASSWKR, NATIVITY, CITIZEN
 
-path_to_ddi <- "data/CPS/cps_unified.xml"
-path_to_csv <- "data/CPS/cps_unified.csv.gz"
+path_to_ddi <- here("data", "CPS", "cps_unified.xml")
+path_to_csv <- here("data", "CPS", "cps_unified.csv.gz")
 if (!file.exists(path_to_ddi) || !file.exists(path_to_csv)) {
   stop(
     "Unified CPS data not found at ", path_to_ddi, ".\n",
@@ -2199,7 +2202,7 @@ So each spoke answers a question like: "what share of new entrants are in the do
 ```{r dominant-profile-helpers}
 #| label: dominant-profile-helpers
 
-dominant_profile <- function(data, demo_var, dimension_label) {
+profile_shares <- function(data, demo_var, dimension_label) {
   data |>
     filter(!is.na(.data[[demo_var]])) |>
     group_by(cause, .data[[demo_var]]) |>
@@ -2207,26 +2210,39 @@ dominant_profile <- function(data, demo_var, dimension_label) {
     rename(group = 2) |>
     group_by(cause) |>
     mutate(share = n / sum(n)) |>
-    slice_max(order_by = share, n = 1, with_ties = FALSE) |>
     ungroup() |>
     transmute(
       cause,
       dimension = dimension_label,
-      dominant_group = as.character(group),
+      group_key = as.character(group),
       share
     )
 }
 
-build_dominant_profile <- function(data) {
+build_profile_shares <- function(data) {
   bind_rows(
-    dominant_profile(data, "age_group", "Age"),
-    dominant_profile(data, "educ_group", "Education"),
-    dominant_profile(data, "sex_label", "Sex"),
-    dominant_profile(data, "race_eth", "Race/Ethnicity"),
-    dominant_profile(data, "occ_group4", "Occupation"),
-    dominant_profile(data, "class_label", "Class")
+    profile_shares(data, "age_group", "Age"),
+    profile_shares(data, "educ_group", "Education"),
+    profile_shares(data, "sex_label", "Sex"),
+    profile_shares(data, "race_eth", "Race/Ethnicity"),
+    profile_shares(data, "occ_group4", "Occupation"),
+    profile_shares(data, "class_label", "Class")
   ) |>
     mutate(
+      dimension = factor(
+        dimension,
+        levels = c("Age", "Education", "Sex", "Race/Ethnicity", "Occupation", "Class")
+      )
+    )
+}
+
+build_dominant_profile <- function(data) {
+  build_profile_shares(data) |>
+    group_by(cause, dimension) |>
+    slice_max(order_by = share, n = 1, with_ties = FALSE) |>
+    ungroup() |>
+    mutate(
+      dominant_group = group_key,
       dimension = factor(
         dimension,
         levels = c("Age", "Education", "Sex", "Race/Ethnicity", "Occupation", "Class")
@@ -2403,8 +2419,218 @@ plot_dominant_radar_single <- function(profile_df, cause_name, subtitle) {
     )
 }
 
+build_dominant_profile_delta <- function(current_data, reference_data) {
+  current_profile <- build_dominant_profile(current_data) |>
+    select(cause, dimension, group_key, dominant_group, share_2025 = share)
+
+  reference_profile <- build_profile_shares(reference_data) |>
+    rename(share_pooled = share)
+
+  current_profile |>
+    left_join(reference_profile, by = c("cause", "dimension", "group_key")) |>
+    mutate(
+      delta = share_2025 - share_pooled,
+      label = paste0(
+        dominant_group,
+        "\n",
+        if_else(delta > 0, "+", ""),
+        scales::number(delta * 100, accuracy = 0.1),
+        " pp"
+      )
+    ) |>
+    arrange(cause, dimension)
+}
+
+plot_dominant_radar_delta <- function(profile_df, cause_name, subtitle, max_abs_delta) {
+  plot_df <- profile_df |>
+    filter(cause == cause_name) |>
+    arrange(dimension) |>
+    mutate(axis_id = row_number())
+
+  n_axes <- nrow(plot_df)
+  angles <- pi / 2 - 2 * pi * (seq_len(n_axes) - 1) / n_axes
+  radial_breaks <- seq(-max_abs_delta, max_abs_delta, length.out = 5)
+  radial_positions <- scales::rescale(
+    radial_breaks,
+    to = c(0, 1),
+    from = c(-max_abs_delta, max_abs_delta)
+  )
+
+  point_df <- plot_df |>
+    mutate(
+      angle = angles,
+      radius = scales::rescale(
+        delta,
+        to = c(0, 1),
+        from = c(-max_abs_delta, max_abs_delta)
+      ),
+      x = radius * cos(angle),
+      y = radius * sin(angle)
+    )
+
+  closed_df <- bind_rows(point_df, slice(point_df, 1))
+
+  spoke_df <- tibble(
+    axis_id = seq_len(n_axes),
+    angle = angles,
+    x = 0,
+    y = 0,
+    xend = cos(angle),
+    yend = sin(angle)
+  )
+
+  ring_df <- map_dfr(
+    seq_along(radial_breaks),
+    \(i) {
+      tibble(
+        ring_value = radial_breaks[[i]],
+        ring_position = radial_positions[[i]],
+        axis_id = c(seq_len(n_axes), 1L),
+        angle = angles[c(seq_len(n_axes), 1L)],
+        x = radial_positions[[i]] * cos(angle),
+        y = radial_positions[[i]] * sin(angle)
+      )
+    }
+  )
+
+  axis_label_df <- point_df |>
+    transmute(
+      dimension,
+      angle,
+      label_x = 1.17 * cos(angle),
+      label_y = 1.17 * sin(angle),
+      hjust = case_when(
+        label_x > 0.15 ~ 0,
+        label_x < -0.15 ~ 1,
+        TRUE ~ 0.5
+      ),
+      vjust = case_when(
+        label_y > 0.15 ~ 0,
+        label_y < -0.15 ~ 1,
+        TRUE ~ 0.5
+      )
+    )
+
+  point_label_df <- point_df |>
+    transmute(
+      axis_id,
+      angle,
+      point_label = label,
+      label_radius = case_when(
+        radius >= 0.80 ~ pmax(radius - 0.16, 0.14),
+        radius <= 0.20 ~ pmin(radius + 0.16, 0.32),
+        TRUE ~ pmin(radius + 0.11, 0.90)
+      ),
+      tangent_shift = if_else(axis_id %% 2 == 0, 0.045, -0.045),
+      label_x = label_radius * cos(angle) + tangent_shift * (-sin(angle)),
+      label_y = label_radius * sin(angle) + tangent_shift * cos(angle),
+      hjust = case_when(
+        label_x > 0.18 ~ 0,
+        label_x < -0.18 ~ 1,
+        TRUE ~ 0.5
+      ),
+      vjust = case_when(
+        label_y > 0.18 ~ 0,
+        label_y < -0.18 ~ 1,
+        TRUE ~ 0.5
+      )
+    )
+
+  radial_label_df <- tibble(
+    ring_value = radial_breaks,
+    x = radial_positions,
+    y = 0.02,
+    label = paste0(
+      if_else(radial_breaks > 0, "+", ""),
+      scales::number(radial_breaks * 100, accuracy = 0.1),
+      " pp"
+    )
+  )
+
+  ggplot() +
+    geom_path(
+      data = filter(ring_df, abs(ring_value) > 1e-9),
+      aes(x = x, y = y, group = ring_value),
+      color = "grey78",
+      linewidth = 0.15
+    ) +
+    geom_path(
+      data = filter(ring_df, abs(ring_value) <= 1e-9),
+      aes(x = x, y = y, group = ring_value),
+      color = "grey55",
+      linewidth = 0.25,
+      linetype = "22"
+    ) +
+    geom_segment(
+      data = spoke_df,
+      aes(x = x, y = y, xend = xend, yend = yend),
+      color = "grey80",
+      linewidth = 0.15
+    ) +
+    geom_polygon(
+      data = closed_df,
+      aes(x = x, y = y),
+      fill = scales::alpha(cause_cols[[cause_name]], 0.22),
+      color = cause_cols[[cause_name]],
+      linewidth = 0.2,
+      linejoin = "round"
+    ) +
+    geom_point(
+      data = point_df,
+      aes(x = x, y = y),
+      color = cause_cols[[cause_name]],
+      fill = cause_cols[[cause_name]],
+      shape = 21,
+      stroke = 0.2,
+      size = 1.4
+    ) +
+    geom_text(
+      data = point_label_df,
+      aes(x = label_x, y = label_y, label = point_label, hjust = hjust, vjust = vjust),
+      size = 2.5,
+      lineheight = 0.92,
+      color = cause_cols[[cause_name]]
+    ) +
+    geom_text(
+      data = axis_label_df,
+      aes(x = label_x, y = label_y, label = dimension, hjust = hjust, vjust = vjust),
+      size = 3.6,
+      lineheight = 0.9
+    ) +
+    geom_text(
+      data = radial_label_df,
+      aes(x = x, y = y, label = label),
+      color = "grey60",
+      size = 3.0,
+      hjust = 0.5,
+      vjust = 0
+    ) +
+    coord_equal(clip = "off") +
+    xlim(-1.28, 1.28) +
+    ylim(-1.26, 1.28) +
+    labs(
+      title = cause_name,
+      subtitle = subtitle,
+      x = NULL,
+      y = NULL
+    ) +
+    theme_report +
+    theme(
+      axis.text = element_blank(),
+      axis.ticks = element_blank(),
+      axis.line = element_blank(),
+      panel.grid = element_blank(),
+      plot.margin = margin(20, 35, 20, 35)
+    )
+}
+
 dominant_profile_pooled <- build_dominant_profile(cps)
 dominant_profile_2025 <- build_dominant_profile(cps |> filter(YEAR == 2025))
+dominant_profile_delta_2025 <- build_dominant_profile_delta(cps |> filter(YEAR == 2025), cps)
+dominant_profile_delta_2025_max <- max(abs(dominant_profile_delta_2025$delta), na.rm = TRUE)
+if (!is.finite(dominant_profile_delta_2025_max) || dominant_profile_delta_2025_max <= 0) {
+  dominant_profile_delta_2025_max <- 0.01
+}
 ```
 
 ```{r dominant-profile-table-pooled}
@@ -2458,6 +2684,21 @@ plot_dominant_radar_single(
 )
 ```
 
+#### 2025 - Pooled
+
+```{r fig-dominant-profile-radar-temp-layoff-delta}
+#| label: fig-dominant-profile-radar-temp-layoff-delta
+#| fig-cap: "Temporary Layoff dominant-profile spider plot, 2025 minus pooled share of the same dominant group."
+#| fig-height: 6
+
+plot_dominant_radar_delta(
+  dominant_profile_delta_2025,
+  cause_name = "Temporary Layoff",
+  subtitle = "Calendar year 2025 minus pooled share of the same group",
+  max_abs_delta = dominant_profile_delta_2025_max
+)
+```
+
 :::
 
 ### Permanent Job Losers
@@ -2489,6 +2730,21 @@ plot_dominant_radar_single(
   dominant_profile_2025,
   cause_name = "Permanent Job Losers",
   subtitle = "Calendar year 2025"
+)
+```
+
+#### 2025 - Pooled
+
+```{r fig-dominant-profile-radar-perm-losers-delta}
+#| label: fig-dominant-profile-radar-perm-losers-delta
+#| fig-cap: "Permanent Job Losers dominant-profile spider plot, 2025 minus pooled share of the same dominant group."
+#| fig-height: 6
+
+plot_dominant_radar_delta(
+  dominant_profile_delta_2025,
+  cause_name = "Permanent Job Losers",
+  subtitle = "Calendar year 2025 minus pooled share of the same group",
+  max_abs_delta = dominant_profile_delta_2025_max
 )
 ```
 
@@ -2526,6 +2782,21 @@ plot_dominant_radar_single(
 )
 ```
 
+#### 2025 - Pooled
+
+```{r fig-dominant-profile-radar-completed-temp-delta}
+#| label: fig-dominant-profile-radar-completed-temp-delta
+#| fig-cap: "Completed Temp Job dominant-profile spider plot, 2025 minus pooled share of the same dominant group."
+#| fig-height: 6
+
+plot_dominant_radar_delta(
+  dominant_profile_delta_2025,
+  cause_name = "Completed Temp Job",
+  subtitle = "Calendar year 2025 minus pooled share of the same group",
+  max_abs_delta = dominant_profile_delta_2025_max
+)
+```
+
 :::
 
 ### Job Leavers
@@ -2557,6 +2828,21 @@ plot_dominant_radar_single(
   dominant_profile_2025,
   cause_name = "Job Leavers",
   subtitle = "Calendar year 2025"
+)
+```
+
+#### 2025 - Pooled
+
+```{r fig-dominant-profile-radar-job-leavers-delta}
+#| label: fig-dominant-profile-radar-job-leavers-delta
+#| fig-cap: "Job Leavers dominant-profile spider plot, 2025 minus pooled share of the same dominant group."
+#| fig-height: 6
+
+plot_dominant_radar_delta(
+  dominant_profile_delta_2025,
+  cause_name = "Job Leavers",
+  subtitle = "Calendar year 2025 minus pooled share of the same group",
+  max_abs_delta = dominant_profile_delta_2025_max
 )
 ```
 
@@ -2594,6 +2880,21 @@ plot_dominant_radar_single(
 )
 ```
 
+#### 2025 - Pooled
+
+```{r fig-dominant-profile-radar-reentrants-delta}
+#| label: fig-dominant-profile-radar-reentrants-delta
+#| fig-cap: "Reentrants dominant-profile spider plot, 2025 minus pooled share of the same dominant group."
+#| fig-height: 6
+
+plot_dominant_radar_delta(
+  dominant_profile_delta_2025,
+  cause_name = "Reentrants",
+  subtitle = "Calendar year 2025 minus pooled share of the same group",
+  max_abs_delta = dominant_profile_delta_2025_max
+)
+```
+
 :::
 
 ### New Entrants
@@ -2625,6 +2926,21 @@ plot_dominant_radar_single(
   dominant_profile_2025,
   cause_name = "New Entrants",
   subtitle = "Calendar year 2025"
+)
+```
+
+#### 2025 - Pooled
+
+```{r fig-dominant-profile-radar-new-entrants-delta}
+#| label: fig-dominant-profile-radar-new-entrants-delta
+#| fig-cap: "New Entrants dominant-profile spider plot, 2025 minus pooled share of the same dominant group."
+#| fig-height: 6
+
+plot_dominant_radar_delta(
+  dominant_profile_delta_2025,
+  cause_name = "New Entrants",
+  subtitle = "Calendar year 2025 minus pooled share of the same group",
+  max_abs_delta = dominant_profile_delta_2025_max
 )
 ```
 
