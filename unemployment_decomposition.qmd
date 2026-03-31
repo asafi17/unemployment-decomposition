@@ -2441,7 +2441,7 @@ build_dominant_profile_delta <- function(current_data, reference_data) {
     arrange(cause, dimension)
 }
 
-plot_dominant_radar_delta <- function(profile_df, cause_name, subtitle, max_abs_delta) {
+plot_dominant_radar_delta <- function(profile_df, cause_name, subtitle, max_abs_delta = 0.20) {
   plot_df <- profile_df |>
     filter(cause == cause_name) |>
     arrange(dimension) |>
@@ -2449,7 +2449,7 @@ plot_dominant_radar_delta <- function(profile_df, cause_name, subtitle, max_abs_
 
   n_axes <- nrow(plot_df)
   angles <- pi / 2 - 2 * pi * (seq_len(n_axes) - 1) / n_axes
-  radial_breaks <- seq(-max_abs_delta, max_abs_delta, length.out = 5)
+  radial_breaks <- c(-0.20, -0.10, 0, 0.10, 0.20)
   radial_positions <- scales::rescale(
     radial_breaks,
     to = c(0, 1),
@@ -2558,7 +2558,7 @@ plot_dominant_radar_delta <- function(profile_df, cause_name, subtitle, max_abs_
       data = filter(ring_df, abs(ring_value) <= 1e-9),
       aes(x = x, y = y, group = ring_value),
       color = "grey55",
-      linewidth = 0.25,
+      linewidth = 0.32,
       linetype = "22"
     ) +
     geom_segment(
@@ -2627,10 +2627,6 @@ plot_dominant_radar_delta <- function(profile_df, cause_name, subtitle, max_abs_
 dominant_profile_pooled <- build_dominant_profile(cps)
 dominant_profile_2025 <- build_dominant_profile(cps |> filter(YEAR == 2025))
 dominant_profile_delta_2025 <- build_dominant_profile_delta(cps |> filter(YEAR == 2025), cps)
-dominant_profile_delta_2025_max <- max(abs(dominant_profile_delta_2025$delta), na.rm = TRUE)
-if (!is.finite(dominant_profile_delta_2025_max) || dominant_profile_delta_2025_max <= 0) {
-  dominant_profile_delta_2025_max <- 0.01
-}
 ```
 
 ```{r dominant-profile-table-pooled}
@@ -2694,8 +2690,7 @@ plot_dominant_radar_single(
 plot_dominant_radar_delta(
   dominant_profile_delta_2025,
   cause_name = "Temporary Layoff",
-  subtitle = "Calendar year 2025 minus pooled share of the same group",
-  max_abs_delta = dominant_profile_delta_2025_max
+  subtitle = "Calendar year 2025 minus pooled share of the same group"
 )
 ```
 
@@ -2743,8 +2738,7 @@ plot_dominant_radar_single(
 plot_dominant_radar_delta(
   dominant_profile_delta_2025,
   cause_name = "Permanent Job Losers",
-  subtitle = "Calendar year 2025 minus pooled share of the same group",
-  max_abs_delta = dominant_profile_delta_2025_max
+  subtitle = "Calendar year 2025 minus pooled share of the same group"
 )
 ```
 
@@ -2792,8 +2786,7 @@ plot_dominant_radar_single(
 plot_dominant_radar_delta(
   dominant_profile_delta_2025,
   cause_name = "Completed Temp Job",
-  subtitle = "Calendar year 2025 minus pooled share of the same group",
-  max_abs_delta = dominant_profile_delta_2025_max
+  subtitle = "Calendar year 2025 minus pooled share of the same group"
 )
 ```
 
@@ -2841,8 +2834,7 @@ plot_dominant_radar_single(
 plot_dominant_radar_delta(
   dominant_profile_delta_2025,
   cause_name = "Job Leavers",
-  subtitle = "Calendar year 2025 minus pooled share of the same group",
-  max_abs_delta = dominant_profile_delta_2025_max
+  subtitle = "Calendar year 2025 minus pooled share of the same group"
 )
 ```
 
@@ -2890,8 +2882,7 @@ plot_dominant_radar_single(
 plot_dominant_radar_delta(
   dominant_profile_delta_2025,
   cause_name = "Reentrants",
-  subtitle = "Calendar year 2025 minus pooled share of the same group",
-  max_abs_delta = dominant_profile_delta_2025_max
+  subtitle = "Calendar year 2025 minus pooled share of the same group"
 )
 ```
 
@@ -2939,8 +2930,7 @@ plot_dominant_radar_single(
 plot_dominant_radar_delta(
   dominant_profile_delta_2025,
   cause_name = "New Entrants",
-  subtitle = "Calendar year 2025 minus pooled share of the same group",
-  max_abs_delta = dominant_profile_delta_2025_max
+  subtitle = "Calendar year 2025 minus pooled share of the same group"
 )
 ```
 
