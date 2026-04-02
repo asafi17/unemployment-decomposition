@@ -62,17 +62,16 @@ The key design choices are:
 - **Blue-collar share** is included to capture shifts in industry and occupation mix.
 - **Working-age (25-54) share** is included to capture changes in the age composition of the unemployed pool.
 
-# Data Feasibility
+# National UI Take-Up Evidence
 
-The short answer is: **yes, the study is feasible with FRED + IPUMS CPS**, but the migrant measure must be chosen carefully.
+Before moving to the state panel, it helps to establish the core national descriptive patterns in UI take-up and unemployment composition.
 
 ```{r}
 
 library(tidyverse)
+library(arrow)
 library(here)
-library(fredr)
 library(gt)
-library(ipumsr)
 library(lubridate)
 library(plotly)
 library(scales)
@@ -80,7 +79,14 @@ library(DT)
 
 here::i_am("ui-takeup-study.qmd")
 
-fredr_set_key("ccd350785a210a7653a20d02ce92d83a")
+read_final_parquet = function(filename) {
+  path = here("data", "final", filename)
+  if (!file.exists(path)) {
+    stop("Missing derived panel: ", path, ". Run 'Rscript build_panels.R'.")
+  }
+  arrow::read_parquet(path) |>
+    as_tibble()
+}
 
 state_meta <- tibble(
   state = state.name,
@@ -112,7 +118,660 @@ theme_report <- theme_minimal(base_size = 11, base_family = "sans") +
 theme_set(theme_report)
 ```
 
-## Source Summary
+## National UI Take-Up: Recent Detail vs. Historical Average
+
+The two panels below show national **continued claims / covered employment** (CC/CE) and **initial claims / covered employment** (IC/CE) at monthly frequency, with the Jan 1994 – Dec 2025 historical average overlaid as a reference line. All three input series come from FRED:
+
+- [CCSA](https://fred.stlouisfed.org/series/CCSA) — continued claims, seasonally adjusted (weekly)
+- [ICSA](https://fred.stlouisfed.org/series/ICSA) — initial claims, seasonally adjusted (weekly)
+- [COVEMP](https://fred.stlouisfed.org/series/COVEMP) — covered employment (weekly)
+
+Weekly claims are summed (initial) or averaged (continued) within each calendar month; covered employment is averaged within each month.
+
+```{r national-takeup-panel}
+#| fig-height: 7
+
+national_monthly = read_final_parquet("ui_national_takeup_monthly.parquet")
+
+hist_avg = national_monthly |>
+  summarise(cc_ce_avg = mean(cc_ce, na.rm = TRUE),
+            ic_ce_avg = mean(ic_ce, na.rm = TRUE))
+
+recent = national_monthly |> filter(month >= as.Date("2023-01-01"))
+
+p_cc = ggplot(recent, aes(month, cc_ce)) +
+  geom_hline(yintercept = hist_avg$cc_ce_avg, linetype = "dashed", color = "grey50", linewidth = 0.5) +
+  annotate("text", x = min(recent$month), y = hist_avg$cc_ce_avg,
+           label = paste0("1994-2025 avg: ", scales::percent(hist_avg$cc_ce_avg, accuracy = 0.01)),
+           hjust = 0, vjust = 1.5, size = 3, color = "grey40") +
+  geom_line(color = "#0073C2", linewidth = 0.8) +
+  geom_point(color = "#0073C2", size = 1.2) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.01)) +
+  labs(title = "Continued Claims / Covered Employment",
+       subtitle = "National monthly, 2023-present vs. historical average",
+       x = NULL, y = "CC / CE")
+
+p_ic = ggplot(recent, aes(month, ic_ce)) +
+  geom_hline(yintercept = hist_avg$ic_ce_avg, linetype = "dashed", color = "grey50", linewidth = 0.5) +
+  annotate("text", x = min(recent$month), y = hist_avg$ic_ce_avg,
+           label = paste0("1994-2025 avg: ", scales::percent(hist_avg$ic_ce_avg, accuracy = 0.01)),
+           hjust = 0, vjust = 1.5, size = 3, color = "grey40") +
+  geom_line(color = "#EFC000", linewidth = 0.8) +
+  geom_point(color = "#EFC000", size = 1.2) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.01)) +
+  labs(title = "Initial Claims / Covered Employment",
+       subtitle = "National monthly, 2023-present vs. historical average",
+       x = NULL, y = "IC / CE")
+
+library(patchwork)
+p_cc / p_ic +
+  plot_annotation(
+    caption = "Source: FRED (CCSA, ICSA, COVEMP). Weekly claims aggregated to monthly."
+  )
+```
+
+## UI Claims Intensity vs. Unemployment Rate
+
+How closely do UI claiming measures track the headline unemployment rate? The scatterplots below compare national **continued claims / covered employment** ([CCSA](https://fred.stlouisfed.org/series/CCSA) / [COVEMP](https://fred.stlouisfed.org/series/COVEMP)) and **initial claims / covered employment** ([ICSA](https://fred.stlouisfed.org/series/ICSA) / COVEMP) against the unemployment rate, at monthly frequency from 1994 onward.
+
+```{r fig-claims-vs-urate}
+#| fig-cap: "National CC/CE and IC/CE vs. unemployment rate (monthly, 1994-present)."
+#| fig-height: 5
+
+scatter_df = read_final_parquet("ui_national_takeup_cause.parquet") |>
+  select(date, urate, cc_ce, ic_ce)
+
+cor_cc = cor(scatter_df$urate, scatter_df$cc_ce, use = "complete.obs")
+cor_ic = cor(scatter_df$urate, scatter_df$ic_ce, use = "complete.obs")
+
+p_cc_scatter = ggplot(scatter_df, aes(urate, cc_ce)) +
+  geom_point(alpha = 0.4, size = 1.5, color = "#0073C2") +
+  geom_smooth(method = "lm", se = FALSE, color = "black", linewidth = 0.6) +
+  annotate("text", x = Inf, y = Inf,
+           label = paste0("r = ", sprintf("%.3f", cor_cc)),
+           hjust = 1.1, vjust = 1.5, size = 4, fontface = "bold") +
+  scale_x_continuous(labels = \(x) paste0(x, "%")) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.01)) +
+  labs(title = "CC / CE vs. Unemployment Rate",
+       x = "Unemployment Rate (%)", y = "CC / CE")
+
+p_ic_scatter = ggplot(scatter_df, aes(urate, ic_ce)) +
+  geom_point(alpha = 0.4, size = 1.5, color = "#EFC000") +
+  geom_smooth(method = "lm", se = FALSE, color = "black", linewidth = 0.6) +
+  annotate("text", x = Inf, y = Inf,
+           label = paste0("r = ", sprintf("%.3f", cor_ic)),
+           hjust = 1.1, vjust = 1.5, size = 4, fontface = "bold") +
+  scale_x_continuous(labels = \(x) paste0(x, "%")) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.01)) +
+  labs(title = "IC / CE vs. Unemployment Rate",
+       x = "Unemployment Rate (%)", y = "IC / CE")
+
+p_cc_scatter + p_ic_scatter +
+  plot_annotation(caption = "Source: BLS via FRED (CCSA, ICSA, COVEMP, UNEMPLOY, CLF16OV). Monthly, 1994-present.")
+```
+
+## UI Take-Up vs. By-Cause Shares
+
+This is a useful descriptive extension. At the national level, the clean question is not causal identification but whether months with different **reason-for-unemployment composition** also have systematically different **UI take-up intensity**, after absorbing simple seasonality. The regressions below therefore treat **permanent job losers** as the omitted reference category and ask how `CC/CE` and `IC/CE` move when unemployment shifts toward temporary layoffs, completed temporary jobs, job leavers, reentrants, or new entrants instead.
+
+Month-of-year fixed effects absorb regular seasonal patterns in claiming, so the fitted values should be read as the take-up level predicted by the **mix of unemployment causes plus seasonality**. The residual is then the gap between observed take-up and what that composition model would have expected.
+
+Formally, for outcome $y_t \in \{CC/CE_t,\ IC/CE_t\}$, the national monthly regression is:
+
+$$
+y_t = \alpha
++ \beta_1 \,\text{TempLayoffShare}_t
++ \beta_2 \,\text{CompletedTempJobShare}_t
++ \beta_3 \,\text{JobLeaverShare}_t
++ \beta_4 \,\text{ReentrantShare}_t
++ \beta_5 \,\text{NewEntrantShare}_t
++ \sum_{m=2}^{12} \gamma_m \mathbf{1}\{\text{month}(t)=m\}
++ \varepsilon_t,
+$$
+
+where **Permanent Job Losers** is the omitted reference category, so each $\beta_j$ is interpreted relative to a higher permanent-job-loser share holding the other included shares and calendar month fixed.
+
+```{r national-takeup-by-cause-vars}
+#| tbl-cap: "Regression specification for the national monthly take-up models."
+
+tibble(
+  Term = c(
+    "$y_t$",
+    "$CC/CE_t$",
+    "$IC/CE_t$",
+    "$\\text{TempLayoffShare}_t$",
+    "$\\text{CompletedTempJobShare}_t$",
+    "$\\text{JobLeaverShare}_t$",
+    "$\\text{ReentrantShare}_t$",
+    "$\\text{NewEntrantShare}_t$",
+    "Omitted category",
+    "$\\mathbf{1}\\{\\text{month}(t)=m\\}$",
+    "$\\varepsilon_t$"
+  ),
+  Definition = c(
+    "Outcome in month $t$; estimated separately for $CC/CE$ and $IC/CE$.",
+    "Continued claims divided by covered employment, aggregated to monthly frequency.",
+    "Initial claims divided by covered employment, aggregated to monthly frequency.",
+    "Share of total unemployment accounted for by temporary layoffs in month $t$.",
+    "Share of total unemployment accounted for by completed temporary jobs in month $t$.",
+    "Share of total unemployment accounted for by job leavers in month $t$.",
+    "Share of total unemployment accounted for by reentrants in month $t$.",
+    "Share of total unemployment accounted for by new entrants in month $t$.",
+    "Permanent job losers. Because the six shares sum to one, this category is excluded and serves as the reference group.",
+    "Month-of-year fixed effects for February through December; January is the omitted seasonal reference month.",
+    "Residual take-up variation not explained by the by-cause mix and month-of-year seasonality."
+  )
+) |>
+  gt() |>
+  fmt_markdown(columns = everything()) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  cols_width(
+    Term ~ px(180),
+    Definition ~ px(520)
+  )
+```
+
+```{r national-takeup-by-cause-setup}
+
+takeup_cause_df = read_final_parquet("ui_national_takeup_cause.parquet")
+
+fit_national_takeup_composition = function(outcome) {
+  lm(
+    as.formula(
+      paste0(
+        outcome,
+        " ~ temp_layoff_share + completed_temp_job_share + job_leaver_share + ",
+        "reentrant_share + new_entrant_share + month_of_year"
+      )
+    ),
+    data = takeup_cause_df
+  )
+}
+
+cc_cause_model = fit_national_takeup_composition("cc_ce")
+ic_cause_model = fit_national_takeup_composition("ic_ce")
+
+share_term_labels = c(
+  temp_layoff_share = "Temporary layoff share",
+  completed_temp_job_share = "Completed temp-job share",
+  job_leaver_share = "Job leaver share",
+  reentrant_share = "Reentrant share",
+  new_entrant_share = "New entrant share"
+)
+
+extract_share_terms = function(model, outcome_label) {
+  coef_mat = summary(model)$coefficients |>
+    as.data.frame() |>
+    rownames_to_column("term") |>
+    as_tibble() |>
+    filter(term %in% names(share_term_labels)) |>
+    mutate(
+      Outcome = outcome_label,
+      Term = recode(term, !!!share_term_labels),
+      `Coef (10 pp shift)` = Estimate * 0.10,
+      `Std. Error (10 pp shift)` = `Std. Error` * 0.10,
+      `p-value` = `Pr(>|t|)`
+    ) |>
+    select(Outcome, Term, `Coef (10 pp shift)`, `Std. Error (10 pp shift)`, `p-value`)
+}
+
+national_takeup_coef_table = bind_rows(
+  extract_share_terms(cc_cause_model, "CC / CE"),
+  extract_share_terms(ic_cause_model, "IC / CE")
+)
+
+national_takeup_fit_table = tibble(
+  Outcome = c("CC / CE", "IC / CE"),
+  `R-squared` = c(summary(cc_cause_model)$r.squared, summary(ic_cause_model)$r.squared),
+  RMSE = c(
+    sqrt(mean(residuals(cc_cause_model)^2, na.rm = TRUE)),
+    sqrt(mean(residuals(ic_cause_model)^2, na.rm = TRUE))
+  ),
+  `Sample Start` = min(takeup_cause_df$date),
+  `Sample End` = max(takeup_cause_df$date)
+)
+
+takeup_cause_fitted = takeup_cause_df |>
+  mutate(
+    cc_ce_hat = predict(cc_cause_model, newdata = takeup_cause_df),
+    ic_ce_hat = predict(ic_cause_model, newdata = takeup_cause_df),
+    cc_gap = cc_ce - cc_ce_hat,
+    ic_gap = ic_ce - ic_ce_hat
+  )
+
+recent_takeup_gap_summary = tibble(
+  Outcome = c("CC / CE", "IC / CE"),
+  `Average Gap Since 2023` = c(
+    mean(takeup_cause_fitted$cc_gap[takeup_cause_fitted$date >= as.Date("2023-01-01")], na.rm = TRUE),
+    mean(takeup_cause_fitted$ic_gap[takeup_cause_fitted$date >= as.Date("2023-01-01")], na.rm = TRUE)
+  ),
+  `Latest Gap` = c(
+    takeup_cause_fitted$cc_gap[which.max(takeup_cause_fitted$date)],
+    takeup_cause_fitted$ic_gap[which.max(takeup_cause_fitted$date)]
+  ),
+  `Latest Month` = max(takeup_cause_fitted$date)
+)
+```
+
+```{r national-takeup-by-cause-coefs}
+#| tbl-cap: "National monthly take-up regressions on by-cause unemployment shares. Permanent job losers are the omitted reference category; coefficients are reported for a 10 percentage-point higher share."
+
+national_takeup_coef_table |>
+  mutate(
+    `Coef (10 pp shift)` = scales::number(`Coef (10 pp shift)`, accuracy = 0.0001),
+    `Std. Error (10 pp shift)` = scales::number(`Std. Error (10 pp shift)`, accuracy = 0.0001),
+    `p-value` = scales::number(`p-value`, accuracy = 0.001)
+  ) |>
+  gt(groupname_col = "Outcome") |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+```{r national-takeup-by-cause-fit}
+#| tbl-cap: "Model fit for the national take-up composition regressions."
+
+national_takeup_fit_table |>
+  mutate(
+    `R-squared` = scales::number(`R-squared`, accuracy = 0.001),
+    RMSE = scales::number(RMSE, accuracy = 0.0001),
+    `Sample Start` = format(`Sample Start`, "%Y-%m"),
+    `Sample End` = format(`Sample End`, "%Y-%m")
+  ) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+```{r fig-national-takeup-by-cause-fitted}
+#| fig-cap: "Observed versus composition-predicted national take-up, using monthly by-cause shares and month-of-year fixed effects. Displayed window starts in 2019; models are fit on the full monthly sample from 1994 onward."
+#| fig-height: 6.5
+
+takeup_cause_recent <- takeup_cause_fitted |>
+  filter(date >= as.Date("2019-01-01"))
+
+p_cc_fit <- ggplot(takeup_cause_recent, aes(date)) +
+  geom_line(aes(y = cc_ce, color = "Observed"), linewidth = 0.9) +
+  geom_line(aes(y = cc_ce_hat, color = "Expected"), linewidth = 0.8, linetype = "dashed") +
+  scale_color_manual(values = c("Observed" = "#0073C2", "Expected" = "black")) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+  labs(
+    title = "CC / CE",
+    subtitle = "Observed vs. expected from cause shares",
+    x = NULL, y = NULL
+  )
+
+p_ic_fit <- ggplot(takeup_cause_recent, aes(date)) +
+  geom_line(aes(y = ic_ce, color = "Observed"), linewidth = 0.9) +
+  geom_line(aes(y = ic_ce_hat, color = "Expected"), linewidth = 0.8, linetype = "dashed") +
+  scale_color_manual(values = c("Observed" = "#EFC000", "Expected" = "black")) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+  labs(
+    title = "IC / CE",
+    subtitle = "Observed vs. expected from cause shares",
+    x = NULL, y = NULL
+  )
+
+p_cc_fit + p_ic_fit +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "top")
+```
+
+```{r fig-national-takeup-by-cause-gap}
+#| fig-cap: "Gap between observed and composition-predicted national take-up. Positive values mean take-up was above the level implied by the unemployment mix; negative values mean it was below."
+#| fig-height: 6.5
+
+p_cc_gap <- ggplot(takeup_cause_recent, aes(date, cc_gap)) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.5) +
+  geom_col(fill = "#0073C2", alpha = 0.85, width = 25) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+  labs(
+    title = "CC / CE Gap",
+    subtitle = "Observed minus expected",
+    x = NULL, y = NULL
+  )
+
+p_ic_gap <- ggplot(takeup_cause_recent, aes(date, ic_gap)) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.5) +
+  geom_col(fill = "#EFC000", alpha = 0.9, width = 25) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+  labs(
+    title = "IC / CE Gap",
+    subtitle = "Observed minus expected",
+    x = NULL, y = NULL
+  )
+
+p_cc_gap + p_ic_gap
+```
+
+```{r national-takeup-by-cause-gap-summary}
+#| tbl-cap: "Recent divergence between observed and composition-predicted take-up."
+
+recent_takeup_gap_summary |>
+  mutate(
+    `Average Gap Since 2023` = percent(`Average Gap Since 2023`, accuracy = 0.01),
+    `Latest Gap` = percent(`Latest Gap`, accuracy = 0.01),
+    `Latest Month` = format(`Latest Month`, "%Y-%m")
+  ) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+This is best read as a composition-accounting exercise rather than a causal estimate. If the fitted line tracks the broad level of take-up but the residual gap turns persistently negative in recent years, that would mean the **current mix of temporary layoffs, permanent job losers, quits, reentrants, and new entrants would have predicted more claiming than we actually observe**. That would strengthen the case for a separate post-2020 claiming-propensity shift, not just a change in who is unemployed.
+
+## National Take-Up vs. By-Cause Levels And Shares
+
+The share regressions above treat unemployment composition as the main object. A simpler descriptive check is to ask whether national `IC/CE` and `CC/CE` move with the **level** of each reason-for-unemployment category or with that category's **share of total unemployment**, allowing the predictor to lead take-up by one or two months.
+
+This section uses the monthly national FRED series already loaded above. For each cause, it reports:
+
+- the contemporaneous correlation with `CC/CE` and `IC/CE`
+- the correlation using a 1-month lag of the unemployment measure
+- the correlation using a 2-month lag of the unemployment measure
+
+The plots standardize each series within panel to keep the display parsimonious. They are for visual co-movement only; the tables below report the correlations in the original monthly data. To check whether the temporary-layoff result is mostly a furlough-era artifact, the section now reports both the **full history** and a version that excludes **March 2020 through December 2021**, matching the memo's main monthly pandemic-robustness window.
+
+```{r national-cause-correlation-setup}
+cause_display_order <- c(
+  "Temporary Layoff",
+  "Permanent Job Losers",
+  "Completed Temp Job",
+  "Job Leavers",
+  "Reentrants",
+  "New Entrants"
+)
+
+share_name_map <- c(
+  temp_layoff_share = "Temporary Layoff",
+  perm_job_loser_share = "Permanent Job Losers",
+  completed_temp_job_share = "Completed Temp Job",
+  job_leaver_share = "Job Leavers",
+  reentrant_share = "Reentrants",
+  new_entrant_share = "New Entrants"
+)
+
+safe_standardize <- function(x) {
+  s <- sd(x, na.rm = TRUE)
+  m <- mean(x, na.rm = TRUE)
+  if (!is.finite(s) || s == 0) {
+    return(rep(0, length(x)))
+  }
+  (x - m) / s
+}
+
+covid_month_start <- as.Date("2020-03-01")
+covid_month_end <- as.Date("2021-12-01")
+
+cause_level_long <- cause_raw |>
+  mutate(cause = factor(cause, levels = cause_display_order)) |>
+  left_join(
+    national_monthly |>
+      transmute(date = month, cc_ce, ic_ce),
+    by = "date"
+  ) |>
+  rename(predictor_value = value) |>
+  mutate(measure_type = "Level")
+
+cause_share_long <- national_cause_shares |>
+  pivot_longer(
+    cols = ends_with("_share"),
+    names_to = "share_name",
+    values_to = "predictor_value"
+  ) |>
+  mutate(
+    cause = recode(share_name, !!!share_name_map),
+    cause = factor(cause, levels = cause_display_order),
+    measure_type = "Share"
+  ) |>
+  left_join(
+    national_monthly |>
+      transmute(date = month, cc_ce, ic_ce),
+    by = c("date")
+  )
+
+build_cause_correlation_table <- function(data, value_label) {
+  data |>
+    arrange(cause, date) |>
+    group_by(cause) |>
+    mutate(
+      predictor_lag1 = lag(predictor_value, 1),
+      predictor_lag2 = lag(predictor_value, 2)
+    ) |>
+    summarise(
+      Measure = value_label,
+      `CC/CE (t)` = cor(predictor_value, cc_ce, use = "complete.obs"),
+      `CC/CE (t-1)` = cor(predictor_lag1, cc_ce, use = "complete.obs"),
+      `CC/CE (t-2)` = cor(predictor_lag2, cc_ce, use = "complete.obs"),
+      `IC/CE (t)` = cor(predictor_value, ic_ce, use = "complete.obs"),
+      `IC/CE (t-1)` = cor(predictor_lag1, ic_ce, use = "complete.obs"),
+      `IC/CE (t-2)` = cor(predictor_lag2, ic_ce, use = "complete.obs"),
+      .groups = "drop"
+    ) |>
+    rename(Cause = cause)
+}
+
+level_corr_table <- build_cause_correlation_table(cause_level_long, "Level")
+share_corr_table <- build_cause_correlation_table(cause_share_long, "Share")
+level_corr_table_excl_covid <- build_cause_correlation_table(
+  filter(cause_level_long, date < covid_month_start | date > covid_month_end),
+  "Level"
+)
+share_corr_table_excl_covid <- build_cause_correlation_table(
+  filter(cause_share_long, date < covid_month_start | date > covid_month_end),
+  "Share"
+)
+
+build_cause_comovement_plot <- function(data, predictor_label) {
+  data |>
+    transmute(
+      date,
+      cause,
+      !!predictor_label := predictor_value,
+      `CC/CE` = cc_ce,
+      `IC/CE` = ic_ce
+    ) |>
+    pivot_longer(
+      cols = -c(date, cause),
+      names_to = "series",
+      values_to = "value"
+    ) |>
+    group_by(cause, series) |>
+    mutate(z_value = safe_standardize(value)) |>
+    ungroup() |>
+    ggplot(aes(date, z_value, color = series)) +
+    geom_hline(yintercept = 0, color = "grey85", linewidth = 0.3) +
+    geom_line(linewidth = 0.7) +
+    facet_wrap(~ cause, ncol = 2, scales = "free_x") +
+    scale_color_manual(
+      values = c(
+        setNames("black", predictor_label),
+        "CC/CE" = "#0073C2",
+        "IC/CE" = "#EFC000"
+      )
+    ) +
+    labs(
+      x = NULL,
+      y = "Standardized value",
+      color = NULL
+    ) +
+    theme_report +
+    theme(
+      axis.text.x = element_text(size = 7),
+      legend.position = "top"
+    )
+}
+```
+
+### By-Cause Levels
+
+::: {.panel-tabset}
+
+#### Full History
+
+```{r fig-national-cause-level-comovement-full}
+#| fig-cap: "Standardized national monthly co-movement between each by-cause unemployment level and UI take-up measures. Each panel overlays the cause level, CC/CE, and IC/CE."
+#| fig-height: 9
+
+build_cause_comovement_plot(cause_level_long, "Cause level") +
+  labs(
+    title = "National Take-Up vs. By-Cause Unemployment Levels",
+    subtitle = "Full monthly history; each series standardized within panel"
+  )
+```
+
+```{r national-cause-level-correlation-table-full}
+#| tbl-cap: "Correlation of national IC/CE and CC/CE with monthly by-cause unemployment levels and their lags, full history."
+
+level_corr_table |>
+  mutate(across(-c(Cause, Measure), \(x) sprintf("%.3f", x))) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+#### Excl COVID
+
+```{r fig-national-cause-level-comovement-excl-covid}
+#| fig-cap: "Standardized national monthly co-movement between each by-cause unemployment level and UI take-up measures, excluding March 2020 through December 2021."
+#| fig-height: 9
+
+build_cause_comovement_plot(
+  filter(cause_level_long, date < covid_month_start | date > covid_month_end),
+  "Cause level"
+) +
+  labs(
+    title = "National Take-Up vs. By-Cause Unemployment Levels",
+    subtitle = "Excluding March 2020 through December 2021; each series standardized within panel"
+  )
+```
+
+```{r national-cause-level-correlation-table-excl-covid}
+#| tbl-cap: "Correlation of national IC/CE and CC/CE with monthly by-cause unemployment levels and their lags, excluding March 2020 through December 2021."
+
+level_corr_table_excl_covid |>
+  mutate(across(-c(Cause, Measure), \(x) sprintf("%.3f", x))) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+:::
+
+### By-Cause Shares
+
+::: {.panel-tabset}
+
+#### Full History
+
+```{r fig-national-cause-share-comovement-full}
+#| fig-cap: "Standardized national monthly co-movement between each by-cause unemployment share and UI take-up measures. Each panel overlays the cause share, CC/CE, and IC/CE."
+#| fig-height: 9
+
+build_cause_comovement_plot(cause_share_long, "Cause share") +
+  labs(
+    title = "National Take-Up vs. By-Cause Unemployment Shares",
+    subtitle = "Full monthly history; each series standardized within panel"
+  )
+```
+
+```{r national-cause-share-correlation-table-full}
+#| tbl-cap: "Correlation of national IC/CE and CC/CE with monthly by-cause unemployment shares and their lags, full history."
+
+share_corr_table |>
+  mutate(across(-c(Cause, Measure), \(x) sprintf("%.3f", x))) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+#### Excl COVID
+
+```{r fig-national-cause-share-comovement-excl-covid}
+#| fig-cap: "Standardized national monthly co-movement between each by-cause unemployment share and UI take-up measures, excluding March 2020 through December 2021."
+#| fig-height: 9
+
+build_cause_comovement_plot(
+  filter(cause_share_long, date < covid_month_start | date > covid_month_end),
+  "Cause share"
+) +
+  labs(
+    title = "National Take-Up vs. By-Cause Unemployment Shares",
+    subtitle = "Excluding March 2020 through December 2021; each series standardized within panel"
+  )
+```
+
+```{r national-cause-share-correlation-table-excl-covid}
+#| tbl-cap: "Correlation of national IC/CE and CC/CE with monthly by-cause unemployment shares and their lags, excluding March 2020 through December 2021."
+
+share_corr_table_excl_covid |>
+  mutate(across(-c(Cause, Measure), \(x) sprintf("%.3f", x))) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+:::
+
+For placement, this is the right spot: it stays with the other **national descriptive checks** and comes before the memo transitions into the state-panel data build.
+
+# Data Feasibility
 
 ```{r}
 #| tbl-cap: "Data-source feasibility for a monthly state UI take-up study."
@@ -262,292 +921,12 @@ The table below is a **pre-pull inspection table** so you can verify the exact s
 ```{r fred-all-states-pull}
 #| cache: true
 
-fred_dir <- here("data", "FRED")
-fred_panel_path <- here("data", "FRED", "ui_takeup_fred_monthly_state_panel.csv")
-fred_catalog_path <- here("data", "FRED", "ui_takeup_fred_series_catalog.csv")
-fred_meta_path <- here("data", "FRED", "ui_takeup_fred_pull_version.txt")
-fred_pull_version <- "earliest_available_v2_population"
+fred_panel_path = here("data", "final", "ui_fred_monthly_state_panel.parquet")
+fred_catalog_path = here("data", "final", "ui_fred_series_catalog.parquet")
 
-dir.create(fred_dir, recursive = TRUE, showWarnings = FALSE)
-
-weekly_catalog <- state_meta |>
-  crossing(
-    tibble(
-      measure = c(
-        "Initial Claims",
-        "Continued Claims",
-        "Insured Unemployment Rate",
-        "Covered Employment"
-      ),
-      suffix = c("ICLAIMS", "CCLAIMS", "INSUREDUR", "CEMPLOY"),
-      frequency = "Weekly"
-    )
-  ) |>
-  mutate(series_id = paste0(abb, suffix)) |>
-  select(state, abb, measure, series_id, frequency)
-
-monthly_catalog <- state_meta |>
-  crossing(
-    tibble(
-      measure = c("Unemployed Persons", "Unemployment Rate"),
-      series_type = c("unemployed_persons", "unemployment_rate"),
-      frequency = "Monthly"
-    )
-  ) |>
-  mutate(
-    series_id = case_when(
-      series_type == "unemployed_persons" ~ paste0("LASST", fips, "0000000000004"),
-      series_type == "unemployment_rate" ~ paste0(abb, "UR")
-    )
-  ) |>
-  select(state, abb, measure, series_id, frequency)
-
-annual_catalog <- state_meta |>
-  transmute(
-    state,
-    abb,
-    measure = "Annual Population",
-    series_id = paste0(abb, "POP"),
-    frequency = "Annual"
-  )
-
-fred_catalog <- bind_rows(weekly_catalog, monthly_catalog, annual_catalog)
-fred_catalog_export <- fred_catalog |>
-  mutate(series_url = paste0("https://fred.stlouisfed.org/series/", series_id)) |>
-  arrange(state, frequency, measure)
-write_csv(fred_catalog_export, fred_catalog_path)
-
-pull_fred_series <- function(series_id, state, abb, measure, frequency) {
-  fredr(
-    series_id = series_id,
-    observation_end = Sys.Date()
-  ) |>
-    transmute(
-      state = state,
-      abb = abb,
-      measure = measure,
-      frequency = frequency,
-      series_id = series_id,
-      date,
-      value
-    )
-}
-
-validate_saved_fred_panel <- function(panel, state_meta) {
-  required_columns <- c(
-    "date", "state", "state_abbr",
-    "initial_claims", "continued_claims", "insured_unemployment_rate",
-    "covered_employment", "unemployed_persons", "unemployment_rate", "annual_population"
-  )
-
-  validation <- list(ok = TRUE, reasons = character())
-
-  missing_columns <- setdiff(required_columns, names(panel))
-  if (length(missing_columns) > 0) {
-    validation$ok <- FALSE
-    validation$reasons <- c(
-      validation$reasons,
-      paste0("Missing required columns: ", paste(missing_columns, collapse = ", "))
-    )
-    return(validation)
-  }
-
-  if (n_distinct(panel$state) != nrow(state_meta)) {
-    validation$ok <- FALSE
-    validation$reasons <- c(validation$reasons, "Saved panel does not contain all 50 states.")
-  }
-
-  if (n_distinct(panel$state_abbr) != nrow(state_meta)) {
-    validation$ok <- FALSE
-    validation$reasons <- c(validation$reasons, "Saved panel does not contain all 50 state abbreviations.")
-  }
-
-  duplicate_rows <- panel |>
-    count(state, state_abbr, date, name = "n") |>
-    filter(n > 1)
-  if (nrow(duplicate_rows) > 0) {
-    validation$ok <- FALSE
-    validation$reasons <- c(validation$reasons, "Saved panel has duplicate state-month rows.")
-  }
-
-  full_months <- tibble(date = seq(min(panel$date, na.rm = TRUE), max(panel$date, na.rm = TRUE), by = "month"))
-  expected_grid <- state_meta |>
-    transmute(state, state_abbr = abb) |>
-    crossing(full_months)
-
-  missing_state_months <- expected_grid |>
-    anti_join(panel |> select(state, state_abbr, date), by = c("state", "state_abbr", "date"))
-  if (nrow(missing_state_months) > 0) {
-    validation$ok <- FALSE
-    validation$reasons <- c(validation$reasons, "Saved panel is missing some state-month combinations.")
-  }
-
-  claim_vars <- c("initial_claims", "continued_claims", "insured_unemployment_rate", "covered_employment")
-  context_vars <- c("unemployed_persons", "unemployment_rate", "annual_population")
-
-  for (var in claim_vars) {
-    if (!any(is.finite(panel[[var]]) & !is.na(panel[[var]]))) {
-      validation$ok <- FALSE
-      validation$reasons <- c(validation$reasons, paste0("No usable observations found for ", var, "."))
-    }
-  }
-
-  for (var in context_vars) {
-    if (!any(is.finite(panel[[var]]) & !is.na(panel[[var]]))) {
-      validation$ok <- FALSE
-      validation$reasons <- c(validation$reasons, paste0("No usable observations found for ", var, "."))
-    }
-  }
-
-  latest_claim_month <- panel |>
-    filter(if_all(all_of(claim_vars), ~ is.finite(.) & !is.na(.))) |>
-    summarise(date = max(date, na.rm = TRUE)) |>
-    pull(date)
-  if (length(latest_claim_month) == 0 || is.na(latest_claim_month)) {
-    validation$ok <- FALSE
-    validation$reasons <- c(validation$reasons, "Could not locate a complete latest claim-side month.")
-  } else {
-    latest_claim_coverage <- panel |>
-      filter(date == latest_claim_month) |>
-      summarise(across(all_of(claim_vars), ~ sum(is.finite(.) & !is.na(.))))
-    if (any(latest_claim_coverage[1, ] < nrow(state_meta))) {
-      validation$ok <- FALSE
-      validation$reasons <- c(validation$reasons, "Latest complete claim-side month is not fully populated across states.")
-    }
-  }
-
-  latest_context_month <- panel |>
-    filter(if_all(all_of(context_vars), ~ is.finite(.) & !is.na(.))) |>
-    summarise(date = max(date, na.rm = TRUE)) |>
-    pull(date)
-  if (length(latest_context_month) == 0 || is.na(latest_context_month)) {
-    validation$ok <- FALSE
-    validation$reasons <- c(validation$reasons, "Could not locate a complete latest unemployment-context month.")
-  } else {
-    latest_context_coverage <- panel |>
-      filter(date == latest_context_month) |>
-      summarise(across(all_of(context_vars), ~ sum(is.finite(.) & !is.na(.))))
-    if (any(latest_context_coverage[1, ] < nrow(state_meta))) {
-      validation$ok <- FALSE
-      validation$reasons <- c(validation$reasons, "Latest complete unemployment-context month is not fully populated across states.")
-    }
-  }
-
-  validation
-}
-
-panel_file_exists <- file.exists(fred_panel_path)
-meta_file_exists <- file.exists(fred_meta_path)
-meta_matches <- meta_file_exists &&
-  identical(readLines(fred_meta_path, warn = FALSE, n = 1), fred_pull_version)
-
-fred_validation <- list(ok = FALSE, reasons = "Saved FRED panel not yet checked.")
-
-if (panel_file_exists) {
-  fred_state_month_panel <- read_csv(fred_panel_path, show_col_types = FALSE) |>
-    mutate(date = as.Date(date))
-  fred_validation <- validate_saved_fred_panel(fred_state_month_panel, state_meta)
-}
-
-needs_fred_download <- !panel_file_exists || !meta_file_exists || !meta_matches || !fred_validation$ok
-
-if (!needs_fred_download) {
-  message("Saved FRED panel passed validation checks; using local file.")
-} else {
-  if (panel_file_exists) {
-    message("Saved FRED panel failed validation or version checks. Refreshing pull.")
-    if (length(fred_validation$reasons) > 0) {
-      message("Validation details: ", paste(fred_validation$reasons, collapse = " | "))
-    }
-  }
-
-  fred_panel <- pmap_dfr(
-    fred_catalog,
-    pull_fred_series
-  )
-
-  weekly_state_month <- fred_panel |>
-    filter(frequency == "Weekly") |>
-    mutate(date = floor_date(date, unit = "month")) |>
-    group_by(state, abb, date, measure) |>
-    summarise(
-      value = if (first(measure) == "Initial Claims") {
-        sum(value, na.rm = TRUE)
-      } else {
-        mean(value, na.rm = TRUE)
-      },
-      .groups = "drop"
-    ) |>
-    pivot_wider(names_from = measure, values_from = value)
-
-  monthly_state_month <- fred_panel |>
-    filter(frequency == "Monthly") |>
-    group_by(state, abb, date, measure) |>
-    summarise(value = dplyr::first(value), .groups = "drop") |>
-    pivot_wider(names_from = measure, values_from = value)
-
-  annual_state_year <- fred_panel |>
-    filter(frequency == "Annual", measure == "Annual Population") |>
-    mutate(year = year(date)) |>
-    group_by(state, abb, year) |>
-    summarise(annual_population = dplyr::first(value), .groups = "drop")
-
-  fred_state_month_panel <- weekly_state_month |>
-    full_join(monthly_state_month, by = c("state", "abb", "date")) |>
-    mutate(year = year(date)) |>
-    left_join(annual_state_year, by = c("state", "abb", "year")) |>
-    rename(
-      state_abbr = abb,
-      initial_claims = `Initial Claims`,
-      continued_claims = `Continued Claims`,
-      insured_unemployment_rate = `Insured Unemployment Rate`,
-      unemployed_persons = `Unemployed Persons`,
-      unemployment_rate = `Unemployment Rate`
-    ) |>
-    select(
-      date,
-      state,
-      state_abbr,
-      initial_claims,
-      continued_claims,
-      insured_unemployment_rate,
-      annual_population,
-      unemployed_persons,
-      unemployment_rate
-    ) |>
-    arrange(state, date)
-
-  write_csv(fred_state_month_panel, fred_panel_path)
-  writeLines(fred_pull_version, fred_meta_path)
-}
-
-fred_state_month_panel <- fred_state_month_panel |>
-  mutate(
-    covered_employment = if_else(
-      is.finite(insured_unemployment_rate) & insured_unemployment_rate > 0,
-      continued_claims / (insured_unemployment_rate / 100),
-      NA_real_
-    )
-  ) |>
-  select(
-    date,
-    state,
-    state_abbr,
-    initial_claims,
-    continued_claims,
-    insured_unemployment_rate,
-    covered_employment,
-    annual_population,
-    unemployed_persons,
-    unemployment_rate
-  )
-
-write_csv(fred_state_month_panel, fred_panel_path)
-
-fred_latest <- fred_state_month_panel |>
-  group_by(state, state_abbr) |>
-  slice_max(date, n = 1, with_ties = FALSE) |>
-  ungroup()
+fred_catalog_export = read_final_parquet("ui_fred_series_catalog.parquet")
+fred_state_month_panel = read_final_parquet("ui_fred_monthly_state_panel.parquet") |>
+  mutate(date = as.Date(date))
 ```
 
 ```{r}
@@ -1105,21 +1484,14 @@ Monthly CPS does **not** provide a clean long panel of UI claiming, claims burde
 
 # CPS Panel Assembly
 
-The CPS state-month composition panel is saved locally, so the memo can load the aggregated panel directly without rereading the raw microdata each time. The saved state-month panel used below is `data/CPS/cps_ui_state_month_panel.csv`. The underlying microdata comes from the unified CPS extract at `data/CPS/cps_unified.csv.gz` (shared with `unemployment_decomposition.qmd`; run `Rscript submit_unified_cps_extract.R` to download or refresh).
+The CPS state-month composition panel is saved locally, so the memo can load the aggregated panel directly without rereading the raw microdata each time. The saved state-month panel used below is `data/final/cps_ui_state_month_panel.parquet`, produced by `build_panels.R` from the unified CPS extract and stored alongside the other final parquet panels.
 
-```{r rebuild-panels-before-cps-load}
-#| echo: false
 
-invisible(capture.output(
-  source(here("build_panels.R"), local = new.env(parent = globalenv()))
-))
-```
 
 ```{r cps-panel-load}
-cps_dir <- here("data", "CPS")
-cps_panel_path <- here("data", "CPS", "cps_ui_state_month_panel.csv")
+cps_panel_path = here("data", "final", "cps_ui_state_month_panel.parquet")
 
-cps_state_month_panel <- read_csv(cps_panel_path, show_col_types = FALSE) |>
+cps_state_month_panel = read_final_parquet("cps_ui_state_month_panel.parquet") |>
   mutate(date = as.Date(date))
 ```
 
@@ -1155,7 +1527,7 @@ cps_state_month_panel |>
   ) |>
   tab_source_note(
     source_note = md(paste0(
-      "Saved locally to `", cps_panel_path, "`. Raw microdata from unified extract at `data/CPS/cps_unified.csv.gz`."
+      "Saved locally to `", cps_panel_path, "`, generated by `build_panels.R` and read directly from `data/final`."
     ))
   )
 ```
@@ -1182,6 +1554,9 @@ tibble(
     "other_occ_share",
     "perm_job_loser_share",
     "temp_layoff_share",
+    "completed_temp_job_share",
+    "job_leaver_share",
+    "reentrant_share",
     "white_collar_perm_job_loser_share"
   ),
   Description = c(
@@ -1200,6 +1575,9 @@ tibble(
     "Diagnostic component of `other_services_share`: residual non-white / non-blue cases, mainly NIU / no usable prior occupation and military cases",
     "Weighted share of unemployed persons who are permanent job losers",
     "Weighted share of unemployed persons on temporary layoff",
+    "Weighted share of unemployed persons whose prior temporary job ended as scheduled",
+    "Weighted share of unemployed persons who voluntarily left their last job",
+    "Weighted share of unemployed persons re-entering the labor force after a period out",
     "Weighted share of unemployed persons who are white-collar permanent job losers"
   )
 ) |>
@@ -1710,6 +2088,8 @@ build_cps_summary_table("white_collar_perm_job_loser_share")
 
 :::
 
+{{< include _ui_cps_profiles.qmd >}}
+
 # Final Merged Panel
 
 The final merged panel combines the saved FRED outcome-side panel with the saved CPS composition-side panel. The purpose is to produce a single analysis-ready dataset that can be estimated at multiple time aggregations depending on the tradeoff between identification and precision.
@@ -1735,16 +2115,16 @@ invisible(NULL)
 
 tibble(
   File = c(
-    "ui_takeup_panel_state_month.csv",
-    "ui_takeup_panel_state_month_analysis_ready.csv",
-    "ui_takeup_panel_state_quarter.csv",
-    "ui_takeup_panel_state_quarter_analysis_ready.csv",
-    "ui_takeup_panel_state_year.csv",
-    "ui_takeup_panel_state_year_analysis_ready.csv",
-    "cps_month_precision.csv",
-    "cps_quarter_precision.csv",
-    "cps_year_precision.csv",
-    "cps_precision_comparison.csv"
+    "ui_takeup_panel_state_month.parquet",
+    "ui_takeup_panel_state_month_analysis_ready.parquet",
+    "ui_takeup_panel_state_quarter.parquet",
+    "ui_takeup_panel_state_quarter_analysis_ready.parquet",
+    "ui_takeup_panel_state_year.parquet",
+    "ui_takeup_panel_state_year_analysis_ready.parquet",
+    "cps_month_precision.parquet",
+    "cps_quarter_precision.parquet",
+    "cps_year_precision.parquet",
+    "cps_precision_comparison.parquet"
   ),
   Purpose = c(
     "Full merged state-month panel",
@@ -1783,8 +2163,8 @@ tibble(
 The tables below show the first few rows of each saved panel so the reader can see the exact structure that is being carried forward into estimation.
 
 ```{r final-panel-preview-helpers}
-preview_final_dataset <- function(path) {
-  read_csv(path, show_col_types = FALSE) |>
+preview_final_dataset = function(filename) {
+  read_final_parquet(filename) |>
     head() |>
     DT::datatable(
       rownames = FALSE,
@@ -1802,37 +2182,37 @@ preview_final_dataset <- function(path) {
 ### State-Month Full
 
 ```{r final-preview-month-full}
-preview_final_dataset(here("data", "final", "ui_takeup_panel_state_month.csv"))
+preview_final_dataset("ui_takeup_panel_state_month.parquet")
 ```
 
 ### State-Month Analysis Ready
 
 ```{r final-preview-month-ar}
-preview_final_dataset(here("data", "final", "ui_takeup_panel_state_month_analysis_ready.csv"))
+preview_final_dataset("ui_takeup_panel_state_month_analysis_ready.parquet")
 ```
 
 ### State-Quarter Full
 
 ```{r final-preview-quarter-full}
-preview_final_dataset(here("data", "final", "ui_takeup_panel_state_quarter.csv"))
+preview_final_dataset("ui_takeup_panel_state_quarter.parquet")
 ```
 
 ### State-Quarter Analysis Ready
 
 ```{r final-preview-quarter-ar}
-preview_final_dataset(here("data", "final", "ui_takeup_panel_state_quarter_analysis_ready.csv"))
+preview_final_dataset("ui_takeup_panel_state_quarter_analysis_ready.parquet")
 ```
 
 ### State-Year Full
 
 ```{r final-preview-year-full}
-preview_final_dataset(here("data", "final", "ui_takeup_panel_state_year.csv"))
+preview_final_dataset("ui_takeup_panel_state_year.parquet")
 ```
 
 ### State-Year Analysis Ready
 
 ```{r final-preview-year-ar}
-preview_final_dataset(here("data", "final", "ui_takeup_panel_state_year_analysis_ready.csv"))
+preview_final_dataset("ui_takeup_panel_state_year_analysis_ready.parquet")
 ```
 
 :::
@@ -1858,7 +2238,7 @@ This makes the panel tradeoff transparent: moving from month to quarter or year 
 ```{r}
 #| tbl-cap: "Approximate CPS precision by aggregation frequency."
 
-read_csv(here("data", "final", "cps_precision_comparison.csv"), show_col_types = FALSE) |>
+read_final_parquet("cps_precision_comparison.parquet") |>
   mutate(
     Measure = recode(
       measure,
@@ -1913,7 +2293,7 @@ read_csv(here("data", "final", "cps_precision_comparison.csv"), show_col_types =
 ```{r}
 #| tbl-cap: "Frequency-level tradeoff summary using the CPS precision diagnostics."
 
-read_csv(here("data", "final", "cps_precision_comparison.csv"), show_col_types = FALSE) |>
+read_final_parquet("cps_precision_comparison.parquet") |>
   group_by(frequency) |>
   summarise(
     `Median Eff. N` = median(median_effective_n),
@@ -2207,19 +2587,7 @@ tibble(
 ```{r}
 #| tbl-cap: "Exact OCC1990-to-broad-occupation crosswalk used in the memo."
 
-cps_occ_codebook <- ipums_val_labels(
-  read_ipums_ddi(here("data", "CPS", "cps_unified.xml")),
-  "OCC1990"
-) |>
-  transmute(
-    occ1990 = val,
-    occ1990_name = lbl,
-    broad_group = case_when(
-      between(val, 3, 389) ~ "White Collar",
-      between(val, 473, 889) ~ "Blue Collar",
-      TRUE ~ "Other Services"
-    )
-  )
+cps_occ_codebook <- read_final_parquet("cps_occ1990_broad_codebook.parquet")
 
 datatable(
   cps_occ_codebook,
@@ -2384,10 +2752,7 @@ This section now focuses on a single baseline specification. All regressions use
 library(fixest)
 library(modelsummary)
 
-panel_month_raw <- read_csv(
-  here("data", "final", "ui_takeup_panel_state_month_analysis_ready.csv"),
-  show_col_types = FALSE
-) |>
+panel_month_raw = read_final_parquet("ui_takeup_panel_state_month_analysis_ready.parquet") |>
   mutate(
     date = as.Date(period_start),
     year_month = paste0(year, "-", sprintf("%02d", month)),
@@ -2395,10 +2760,7 @@ panel_month_raw <- read_csv(
     post_2022 = as.integer(year >= 2023L)
   )
 
-panel_quarter_raw <- read_csv(
-  here("data", "final", "ui_takeup_panel_state_quarter_analysis_ready.csv"),
-  show_col_types = FALSE
-) |>
+panel_quarter_raw = read_final_parquet("ui_takeup_panel_state_quarter_analysis_ready.parquet") |>
   mutate(
     date = as.Date(period_start),
     year_quarter = paste0(year, "-Q", quarter),
@@ -2406,21 +2768,18 @@ panel_quarter_raw <- read_csv(
     post_2022 = as.integer(year >= 2023L)
   )
 
-panel_year_raw <- read_csv(
-  here("data", "final", "ui_takeup_panel_state_year_analysis_ready.csv"),
-  show_col_types = FALSE
-) |>
+panel_year_raw = read_final_parquet("ui_takeup_panel_state_year_analysis_ready.parquet") |>
   mutate(
     date = as.Date(period_start),
     post_2020 = as.integer(year >= 2021L),
     post_2022 = as.integer(year >= 2023L)
   )
 
-sample_end_date <- as.Date("2025-12-31")
-expected_states <- nrow(state_meta)
+sample_end_date = as.Date("2025-12-31")
+expected_states = nrow(state_meta)
 
-keep_balanced_periods <- function(data, period_var) {
-  balanced_periods <- data |>
+keep_balanced_periods = function(data, period_var) {
+  balanced_periods = data |>
     count(.data[[period_var]], name = "state_count") |>
     filter(state_count == expected_states) |>
     pull(.data[[period_var]])
@@ -2429,45 +2788,19 @@ keep_balanced_periods <- function(data, period_var) {
     filter(.data[[period_var]] %in% balanced_periods)
 }
 
-panel_month_cutoff <- panel_month_raw |>
-  filter(date <= sample_end_date)
-panel_quarter_cutoff <- panel_quarter_raw |>
-  filter(date <= sample_end_date)
-panel_year_cutoff <- panel_year_raw |>
-  filter(date <= sample_end_date)
+panel_month = panel_month_raw |>
+  filter(date <= sample_end_date) |>
+  keep_balanced_periods("year_month")
 
-panel_month <- keep_balanced_periods(panel_month_cutoff, "year_month")
-panel_quarter <- keep_balanced_periods(panel_quarter_cutoff, "year_quarter")
-panel_year <- keep_balanced_periods(panel_year_cutoff, "year")
+panel_quarter = panel_quarter_raw |>
+  filter(date <= sample_end_date) |>
+  keep_balanced_periods("year_quarter")
 
-msummary_styled <- function(models, title, notes) {
-  msummary(
-    models,
-    stars = c("*" = 0.10, "**" = 0.05, "***" = 0.01),
-    gof_map = c("nobs", "r.squared", "adj.r.squared", "within.r.squared"),
-    title = title,
-    notes = notes,
-    output = "gt"
-  ) |>
-    tab_options(table.font.size = px(11))
-}
+panel_year = panel_year_raw |>
+  filter(date <= sample_end_date) |>
+  keep_balanced_periods("year")
 
-baseline_rhs <- paste(
-  "new_entrant_share",
-  "noncitizen_share",
-  "blue_collar_share",
-  "working_age_25_54_share",
-  sep = " + "
-)
-
-fit_baseline <- function(outcome, data, time_fe) {
-  feols(
-    as.formula(paste0(outcome, " ~ ", baseline_rhs, " | state + ", time_fe)),
-    data = data,
-    weights = ~annual_population,
-    cluster = ~state
-  )
-}
+baseline_rhs = "new_entrant_share + noncitizen_share + blue_collar_share + working_age_25_54_share"
 ```
 
 ## Baseline Controls
@@ -2643,6 +2976,759 @@ msummary_styled(
 ```
 
 :::
+
+# Expected UI Takeup by Cause
+
+## Annual By-Cause Composition Extension
+
+Before moving to occupation mix and interaction mechanisms, it is useful to ask a more direct question: in the **state-year panel**, does UI take-up vary systematically with the **reason-for-unemployment composition** itself? The specification below uses the annual panel only, because the full six-way by-cause split is most credible after pooling CPS observations within year. `perm_job_loser_share` is omitted, so each coefficient is interpreted relative to a higher permanent-job-loser share.
+
+```{r annual-bycause-extension-models}
+annual_bycause_rhs <- paste(
+  "temp_layoff_share",
+  "completed_temp_job_share",
+  "job_leaver_share",
+  "reentrant_share",
+  "new_entrant_share",
+  sep = " + "
+)
+
+fit_annual_bycause_extension <- function(outcome, data) {
+  feols(
+    as.formula(
+      paste0(
+        outcome,
+        " ~ ",
+        annual_bycause_rhs,
+        " | state + year"
+      )
+    ),
+    data = data,
+    weights = ~annual_population,
+    cluster = ~state
+  )
+}
+
+ccu_yr_bycause <- fit_annual_bycause_extension("continued_claims_per_covered_employment", panel_year)
+icu_yr_bycause <- fit_annual_bycause_extension("initial_claims_per_covered_employment", panel_year)
+
+ccu_yr_bycause_nopan <- fit_annual_bycause_extension("continued_claims_per_covered_employment", yr_nopan)
+icu_yr_bycause_nopan <- fit_annual_bycause_extension("initial_claims_per_covered_employment", yr_nopan)
+```
+
+::: {.panel-tabset}
+
+### CC/CE
+
+```{r annual-bycause-extension-ccce}
+msummary_styled(
+  list(
+    "Annual Full" = ccu_yr_bycause,
+    "Annual Excl. Pandemic" = ccu_yr_bycause_nopan
+  ),
+  title = "Annual By-Cause Composition Extension: Continued Claims / Covered Employment",
+  notes = "Annual state-year regressions with state and year fixed effects, state-clustered standard errors, and annual state population weights. Included regressors are temporary layoff, completed temporary job, job leaver, reentrant, and new-entrant shares. `perm_job_loser_share` is omitted, so coefficients are interpreted relative to permanent job losers."
+)
+```
+
+### IC/CE
+
+```{r annual-bycause-extension-icce}
+msummary_styled(
+  list(
+    "Annual Full" = icu_yr_bycause,
+    "Annual Excl. Pandemic" = icu_yr_bycause_nopan
+  ),
+  title = "Annual By-Cause Composition Extension: Initial Claims / Covered Employment",
+  notes = "Annual state-year regressions with state and year fixed effects, state-clustered standard errors, and annual state population weights. Included regressors are temporary layoff, completed temporary job, job leaver, reentrant, and new-entrant shares. `perm_job_loser_share` is omitted, so coefficients are interpreted relative to permanent job losers."
+)
+```
+
+:::
+
+This annual by-cause extension is the closest state-panel analogue to the national descriptive regression. If `job_leaver_share`, `reentrant_share`, or `new_entrant_share` come in well below the omitted permanent-job-loser category, that is consistent with lower claims intensity in unemployment pools that are less tightly connected to prior job attachment. If `temp_layoff_share` is positive relative to permanent job losers, that would indicate stronger claims intensity in recall-style unemployment than in permanent separations.
+
+## Residual And Robustness Checks
+
+Because `perm_job_loser_share` is omitted, the coefficients above are **conditional contrasts relative to permanent job losers**, not raw unconditional correlations. A negative coefficient therefore means "lower take-up than permanent job losers, holding the other by-cause shares fixed," not necessarily that the raw relationship with take-up is negative. The checks below ask four concrete questions:
+
+1. Do the residuals show obvious misspecification or a few extreme state-year observations?
+2. Do the signs change sharply when the fixed-effects structure changes?
+3. Are the coefficients driven by one or two influential states?
+4. How tightly do the included by-cause shares move together in the annual panel?
+
+```{r annual-bycause-diagnostic-setup}
+annual_bycause_terms <- c(
+  "temp_layoff_share",
+  "completed_temp_job_share",
+  "job_leaver_share",
+  "reentrant_share",
+  "new_entrant_share"
+)
+
+annual_bycause_term_labels <- c(
+  temp_layoff_share = "Temporary layoff share",
+  completed_temp_job_share = "Completed temp-job share",
+  job_leaver_share = "Job leaver share",
+  reentrant_share = "Reentrant share",
+  new_entrant_share = "New entrant share"
+)
+
+safe_sd <- function(x) {
+  s <- sd(x, na.rm = TRUE)
+  if (!is.finite(s) || s == 0) 1 else s
+}
+
+build_annual_bycause_diag_df <- function(model, data, outcome_var, outcome_label, sample_label) {
+  fitted_vals <- predict(model, newdata = data)
+  observed_vals <- data[[outcome_var]]
+
+  tibble(
+    sample = sample_label,
+    outcome = outcome_label,
+    state = data$state,
+    year = data$year,
+    annual_population = data$annual_population,
+    observed = observed_vals,
+    fitted = fitted_vals,
+    residual = observed_vals - fitted_vals
+  ) |>
+    mutate(
+      std_residual = residual / safe_sd(residual),
+      abs_residual = abs(residual)
+    )
+}
+
+annual_bycause_diag_df <- bind_rows(
+  build_annual_bycause_diag_df(
+    ccu_yr_bycause,
+    panel_year,
+    "continued_claims_per_covered_employment",
+    "CC/CE",
+    "Annual Full"
+  ),
+  build_annual_bycause_diag_df(
+    ccu_yr_bycause_nopan,
+    yr_nopan,
+    "continued_claims_per_covered_employment",
+    "CC/CE",
+    "Annual Excl. Pandemic"
+  ),
+  build_annual_bycause_diag_df(
+    icu_yr_bycause,
+    panel_year,
+    "initial_claims_per_covered_employment",
+    "IC/CE",
+    "Annual Full"
+  ),
+  build_annual_bycause_diag_df(
+    icu_yr_bycause_nopan,
+    yr_nopan,
+    "initial_claims_per_covered_employment",
+    "IC/CE",
+    "Annual Excl. Pandemic"
+  )
+)
+
+largest_resid_points <- annual_bycause_diag_df |>
+  group_by(sample, outcome) |>
+  slice_max(order_by = abs_residual, n = 1, with_ties = FALSE) |>
+  ungroup() |>
+  transmute(
+    sample,
+    outcome,
+    `Largest Residual State-Year` = paste0(state, " ", year),
+    `Largest Abs Residual` = abs_residual
+  )
+
+annual_bycause_resid_summary <- annual_bycause_diag_df |>
+  group_by(sample, outcome) |>
+  summarise(
+    `Weighted RMSE` = sqrt(weighted.mean(residual^2, annual_population, na.rm = TRUE)),
+    `Weighted MAE` = weighted.mean(abs_residual, annual_population, na.rm = TRUE),
+    `Corr(Observed, Fitted)` = cor(observed, fitted, use = "complete.obs"),
+    `Mean Residual` = weighted.mean(residual, annual_population, na.rm = TRUE),
+    `P90 Abs Residual` = quantile(abs_residual, 0.90, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  left_join(largest_resid_points, by = c("sample", "outcome"))
+
+fit_annual_bycause_extension_fe_variant <- function(outcome, data, fe_variant) {
+  formula_text <- switch(
+    fe_variant,
+    "No FE" = paste0(outcome, " ~ ", annual_bycause_rhs),
+    "State FE only" = paste0(outcome, " ~ ", annual_bycause_rhs, " | state"),
+    "Year FE only" = paste0(outcome, " ~ ", annual_bycause_rhs, " | year"),
+    "State + Year FE" = paste0(outcome, " ~ ", annual_bycause_rhs, " | state + year")
+  )
+
+  feols(
+    as.formula(formula_text),
+    data = data,
+    weights = ~annual_population,
+    cluster = ~state
+  )
+}
+
+ccu_yr_bycause_no_fe <- fit_annual_bycause_extension_fe_variant(
+  "continued_claims_per_covered_employment",
+  panel_year,
+  "No FE"
+)
+ccu_yr_bycause_state_fe <- fit_annual_bycause_extension_fe_variant(
+  "continued_claims_per_covered_employment",
+  panel_year,
+  "State FE only"
+)
+ccu_yr_bycause_year_fe <- fit_annual_bycause_extension_fe_variant(
+  "continued_claims_per_covered_employment",
+  panel_year,
+  "Year FE only"
+)
+
+icu_yr_bycause_no_fe <- fit_annual_bycause_extension_fe_variant(
+  "initial_claims_per_covered_employment",
+  panel_year,
+  "No FE"
+)
+icu_yr_bycause_state_fe <- fit_annual_bycause_extension_fe_variant(
+  "initial_claims_per_covered_employment",
+  panel_year,
+  "State FE only"
+)
+icu_yr_bycause_year_fe <- fit_annual_bycause_extension_fe_variant(
+  "initial_claims_per_covered_employment",
+  panel_year,
+  "Year FE only"
+)
+
+extract_annual_bycause_coefs <- function(model) {
+  tibble(
+    term = annual_bycause_terms,
+    estimate = unname(coef(model)[annual_bycause_terms])
+  ) |>
+    mutate(Term = recode(term, !!!annual_bycause_term_labels)) |>
+    select(term, Term, estimate)
+}
+
+summarise_leave_one_state_out <- function(outcome_var, data, baseline_model, outcome_label, sample_label) {
+  baseline_tbl <- extract_annual_bycause_coefs(baseline_model) |>
+    rename(Baseline = estimate)
+
+  loo_tbl <- map_dfr(sort(unique(data$state)), \(st) {
+    model_drop <- fit_annual_bycause_extension(outcome_var, filter(data, state != st))
+    extract_annual_bycause_coefs(model_drop) |>
+      rename(estimate = estimate) |>
+      mutate(`Dropped State` = st)
+  }) |>
+    left_join(baseline_tbl, by = c("term", "Term")) |>
+    mutate(abs_shift = abs(estimate - Baseline))
+
+  loo_tbl |>
+    group_by(Term) |>
+    summarise(
+      Outcome = outcome_label,
+      Sample = sample_label,
+      Baseline = first(Baseline),
+      Min = min(estimate, na.rm = TRUE),
+      Median = median(estimate, na.rm = TRUE),
+      Max = max(estimate, na.rm = TRUE),
+      `Share Same Sign` = mean(sign(estimate) == sign(first(Baseline)), na.rm = TRUE),
+      `Largest Abs Shift` = max(abs_shift, na.rm = TRUE),
+      `Dropped State w/ Largest Shift` = `Dropped State`[which.max(abs_shift)],
+      .groups = "drop"
+    ) |>
+    select(
+      Outcome, Sample, Term, Baseline, Min, Median, Max,
+      `Share Same Sign`, `Largest Abs Shift`, `Dropped State w/ Largest Shift`
+    )
+}
+
+annual_bycause_loo_summary <- bind_rows(
+  summarise_leave_one_state_out(
+    "continued_claims_per_covered_employment",
+    panel_year,
+    ccu_yr_bycause,
+    "CC/CE",
+    "Annual Full"
+  ),
+  summarise_leave_one_state_out(
+    "continued_claims_per_covered_employment",
+    yr_nopan,
+    ccu_yr_bycause_nopan,
+    "CC/CE",
+    "Annual Excl. Pandemic"
+  ),
+  summarise_leave_one_state_out(
+    "initial_claims_per_covered_employment",
+    panel_year,
+    icu_yr_bycause,
+    "IC/CE",
+    "Annual Full"
+  ),
+  summarise_leave_one_state_out(
+    "initial_claims_per_covered_employment",
+    yr_nopan,
+    icu_yr_bycause_nopan,
+    "IC/CE",
+    "Annual Excl. Pandemic"
+  )
+)
+
+build_pairwise_corr_table <- function(data, sample_label) {
+  pair_list <- combn(annual_bycause_terms, 2, simplify = FALSE)
+
+  map_dfr(pair_list, \(vars) {
+    tibble(
+      Sample = sample_label,
+      `Share Pair` = paste(
+        annual_bycause_term_labels[[vars[[1]]]],
+        "vs.",
+        annual_bycause_term_labels[[vars[[2]]]]
+      ),
+      Correlation = cor(data[[vars[[1]]]], data[[vars[[2]]]], use = "complete.obs")
+    )
+  }) |>
+    arrange(desc(abs(Correlation)))
+}
+
+annual_bycause_pairwise_corr <- bind_rows(
+  build_pairwise_corr_table(panel_year, "Annual Full"),
+  build_pairwise_corr_table(yr_nopan, "Annual Excl. Pandemic")
+)
+
+estimatr_available <- requireNamespace("estimatr", quietly = TRUE)
+
+fit_annual_bycause_rlm <- function(outcome, data) {
+  MASS::rlm(
+    as.formula(
+      paste0(
+        outcome,
+        " ~ ",
+        annual_bycause_rhs,
+        " + factor(state) + factor(year)"
+      )
+    ),
+    data = data,
+    weights = annual_population,
+    maxit = 100
+  )
+}
+
+extract_annual_bycause_rlm <- function(model) {
+  coef_mat <- summary(model)$coefficients
+
+  tibble(
+    term = rownames(coef_mat),
+    estimate = coef_mat[, "Value"],
+    std_error = coef_mat[, "Std. Error"],
+    t_value = coef_mat[, "t value"]
+  ) |>
+    filter(term %in% annual_bycause_terms) |>
+    mutate(Term = recode(term, !!!annual_bycause_term_labels)) |>
+    select(term, Term, estimate, std_error, t_value)
+}
+
+ccu_yr_bycause_rlm <- fit_annual_bycause_rlm(
+  "continued_claims_per_covered_employment",
+  panel_year
+)
+ccu_yr_bycause_nopan_rlm <- fit_annual_bycause_rlm(
+  "continued_claims_per_covered_employment",
+  yr_nopan
+)
+icu_yr_bycause_rlm <- fit_annual_bycause_rlm(
+  "initial_claims_per_covered_employment",
+  panel_year
+)
+icu_yr_bycause_nopan_rlm <- fit_annual_bycause_rlm(
+  "initial_claims_per_covered_employment",
+  yr_nopan
+)
+
+build_annual_bycause_outlier_compare <- function(feols_model, rlm_model, outcome_label, sample_label) {
+  fe_tbl <- summary(feols_model)$coeftable |>
+    as.data.frame() |>
+    rownames_to_column("term") |>
+    as_tibble() |>
+    filter(term %in% annual_bycause_terms) |>
+    transmute(
+      term,
+      `FEOLS Estimate` = Estimate,
+      `FEOLS p-value` = `Pr(>|t|)`
+    )
+
+  rlm_tbl <- extract_annual_bycause_rlm(rlm_model) |>
+    transmute(
+      term,
+      `RLM Estimate` = estimate,
+      `RLM t-stat` = t_value
+    )
+
+  fe_tbl |>
+    left_join(rlm_tbl, by = "term") |>
+    mutate(
+      Outcome = outcome_label,
+      Sample = sample_label,
+      Term = recode(term, !!!annual_bycause_term_labels),
+      `Same Sign` = sign(`FEOLS Estimate`) == sign(`RLM Estimate`)
+    ) |>
+    select(
+      Outcome, Sample, Term,
+      `FEOLS Estimate`, `FEOLS p-value`,
+      `RLM Estimate`, `RLM t-stat`,
+      `Same Sign`
+    )
+}
+
+annual_bycause_outlier_compare <- bind_rows(
+  build_annual_bycause_outlier_compare(
+    ccu_yr_bycause,
+    ccu_yr_bycause_rlm,
+    "CC/CE",
+    "Annual Full"
+  ),
+  build_annual_bycause_outlier_compare(
+    ccu_yr_bycause_nopan,
+    ccu_yr_bycause_nopan_rlm,
+    "CC/CE",
+    "Annual Excl. Pandemic"
+  ),
+  build_annual_bycause_outlier_compare(
+    icu_yr_bycause,
+    icu_yr_bycause_rlm,
+    "IC/CE",
+    "Annual Full"
+  ),
+  build_annual_bycause_outlier_compare(
+    icu_yr_bycause_nopan,
+    icu_yr_bycause_nopan_rlm,
+    "IC/CE",
+    "Annual Excl. Pandemic"
+  )
+)
+```
+
+### Residual Diagnostics
+
+```{r fig-annual-bycause-residuals}
+#| fig-cap: "Residual-versus-fitted checks for the annual by-cause extension. Point size is proportional to annual state population."
+#| fig-height: 6.5
+
+ggplot(annual_bycause_diag_df, aes(fitted, residual, size = annual_population)) +
+  geom_hline(yintercept = 0, color = "grey65", linewidth = 0.4) +
+  geom_point(alpha = 0.35, color = "#0073C2") +
+  geom_smooth(method = "loess", se = FALSE, color = "black", linewidth = 0.6) +
+  facet_grid(outcome ~ sample, scales = "free") +
+  scale_x_continuous(labels = percent_format(accuracy = 0.01)) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+  labs(
+    title = "Annual By-Cause Extension: Residuals vs. Fitted",
+    subtitle = "A flat smooth around zero is the main visual check",
+    x = "Fitted value",
+    y = "Residual"
+  ) +
+  theme_report +
+  theme(legend.position = "none")
+```
+
+```{r annual-bycause-residual-summary}
+#| tbl-cap: "Residual summary for the annual by-cause extension."
+
+annual_bycause_resid_summary |>
+  mutate(
+    across(c(`Weighted RMSE`, `Weighted MAE`, `Mean Residual`, `P90 Abs Residual`, `Largest Abs Residual`),
+           \(x) percent(x, accuracy = 0.01)),
+    `Corr(Observed, Fitted)` = sprintf("%.3f", `Corr(Observed, Fitted)`)
+  ) |>
+  rename(Sample = sample, Outcome = outcome) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+### Fixed-Effects Sensitivity
+
+If the negative coefficients are being created by the fixed-effects structure rather than by a stable conditional pattern, they should move sharply when the specification changes from **no FE** to **state FE only**, **year FE only**, and **state + year FE**.
+
+::: {.panel-tabset}
+
+#### CC/CE
+
+```{r annual-bycause-fe-sensitivity-ccce}
+msummary_styled(
+  list(
+    "No FE" = ccu_yr_bycause_no_fe,
+    "State FE only" = ccu_yr_bycause_state_fe,
+    "Year FE only" = ccu_yr_bycause_year_fe,
+    "State + Year FE" = ccu_yr_bycause
+  ),
+  title = "Fixed-Effects Sensitivity: Continued Claims / Covered Employment",
+  notes = "Annual full-sample state-year regressions with annual state population weights and state-clustered standard errors. Comparing these columns shows whether the by-cause coefficients are coming from raw cross-state differences, common year shifts, or within-state within-year variation."
+)
+```
+
+#### IC/CE
+
+```{r annual-bycause-fe-sensitivity-icce}
+msummary_styled(
+  list(
+    "No FE" = icu_yr_bycause_no_fe,
+    "State FE only" = icu_yr_bycause_state_fe,
+    "Year FE only" = icu_yr_bycause_year_fe,
+    "State + Year FE" = icu_yr_bycause
+  ),
+  title = "Fixed-Effects Sensitivity: Initial Claims / Covered Employment",
+  notes = "Annual full-sample state-year regressions with annual state population weights and state-clustered standard errors. Comparing these columns shows whether the by-cause coefficients are coming from raw cross-state differences, common year shifts, or within-state within-year variation."
+)
+```
+
+:::
+
+### Outlier-Robust Re-Estimation
+
+The annual residual checks suggest that a few state-year observations, especially around the pandemic and a small number of non-pandemic episodes, deserve explicit robustness treatment. The table below compares the baseline FEOLS estimates to a **Huber-type robust regression** estimated with `MASS::rlm`, using the same by-cause regressors plus explicit state and year dummies.
+
+`estimatr::lm_robust` is not available in the current local R environment, so the outlier-robust check shown here uses `MASS::rlm`.
+
+```{r annual-bycause-outlier-robust-table}
+#| tbl-cap: "Annual by-cause coefficients: baseline FEOLS versus outlier-robust `MASS::rlm`."
+
+annual_bycause_outlier_compare |>
+  mutate(
+    `FEOLS Estimate` = percent(`FEOLS Estimate`, accuracy = 0.01),
+    `FEOLS p-value` = sprintf("%.3f", `FEOLS p-value`),
+    `RLM Estimate` = percent(`RLM Estimate`, accuracy = 0.01),
+    `RLM t-stat` = sprintf("%.2f", `RLM t-stat`),
+    `Same Sign` = if_else(`Same Sign`, "Yes", "No")
+  ) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(10.5),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+### Leave-One-State-Out Stability
+
+```{r annual-bycause-leave-one-state-out}
+#| tbl-cap: "Leave-one-state-out stability of the annual by-cause coefficients."
+
+annual_bycause_loo_summary |>
+  mutate(
+    across(c(Baseline, Min, Median, Max, `Largest Abs Shift`), \(x) percent(x, accuracy = 0.01)),
+    `Share Same Sign` = percent(`Share Same Sign`, accuracy = 1)
+  ) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(10.5),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+### Correlation Among Included By-Cause Shares
+
+```{r annual-bycause-share-correlation-table}
+#| tbl-cap: "Pairwise correlation among the included annual by-cause shares."
+
+annual_bycause_pairwise_corr |>
+  mutate(Correlation = sprintf("%.3f", Correlation)) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+## Annual By-Cause Gap Over Time
+
+The coefficient tables above use **state and year fixed effects**, which is the right specification for asking whether states with different by-cause mixes have different take-up **within the same year**. But that is not the right object for a gap-over-time plot. If year fixed effects are included, the model is allowed to absorb each year's common national take-up shift with a separate year intercept, so the fitted values are no longer forcing the by-cause composition to explain the aggregate time path.
+
+For the gap-over-time exercise, the memo therefore uses a deliberately more descriptive specification:
+
+$$
+\text{takeup}_{st} =
+\beta_1 \text{TempLayoffShare}_{st} +
+\beta_2 \text{CompletedTempJobShare}_{st} +
+\beta_3 \text{JobLeaverShare}_{st} +
+\beta_4 \text{ReentrantShare}_{st} +
+\beta_5 \text{NewEntrantShare}_{st} +
+\alpha_s + \varepsilon_{st},
+$$
+
+estimated on the **annual state-year panel** with **state fixed effects** and **annual state population weights**, but **without year fixed effects**. Permanent job losers remain the omitted reference category.
+
+The yearly gap is then constructed in three steps:
+
+1. Estimate the state-year model above and compute a fitted value for every state-year.
+2. Within each calendar year, take the **population-weighted mean** of the observed state take-up values and the **population-weighted mean** of the fitted state take-up values.
+3. Define the gap as **observed minus expected**. A negative gap means the by-cause composition is **overpredicting** take-up in that year; a positive gap means it is **underpredicting** take-up.
+
+```{r annual-bycause-gap-models}
+fit_annual_bycause_gap_model <- function(outcome, data) {
+  feols(
+    as.formula(
+      paste0(
+        outcome,
+        " ~ ",
+        annual_bycause_rhs,
+        " | state"
+      )
+    ),
+    data = data,
+    weights = ~annual_population,
+    cluster = ~state
+  )
+}
+
+ccu_yr_bycause_gap_model <- fit_annual_bycause_gap_model(
+  "continued_claims_per_covered_employment",
+  panel_year
+)
+icu_yr_bycause_gap_model <- fit_annual_bycause_gap_model(
+  "initial_claims_per_covered_employment",
+  panel_year
+)
+
+panel_year_gap <- panel_year |>
+  mutate(
+    cc_ce_hat_bycause = predict(ccu_yr_bycause_gap_model, newdata = panel_year),
+    ic_ce_hat_bycause = predict(icu_yr_bycause_gap_model, newdata = panel_year)
+  )
+
+annual_gap_summary <- panel_year_gap |>
+  group_by(year) |>
+  summarise(
+    observed_cc_ce = weighted.mean(continued_claims_per_covered_employment, annual_population, na.rm = TRUE),
+    expected_cc_ce = weighted.mean(cc_ce_hat_bycause, annual_population, na.rm = TRUE),
+    cc_ce_gap = observed_cc_ce - expected_cc_ce,
+    observed_ic_ce = weighted.mean(initial_claims_per_covered_employment, annual_population, na.rm = TRUE),
+    expected_ic_ce = weighted.mean(ic_ce_hat_bycause, annual_population, na.rm = TRUE),
+    ic_ce_gap = observed_ic_ce - expected_ic_ce,
+    .groups = "drop"
+  ) |>
+  mutate(date = as.Date(paste0(year, "-01-01")))
+
+recent_annual_gap_summary <- annual_gap_summary |>
+  filter(year >= 2023L) |>
+  summarise(
+    `Average CC/CE Gap Since 2023` = mean(cc_ce_gap, na.rm = TRUE),
+    `Average IC/CE Gap Since 2023` = mean(ic_ce_gap, na.rm = TRUE),
+    `Latest Year` = max(year),
+    `Latest CC/CE Gap` = cc_ce_gap[which.max(year)],
+    `Latest IC/CE Gap` = ic_ce_gap[which.max(year)]
+  )
+```
+
+```{r fig-annual-bycause-gap-fit}
+#| fig-height: 6.5
+#| fig-cap: "Population-weighted annual observed versus by-cause-predicted take-up from a state-year model with state fixed effects only. Because year fixed effects are omitted here, the fitted line is forced to track the time path through changes in state unemployment composition rather than through free year-specific intercepts."
+
+p_cc_annual_gap_fit <- ggplot(annual_gap_summary, aes(date)) +
+  geom_line(aes(y = observed_cc_ce, color = "Observed"), linewidth = 0.9) +
+  geom_line(aes(y = expected_cc_ce, color = "Expected from by-cause mix"), linewidth = 0.8, linetype = "dashed") +
+  scale_color_manual(values = c("Observed" = "#0073C2", "Expected from by-cause mix" = "black")) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(
+    title = "CC/CE",
+    subtitle = "Population-weighted state-year average",
+    x = NULL, y = NULL
+  )
+
+p_ic_annual_gap_fit <- ggplot(annual_gap_summary, aes(date)) +
+  geom_line(aes(y = observed_ic_ce, color = "Observed"), linewidth = 0.9) +
+  geom_line(aes(y = expected_ic_ce, color = "Expected from by-cause mix"), linewidth = 0.8, linetype = "dashed") +
+  scale_color_manual(values = c("Observed" = "#EFC000", "Expected from by-cause mix" = "black")) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(
+    title = "IC/CE",
+    subtitle = "Population-weighted state-year average",
+    x = NULL, y = NULL
+  )
+
+p_cc_annual_gap_fit + p_ic_annual_gap_fit +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "top")
+```
+
+```{r fig-annual-bycause-gap-bars}
+#| fig-height: 6.5
+#| fig-cap: "Population-weighted annual gap between observed and by-cause-predicted take-up. Negative values mean the by-cause composition is overpredicting take-up; positive values mean it is underpredicting take-up."
+
+p_cc_annual_gap <- ggplot(annual_gap_summary, aes(date, cc_ce_gap)) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.5) +
+  geom_col(fill = "#0073C2", alpha = 0.85, width = 300) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(
+    title = "CC/CE Gap",
+    subtitle = "Observed minus expected from by-cause mix",
+    x = NULL, y = NULL
+  )
+
+p_ic_annual_gap <- ggplot(annual_gap_summary, aes(date, ic_ce_gap)) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.5) +
+  geom_col(fill = "#EFC000", alpha = 0.9, width = 300) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(
+    title = "IC/CE Gap",
+    subtitle = "Observed minus expected from by-cause mix",
+    x = NULL, y = NULL
+  )
+
+p_cc_annual_gap + p_ic_annual_gap
+```
+
+```{r annual-bycause-gap-summary-table}
+#| tbl-cap: "Recent annual gap between observed and by-cause-predicted take-up from the state-year descriptive model."
+
+recent_annual_gap_summary |>
+  mutate(
+    `Average CC/CE Gap Since 2023` = percent(`Average CC/CE Gap Since 2023`, accuracy = 0.01),
+    `Average IC/CE Gap Since 2023` = percent(`Average IC/CE Gap Since 2023`, accuracy = 0.01),
+    `Latest CC/CE Gap` = percent(`Latest CC/CE Gap`, accuracy = 0.01),
+    `Latest IC/CE Gap` = percent(`Latest IC/CE Gap`, accuracy = 0.01)
+  ) |>
+  gt() |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+These plots should be read as a **descriptive accounting exercise**, not the main causal specification. The identifying question is simple: if you feed the changing state-year unemployment composition into a model that only adjusts for persistent state differences, does that composition path predict more or less take-up than the data actually show? Persistent negative gaps would mean the by-cause mix is overpredicting take-up over time, which is exactly the pattern one would expect if a separate claiming-propensity shortfall has opened up.
+
+# Regression Extensions
 
 ## Occupation Extension
 
@@ -3041,7 +4127,7 @@ This memo is based on a review of:
 - FRED's **State Unemployment Insurance Weekly Claims Report**
 - IPUMS CPS variable availability for `WHYUNEMP`, `STATEFIP`, `NATIVITY`, `CITIZEN`, `OCC1990`, and `CLASSWKR`
 - IPUMS CPS migration-variable availability, including the limits of using `MIGRATE1` in a monthly design
-- All CPS microdata come from a single unified extract (`data/CPS/cps_unified.csv.gz`), shared with `unemployment_decomposition.qmd`. Run `Rscript submit_unified_cps_extract.R` to download or refresh.
+- All CPS-derived report inputs are produced by `build_panels.R` from the unified CPS extract and saved as parquet files under `data/final`.
 
 Useful source pages:
 
