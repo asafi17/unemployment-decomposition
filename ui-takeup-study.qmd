@@ -510,6 +510,8 @@ cause_display_order <- c(
   "New Entrants"
 )
 
+national_cause_levels <- read_final_parquet("unemployment_fred_monthly.parquet")
+
 share_name_map <- c(
   temp_layoff_share = "Temporary Layoff",
   perm_job_loser_share = "Permanent Job Losers",
@@ -531,17 +533,25 @@ safe_standardize <- function(x) {
 covid_month_start <- as.Date("2020-03-01")
 covid_month_end <- as.Date("2021-12-01")
 
-cause_level_long <- cause_raw |>
-  mutate(cause = factor(cause, levels = cause_display_order)) |>
-  left_join(
-    national_monthly |>
-      transmute(date = month, cc_ce, ic_ce),
-    by = "date"
+cause_level_long <- national_cause_levels |>
+  select(date, all_of(cause_display_order)) |>
+  pivot_longer(
+    cols = all_of(cause_display_order),
+    names_to = "cause",
+    values_to = "predictor_value"
   ) |>
-  rename(predictor_value = value) |>
-  mutate(measure_type = "Level")
+  mutate(
+    cause = factor(cause, levels = cause_display_order),
+    measure_type = "Level"
+  ) |>
+  left_join(
+    takeup_cause_df |>
+      select(date, cc_ce, ic_ce),
+    by = "date"
+  )
 
-cause_share_long <- national_cause_shares |>
+cause_share_long <- takeup_cause_df |>
+  select(date, ends_with("_share"), cc_ce, ic_ce) |>
   pivot_longer(
     cols = ends_with("_share"),
     names_to = "share_name",
@@ -551,11 +561,6 @@ cause_share_long <- national_cause_shares |>
     cause = recode(share_name, !!!share_name_map),
     cause = factor(cause, levels = cause_display_order),
     measure_type = "Share"
-  ) |>
-  left_join(
-    national_monthly |>
-      transmute(date = month, cc_ce, ic_ce),
-    by = c("date")
   )
 
 build_cause_correlation_table <- function(data, value_label) {
@@ -969,7 +974,8 @@ fred_state_month_panel |>
 ```{r}
 #| tbl-cap: "Latest month available in the saved FRED state panel."
 
-fred_latest |>
+fred_state_month_panel |>
+  filter(date == max(date, na.rm = TRUE)) |>
   summarise(
     States = n_distinct(state),
     `Latest Month` = max(date, na.rm = TRUE)
@@ -2788,19 +2794,54 @@ keep_balanced_periods = function(data, period_var) {
     filter(.data[[period_var]] %in% balanced_periods)
 }
 
-panel_month = panel_month_raw |>
-  filter(date <= sample_end_date) |>
+panel_month_cutoff = panel_month_raw |>
+  filter(date <= sample_end_date)
+
+panel_quarter_cutoff = panel_quarter_raw |>
+  filter(date <= sample_end_date)
+
+panel_year_cutoff = panel_year_raw |>
+  filter(date <= sample_end_date)
+
+panel_month = panel_month_cutoff |>
   keep_balanced_periods("year_month")
 
-panel_quarter = panel_quarter_raw |>
-  filter(date <= sample_end_date) |>
+panel_quarter = panel_quarter_cutoff |>
   keep_balanced_periods("year_quarter")
 
-panel_year = panel_year_raw |>
-  filter(date <= sample_end_date) |>
+panel_year = panel_year_cutoff |>
   keep_balanced_periods("year")
 
 baseline_rhs = "new_entrant_share + noncitizen_share + blue_collar_share + working_age_25_54_share"
+
+fit_baseline = function(outcome, data, time_fe) {
+  feols(
+    as.formula(
+      paste0(
+        outcome,
+        " ~ ",
+        baseline_rhs,
+        " | state + ",
+        time_fe
+      )
+    ),
+    data = data,
+    weights = ~annual_population,
+    cluster = ~state
+  )
+}
+
+msummary_styled = function(models, title, notes) {
+  msummary(
+    models,
+    stars = c("*" = 0.10, "**" = 0.05, "***" = 0.01),
+    gof_map = c("nobs", "r.squared", "adj.r.squared", "within.r.squared"),
+    title = title,
+    notes = notes,
+    output = "gt"
+  ) |>
+    tab_options(table.font.size = px(11))
+}
 ```
 
 ## Baseline Controls

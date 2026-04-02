@@ -1,0 +1,127 @@
+# National CPS Profiles Behind The Panel
+
+This appendix now reads only the derived parquet outputs produced by `build_panels.R`. It focuses on the dominant occupation and class-of-worker profiles most relevant to the UI take-up interpretation.
+
+```{r ui-cps-national-load}
+#| cache: true
+
+ui_profile_data <- read_final_parquet("unemployment_dominant_profiles.parquet") |>
+  filter(dimension %in% c("Occupation", "Class"))
+
+ui_profile_metadata <- read_final_parquet("unemployment_metadata.parquet")
+
+ui_profile_variants <- c(
+  pooled = "1994-present",
+  year_2025 = "Calendar year 2025",
+  delta_2025 = "2025 minus pooled"
+)
+
+ui_profile_colors <- c(
+  "Temporary Layoff" = "#D55E00",
+  "Permanent Job Losers" = "#0072B2",
+  "Completed Temp Job" = "#009E73",
+  "Job Leavers" = "#CC79A7",
+  "Reentrants" = "#E69F00",
+  "New Entrants" = "#7F7F7F"
+)
+```
+
+## National Work-Background Snapshot
+
+The strongest work-background signal in the parquet-backed summaries is the dominant subgroup on the occupation and class margins for each unemployment cause. That is the part most directly relevant for the UI take-up design: whether the unemployed pool is tilting toward white-collar, blue-collar, private-sector, government, or no-prior-job backgrounds.
+
+```{r ui-work-profile-table}
+#| tbl-cap: "Dominant occupation and class profile by unemployment cause."
+
+ui_profile_data |>
+  mutate(
+    Window = recode(variant, !!!ui_profile_variants),
+    Share = if_else(
+      variant == "delta_2025",
+      paste0(if_else(delta > 0, "+", ""), scales::number(delta * 100, accuracy = 0.1), " pp"),
+      scales::percent(share, accuracy = 0.1)
+    )
+  ) |>
+  select(
+    Cause = cause,
+    Dimension = dimension,
+    Window,
+    `Dominant Group` = dominant_group,
+    Share
+  ) |>
+  gt(groupname_col = "Window") |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+```{r ui-work-profile-chart}
+#| fig-cap: "Dominant occupation/class share by unemployment cause. The 2025-minus-pooled panel reports percentage-point change in the dominant subgroup's share."
+#| fig-height: 8
+
+ui_profile_data |>
+  mutate(
+    Window = factor(
+      recode(variant, !!!ui_profile_variants),
+      levels = unname(ui_profile_variants)
+    ),
+    plot_value = if_else(variant == "delta_2025", delta, share),
+    label = if_else(
+      variant == "delta_2025",
+      paste0(dominant_group, "\n", if_else(delta > 0, "+", ""), scales::number(delta * 100, accuracy = 0.1), " pp"),
+      paste0(dominant_group, "\n", scales::percent(share, accuracy = 1))
+    ),
+    label_y = case_when(
+      variant == "delta_2025" & plot_value >= 0 ~ plot_value + 0.015,
+      variant == "delta_2025" & plot_value < 0 ~ plot_value - 0.015,
+      TRUE ~ plot_value + 0.03
+    ),
+    label_vjust = case_when(
+      variant == "delta_2025" & plot_value < 0 ~ 1,
+      TRUE ~ 0
+    ),
+    cause = factor(
+      cause,
+      levels = c(
+        "Temporary Layoff",
+        "Permanent Job Losers",
+        "Completed Temp Job",
+        "Job Leavers",
+        "Reentrants",
+        "New Entrants"
+      )
+    )
+  ) |>
+  ggplot(aes(x = cause, y = plot_value, fill = cause)) +
+  geom_col(width = 0.72, alpha = 0.9) +
+  geom_hline(yintercept = 0, color = "grey70", linewidth = 0.4) +
+  facet_grid(Window ~ dimension, scales = "free_y") +
+  geom_text(
+    aes(y = label_y, label = label, vjust = label_vjust),
+    size = 3,
+    lineheight = 0.9
+  ) +
+  scale_fill_manual(values = ui_profile_colors) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(
+    title = "Dominant Work-Background Profiles by Cause",
+    subtitle = "Occupation and class margins only; derived from the parquet-backed national CPS summaries",
+    x = NULL,
+    y = NULL,
+    fill = NULL,
+    caption = "Source: data/final/unemployment_dominant_profiles.parquet"
+  ) +
+  theme_report +
+  theme(
+    axis.text.x = element_text(angle = 25, hjust = 1),
+    legend.position = "none"
+  )
+```
+
+These dominant-profile summaries preserve the main point for the memo: layoffs and permanent job losers retain a distinct work-background signature, while new entrants remain mechanically concentrated in no-prior-job backgrounds. That is enough to keep the UI design discussion connected to the CPS composition evidence without re-reading raw microdata at render time.

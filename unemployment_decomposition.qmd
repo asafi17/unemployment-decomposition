@@ -104,7 +104,7 @@ cause_order = c("Temporary Layoff", "Permanent Job Losers", "Completed Temp Job"
 df6 = read_final_parquet("unemployment_fred_monthly.parquet")
 
 df6_long = df6 |>
-  select(date, ends_with("_rate")) |>
+  select(date, all_of(paste0(cause_order, "_rate"))) |>
   pivot_longer(-date, names_to = "cause", values_to = "rate") |>
   mutate(
     cause = str_remove(cause, "_rate"),
