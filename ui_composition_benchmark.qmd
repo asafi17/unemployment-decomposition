@@ -1,5 +1,6 @@
 ---
 title: "A Composition Benchmark for UI Claims Intensity"
+subtitle: "How Much of Low UI Coverage Is About Who Is Unemployed?"
 author: "Aryan Safi"
 date: today
 format:
@@ -12,6 +13,7 @@ format:
     fig-width: 10
     fig-height: 5.5
     embed-resources: true
+    self-contained-math: true
 execute:
   warning: false
   message: false
@@ -21,23 +23,36 @@ execute-dir: project
 ```{r setup}
 library(tidyverse)
 library(arrow)
+library(fredr)
 library(here)
-library(gt)
+library(ggsci)
 library(scales)
+library(gt)
 library(lubridate)
 library(patchwork)
 library(fixest)
 library(modelsummary)
+library(prophet)
 
 here::i_am("ui_composition_benchmark.qmd")
+fredr_set_key("ccd350785a210a7653a20d02ce92d83a")
 
 read_final_parquet <- function(filename) {
   path <- here("data", "final", filename)
-  if (!file.exists(path)) {
-    stop("Missing derived panel: ", path, ". Run 'Rscript build_panels.R'.")
+  if (!file.exists(path)) stop("Missing derived dataset: ", path)
+  arrow::read_parquet(path) |> as_tibble()
+}
+
+fredr_retry <- function(series_id, ..., max_tries = 5, wait_secs = 3) {
+  last_err <- NULL
+  for (i in seq_len(max_tries)) {
+    result <- tryCatch(fredr(series_id, ...), error = function(e) e)
+    if (!inherits(result, "error")) return(result)
+    last_err <- result
+    if (i < max_tries) Sys.sleep(wait_secs)
   }
-  arrow::read_parquet(path) |>
-    as_tibble()
+  stop("FRED API failed after ", max_tries, " attempts for ", series_id, ": ",
+       conditionMessage(last_err))
 }
 
 theme_report <- theme_minimal(base_size = 11, base_family = "sans") +
@@ -53,8 +68,28 @@ theme_report <- theme_minimal(base_size = 11, base_family = "sans") +
     legend.text = element_text(size = 8),
     legend.title = element_blank()
   )
-
 theme_set(theme_report)
+
+cause_order <- c("Temporary Layoff", "Permanent Job Losers", "Completed Temp Job",
+                 "Job Leavers", "Reentrants", "New Entrants")
+group_order <- c("Job Separations", "Labor Force Entry")
+cause_cols <- pal_jco()(6); names(cause_cols) <- cause_order
+group_cols <- c("Job Separations" = "#0073C2", "Labor Force Entry" = "#EFC000")
+
+recessions <- tibble(
+  start = as.Date(c("2001-03-01", "2007-12-01", "2020-02-01")),
+  end = as.Date(c("2001-11-01", "2009-06-01", "2020-04-01"))
+)
+recessions_long <- tibble(
+  start = as.Date(c("1973-11-01", "1980-01-01", "1981-07-01",
+                    "1990-07-01", "2001-03-01", "2007-12-01", "2020-02-01")),
+  end = as.Date(c("1975-03-01", "1980-07-01", "1982-11-01",
+                  "1991-03-01", "2001-11-01", "2009-06-01", "2020-04-01"))
+)
+add_recessions <- function(p, alpha = 0.08) {
+  p + annotate("rect", xmin = recessions$start, xmax = recessions$end,
+               ymin = -Inf, ymax = Inf, fill = "grey40", alpha = alpha)
+}
 
 msummary_styled <- function(models, title, notes) {
   msummary(
@@ -64,313 +99,842 @@ msummary_styled <- function(models, title, notes) {
     title = title,
     notes = notes,
     output = "gt"
-  ) |>
-    tab_options(table.font.size = px(11))
+  ) |> tab_options(table.font.size = px(11))
 }
 
-cause_order <- c(
-  "Temporary Layoff",
-  "Permanent Job Losers",
-  "Completed Temp Job",
-  "Job Leavers",
-  "Reentrants",
-  "New Entrants"
-)
-
-cause_colors <- c(
-  "Temporary Layoff" = "#D55E00",
-  "Permanent Job Losers" = "#0072B2",
-  "Completed Temp Job" = "#009E73",
-  "Job Leavers" = "#CC79A7",
-  "Reentrants" = "#E69F00",
-  "New Entrants" = "#7F7F7F"
-)
-
-recessions <- tibble(
-  start = as.Date(c("2001-03-01", "2007-12-01", "2020-02-01")),
-  end = as.Date(c("2001-11-01", "2009-06-01", "2020-04-01"))
-)
-
-add_recessions <- function(p, alpha = 0.08) {
-  p + annotate(
-    "rect",
-    xmin = recessions$start,
-    xmax = recessions$end,
-    ymin = -Inf,
-    ymax = Inf,
-    fill = "grey40",
-    alpha = alpha
+fred_cause <- read_final_parquet("unemployment_fred_monthly.parquet") |>
+  mutate(date = as.Date(date))
+takeup_monthly <- read_final_parquet("ui_national_takeup_monthly.parquet") |>
+  mutate(month = as.Date(month))
+takeup_cause_df <- read_final_parquet("ui_national_takeup_cause.parquet") |>
+  mutate(date = as.Date(date), month_of_year = factor(month_of_year, levels = month.abb))
+dominant_profiles <- read_final_parquet("unemployment_dominant_profiles.parquet") |>
+  mutate(
+    cause = factor(cause, levels = cause_order),
+    dimension = factor(dimension, levels = c("Age", "Education", "Sex", "Race/Ethnicity",
+                                             "Occupation", "Class", "Foreign Born", "Noncitizen"))
   )
-}
-
-fred_cause <- read_final_parquet("unemployment_fred_monthly.parquet")
-takeup_cause_df <- read_final_parquet("ui_national_takeup_cause.parquet")
-dominant_profiles <- read_final_parquet("unemployment_dominant_profiles.parquet")
 panel_year <- read_final_parquet("ui_takeup_panel_state_year_analysis_ready.parquet") |>
-  mutate(date = as.Date(period_start))
+  mutate(date = as.Date(period_start)) |>
+  filter(year <= 2025)
 ```
 
 # Abstract {.unnumbered}
 
-This memo reconstructs a composition-based benchmark for unemployment-insurance claims intensity using the project’s current parquet workflow. The core idea is simple: if UI claims are partly driven by who the unemployed are, then the historical mix of temporary layoffs, permanent job losers, quits, reentrants, and new entrants should explain part of the variation in claims intensity. The report therefore compares a composition model against simpler aggregate benchmarks and then asks how far the composition logic travels in the annual state panel.
+The share of unemployed Americans receiving unemployment insurance benefits has fallen sharply over time. Yet the headline unemployment rate includes groups whom UI was never designed to cover. This report reconstructs the archived composition benchmark using the current parquet-backed workflow. The composition of unemployment explains a meaningful share of claims-intensity variation, but a substantial residual gap persists, especially in recent years.
 
 # 1. Introduction
 
-The headline unemployment rate is a poor benchmark for UI claiming because not all unemployed persons are equally connected to recent covered work. A pool heavy in permanent job losers should mechanically look more UI-relevant than a pool heavy in new entrants or reentrants. The benchmark constructed here is not a structural take-up model; it is a reduced-form accounting device for asking how much explanatory power lies in the composition of unemployment itself.
+The UI recipiency rate, defined loosely as the share of the unemployed receiving benefits, has fallen from roughly 50 percent in the 1950s to below 25 percent by the mid-2010s. @fig-recipiency-rate documents this decline in the modern sample available in the current local build. It has attracted substantial policy attention and a large empirical literature. Yet the standard framing overstates the puzzle by benchmarking claims against all unemployed persons, a population that includes groups with weak or no UI eligibility.
+
+```{r fig-recipiency-rate}
+#| fig-cap: "UI recipiency rate: continued claims as a share of total unemployed, 1971-present. Monthly data; continued claims (CCSA, weekly SA) are averaged within each month and divided by total unemployed (UNEMPLOY, in thousands, SA). Gray bands denote NBER recessions."
+#| fig-height: 4
+
+recipiency_raw <- bind_rows(
+  fredr_retry("CCSA", observation_start = as.Date("1971-01-01")) |>
+    transmute(date, series = "CCSA", value),
+  fredr_retry("UNEMPLOY", observation_start = as.Date("1971-01-01")) |>
+    transmute(date, series = "UNEMPLOY", value)
+)
+
+recipiency_df <- recipiency_raw |>
+  mutate(month = floor_date(date, "month")) |>
+  summarise(.by = c(series, month), value = mean(value, na.rm = TRUE)) |>
+  pivot_wider(names_from = series, values_from = value) |>
+  filter(!is.na(CCSA), !is.na(UNEMPLOY), UNEMPLOY > 0) |>
+  mutate(recipiency_rate = CCSA / (UNEMPLOY * 1000))
+
+ggplot(recipiency_df, aes(month, recipiency_rate)) +
+  annotate("rect", xmin = recessions_long$start, xmax = recessions_long$end,
+           ymin = -Inf, ymax = Inf, fill = "grey40", alpha = 0.08) +
+  geom_line(color = "#0073C2", linewidth = 0.6) +
+  scale_y_continuous(labels = percent_format(accuracy = 1),
+                     expand = expansion(mult = c(0.02, 0.05))) +
+  scale_x_date(date_breaks = "10 years", date_labels = "%Y") +
+  labs(
+    title = "UI Recipiency Rate (Continued Claims / Total Unemployed)",
+    subtitle = "A rough benchmark; denominator includes groups UI was never designed to cover",
+    x = NULL, y = NULL,
+    caption = "Source: FRED (CCSA, UNEMPLOY). Shaded areas = NBER recessions."
+  )
+```
+
+```{r tbl-cause-definitions}
+#| tbl-cap: "BLS reason-for-unemployment categories (CPS WHYUNEMP). The six categories are grouped into Job Separations and Labor Force Entry."
+
+tibble(
+  Category = cause_order,
+  WHYUNEMP = 1:6,
+  `BLS Definition` = c(
+    "Given a return date or expects recall within 6 months",
+    "Permanently separated; position eliminated, fired, or employer closed",
+    "Temporary job or assignment has ended",
+    "Voluntarily quit and now actively searching",
+    "Previously held a job, left the labor force, now returned to searching",
+    "Never held a job; actively looking for first one"
+  ),
+  `Two-Group` = c(rep("Job Separations", 4), rep("Labor Force Entry", 2))
+) |>
+  gt() |>
+  tab_options(table.font.size = px(11), column_labels.font.weight = "bold",
+              column_labels.background.color = "#2c3e50") |>
+  tab_style(style = cell_text(color = "white"), locations = cells_column_labels()) |>
+  tab_style(style = cell_fill(color = "#dce8f5"),
+            locations = cells_body(rows = `Two-Group` == "Job Separations")) |>
+  tab_style(style = cell_fill(color = "#fef3d0"),
+            locations = cells_body(rows = `Two-Group` == "Labor Force Entry"))
+```
+
+UI was originally designed for a narrower insured population: workers with sufficient prior earnings who lost jobs through no fault of their own. The six BLS reason-for-unemployment categories, temporary layoff, permanent job loss, completed temporary job, voluntary quit, reentry to the labor force, and new entry, proxy distance from that original insured population. New entrants have no prior work history. Reentrants may have been out of the labor force long enough to exhaust or never establish eligibility. Job leavers are typically disqualified. Only job losers and temporary layoffs are squarely within the program's intended reach.
+
+If the composition of unemployment shifts toward groups with weaker UI attachment, more new entrants, more reentrants, fewer permanent job losers, then the level of aggregate claims intensity historically associated with that unemployment mix will be lower. The empirical question is how much of the observed variation in UI claims intensity can be accounted for by the realized composition of unemployment under this reduced-form relationship, and how much remains as an unexplained residual.
+
+This paper constructs a composition-based benchmark for UI claims intensity using the current local derived-data workflow. Using national claims series and an annual state panel that merges administrative claims outcomes with CPS-based unemployment composition, I estimate the reduced-form mapping from by-cause unemployment shares to claims intensity. The gap between observed and benchmark-predicted intensity quantifies the residual not accounted for by unemployment composition, the space where institutional, administrative, and behavioral factors may operate.
+
+The standard recipiency rate and the claims-intensity measures used here differ primarily in denominator choice rather than underlying substance. Let $B_t$ denote UI beneficiaries, $U_t$ total unemployment, and $CE_t$ covered employment. Then claims intensity can be written as $B_t / CE_t = (B_t / U_t) \times (U_t / CE_t)$. This identity clarifies the relationship between the two traditions: the recipiency literature focuses on $B_t / U_t$, or UI receipt among the unemployed, whereas CC/CE and IC/CE incorporate both receipt behavior and the scale of unemployment relative to the covered-employment base. I use CC/CE and IC/CE because they are administratively grounded measures of aggregate UI caseload pressure, while unemployment composition is intended to capture how the claimant-relevant mix of the unemployed shifts over time. In that sense, the exercise here is not a pure model of recipiency conditional on unemployment, but a model of aggregate claims intensity in which recipiency-type composition effects are embedded within a covered-employment denominator.
+
+The paper proceeds as follows. Section 2 reviews the relevant literature. Section 3 introduces a simple conceptual framework linking unemployment composition to expected claims intensity. Section 4 describes changes in the composition of unemployment over time. Section 5 describes the data. Section 6 prepares the claims and composition data. Section 7 presents each empirical exercise in sequence. Section 8 discusses interpretation. Section 9 concludes.
 
 # 2. Literature Review
 
 ## 2.1 Measurement
 
-The standard “recipiency” framing mixes eligibility, employer attachment, and administrative take-up into a single ratio. A composition benchmark sharpens the question by asking how much claims intensity should move when unemployment shifts across reason-for-unemployment groups with different expected UI relevance.
+Conclusions about the health of the UI system depend critically on the denominator. Wandner and Stengle (1997) developed six alternative recipiency measures and showed that the standard rate, beneficiaries divided by all unemployed, is arguably misleading because the denominator includes groups UI was never designed to cover. Their most restrictive measure, all-program weeks claimed divided by job losers unemployed fewer than 27 weeks, showed that UI covered more than four-fifths of short-term job losers, a far more favorable picture than the standard 25 to 30 percent suggests.
+
+Wittenburg et al. (1999) produced the definitive Department of Labor meta-review, critically assessing prior studies and finding large differences in estimated effects across studies due to methodological variation. The present paper follows this tradition by being explicit about the denominator: covered employment, not total unemployment.
 
 ## 2.2 The Secular Decline
 
-A long-run decline in measured claiming intensity need not imply a one-for-one decline in claiming behavior. Part of the decline may reflect a different mix of unemployed workers, especially a larger weight on groups with weaker UI attachment.
+Burtless (1983) first documented the puzzle, finding that roughly 78 percent of the unemployed received UI in 1975 but only 45 percent did in 1982. Legislative changes explained about 60 percent of the decline. Blank and Card (1991) produced the most cited contribution: using PSID microdata matched with state eligibility rules, they showed that the fraction eligible for UI remained roughly constant over 1977 to 1987 and the entire decline was driven by falling take-up among eligibles. Anderson and Meyer (1997) resolved much of the remaining puzzle by showing that federal income taxation of benefits, phased in from 1978 to 1987, could account for most of the previously unexplained decline.
 
-## 2.3 Employer-Side and Institutional Explanations
+More recently, O'Leary et al. (2024) found the continued decline stems largely from changes in the industrial and occupational mix of employment interacting with UI program features. The Council of Economic Advisers (2024) reported that state differences in potential eligibility explain only 11 percent of recipiency rate variation, while most variation stems from other state policy and administrative choices.
 
-Composition is only one channel. Administrative burden, employer contestation, benefit generosity, adjudication delays, and changing employer norms can all shift claims intensity conditional on unemployment composition.
+## 2.3 Institutional Explanations
+
+Lachowska, Sorkin, and Woodbury (2025) introduced an employer-side perspective using two-way fixed-effects models on Washington State administrative records. They found substantial firm effects on both claiming and appeals, with a strong negative correlation: firms that appeal more have lower claim rates. Their most striking finding is that the dominant targeting error is eligible non-claiming, 28 percent of eligibles, not ineligible receipt, 5 percent.
+
+Budd and McCall (1997) showed that union blue-collar workers were 23 percent more likely to receive UI, consistent with an information and facilitation role. Auray and Fuller (2020) estimated that firm challenges account for 41 percent of total UI collection costs and that eliminating all challenges would raise take-up by 5.1 percentage points.
+
+Ebenstein and Stange (2010) exploited the staggered introduction of telephone and Internet-based filing across states and found no appreciable impact on take-up, suggesting the barriers run deeper than transaction costs.
 
 ## 2.4 Racial and Demographic Disparities
 
-Demographic disparities remain important, but the benchmark here is narrower. It first establishes how much variation can be explained by unemployment composition before attributing the residual to broader institutional or demographic mechanisms.
+Kuka and Stuart (2025) provided the most rigorous evidence on racial gaps: Black individuals who separate from a job are 30 percent less likely to receive UI and receive 46 percent fewer total benefits than White individuals, a gap stable over nearly 30 years. This gap stems primarily from lower take-up among eligible individuals, not eligibility differences. Skandalis, Marinescu, and Massenkoff (2022) showed that state rules alone create an 8.4 percent racial gap in entitlements because Black claimants disproportionately reside in less generous states.
 
 ## 2.5 Positioning This Paper
 
-The contribution is practical rather than conceptual. The report uses the current project’s monthly national series and annual state panel to quantify the explanatory leverage of composition, then compares that leverage with simpler aggregate alternatives.
+The literature already knows that job losers are more UI-relevant than new entrants or reentrants. What it has not systematically done is quantify the explanatory power of the by-cause composition channel for aggregate claims intensity in a panel setting and characterize the size and evolution of the residual gap. That is the contribution here. This paper is a composition-based benchmark, not the discovery of the composition idea. It occupies the space between the measurement papers, which define the right denominator, and the mechanism papers, which identify specific barriers to access.
 
 # 3. Conceptual Framework
 
-Let `takeup_t` denote a normalized claims-intensity outcome such as `CC/CE` or `IC/CE`. The benchmark model is:
+The central link between unemployment composition and UI claims intensity can be expressed in a simple decomposition. Let $y_{st}$ denote a claims-intensity measure, for example continued claims per covered employment, in state $s$ at time $t$, and let $s_{cst}$ denote the share of unemployment in state $s$ at time $t$ accounted for by cause $c$. Then:
 
 $$
-\text{takeup}_t =
-\alpha +
-\beta_1 \text{TempLayoffShare}_t +
-\beta_2 \text{CompletedTempJobShare}_t +
-\beta_3 \text{JobLeaverShare}_t +
-\beta_4 \text{ReentrantShare}_t +
-\beta_5 \text{NewEntrantShare}_t +
-\gamma_{m(t)} + \varepsilon_t,
-$$
+y_{st} = \sum_c s_{cst} \cdot \lambda_c + \varepsilon_{st}
+$$ {#eq-composition}
 
-with permanent job losers omitted as the reference category. The fitted value is the level of claims intensity historically associated with that composition plus simple seasonality. The residual is what the composition benchmark does not explain.
+where $\lambda_c$ is the reduced-form loading of cause $c$ on claims intensity and $\varepsilon_{st}$ is a residual not accounted for by composition. The composition-predicted component $\hat{y}_{st} = \sum_c s_{cst} \cdot \hat{\lambda}_c$ is a benchmark: the level of claims intensity historically associated with a given unemployment mix. I do not interpret the fitted values as the causal effect of unemployment composition on claims intensity. Instead, they represent a reduced-form benchmark for the level of claims intensity that the historical relationship in the data would predict given the realized composition of unemployment.
+
+This benchmark is informative even though unemployment composition is not exogenous, because it summarizes an empirical regularity rather than identifying a pure causal channel. The by-cause shares are not randomly assigned treatments; they are jointly shaped by the same labor-market and policy shocks that affect claims intensity. The $\hat{\lambda}_c$ are therefore reduced-form loadings, not structural parameters. If the share of new entrants rises and new entrants have low $\hat{\lambda}$, benchmark-predicted intensity falls, but this need not reflect a mechanical compositional effect in isolation from the broader shock environment.
+
+The residual $\varepsilon_{st}$ absorbs everything else:
+
+- Administrative burden and hassle costs
+- Employer contestation and experience-rated deterrence
+- Benefit generosity and replacement rates
+- State eligibility rules and policy design
+- Information frictions and stigma
+- Demographic disparities in access conditional on cause
+
+The gap between observed and benchmark-predicted claims intensity, $y_{st} - \hat{y}_{st}$, is the portion not accounted for by unemployment composition under the historical reduced-form relationship. The empirical exercise estimates @eq-composition using national and state-panel regressions, then examines the size and time path of this residual.
 
 # 4. Descriptive Background: Composition of Unemployment
 
-## 4.1 Unemployment Rate by Cause
+This section documents how unemployment composition by reason has changed over time, emphasizing the shifts most relevant to UI claims intensity.
 
-```{r}
+```{r data-prep}
 fred_cause_long <- fred_cause |>
   select(date, all_of(paste0(cause_order, "_rate"))) |>
   pivot_longer(-date, names_to = "cause", values_to = "rate") |>
-  mutate(
-    cause = str_remove(cause, "_rate"),
-    cause = factor(cause, levels = cause_order)
-  )
+  mutate(cause = factor(str_remove(cause, "_rate"), levels = cause_order))
 
-p_rate <- fred_cause_long |>
-  ggplot(aes(date, rate, fill = cause)) +
-  geom_col(width = 28, alpha = 0.9) +
-  geom_line(
-    data = fred_cause,
-    aes(y = urate, fill = NULL),
-    color = "black",
-    linewidth = 0.45
-  ) +
-  scale_fill_manual(values = cause_colors) +
-  scale_y_continuous(labels = \(x) paste0(x, "%")) +
-  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
-  labs(
-    title = "Unemployment Rate by Cause",
-    subtitle = "Six components stack to the total unemployment rate",
-    x = NULL,
-    y = "Rate (%)",
-    caption = "Source: data/final/unemployment_fred_monthly.parquet"
-  )
-
-add_recessions(p_rate)
+two_group_long <- fred_cause |>
+  select(date, `Job Separations_rate`, `Labor Force Entry_rate`) |>
+  pivot_longer(-date, names_to = "group", values_to = "rate") |>
+  mutate(group = factor(str_remove(group, "_rate"), levels = group_order))
 ```
+
+## 4.1 Unemployment Rate by Cause
+
+The stacked bars below show each cause's contribution to the headline unemployment rate since 1994. Job separations dominate cyclical variation, while labor force entry contributes a relatively stable base.
+
+::: {.panel-tabset}
+
+### Six-Way
+
+```{r fig-urate-cause-6}
+#| fig-cap: "Unemployment rate decomposed by cause. Bars stack to total unemployment rate."
+
+add_recessions(
+  ggplot(fred_cause_long, aes(date, rate, fill = cause)) +
+    geom_col(alpha = 0.85, width = 28) +
+    geom_line(data = fred_cause, aes(y = urate, fill = NULL), color = "black", linewidth = 0.4) +
+    scale_fill_manual(values = cause_cols) +
+    scale_y_continuous(labels = \(x) paste0(x, "%")) +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    labs(
+      title = "Unemployment Rate by Cause",
+      subtitle = "Each component = cause level / civilian labor force",
+      x = NULL,
+      y = "Rate (%)",
+      caption = "Source: local derived FRED/BLS unemployment panel"
+    )
+)
+```
+
+### Two-Group
+
+```{r fig-urate-cause-2}
+#| fig-cap: "Unemployment rate decomposed into job separations versus labor force entry."
+
+add_recessions(
+  ggplot(two_group_long, aes(date, rate, fill = group)) +
+    geom_col(alpha = 0.85, width = 28) +
+    geom_line(data = fred_cause, aes(y = urate, fill = NULL), color = "black", linewidth = 0.4) +
+    scale_fill_manual(values = group_cols) +
+    scale_y_continuous(labels = \(x) paste0(x, "%")) +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    labs(
+      title = "Unemployment Rate: Job Separations vs. Labor Force Entry",
+      subtitle = "Separations = layoffs + permanent losers + completed temp jobs + quits",
+      x = NULL,
+      y = "Rate (%)",
+      caption = "Source: local derived FRED/BLS unemployment panel"
+    )
+)
+```
+
+:::
 
 ## 4.2 Year-Over-Year Changes
 
-```{r}
-fred_yoy_long <- fred_cause |>
-  arrange(date) |>
-  mutate(
-    across(
-      all_of(paste0(cause_order, "_rate")),
-      \(x) x - lag(x, 12),
-      .names = "{.col}_yoy"
-    )
-  ) |>
-  select(date, ends_with("_rate_yoy")) |>
-  pivot_longer(-date, names_to = "cause", values_to = "change") |>
-  mutate(
-    cause = str_remove(cause, "_rate_yoy"),
-    cause = factor(cause, levels = cause_order)
-  )
+```{r fig-urate-cause-chg-6}
+#| fig-cap: "Year-over-year change in unemployment rate decomposed by cause."
 
-ggplot(fred_yoy_long, aes(date, change, color = cause)) +
-  geom_hline(yintercept = 0, color = "grey70", linewidth = 0.35) +
-  geom_line(linewidth = 0.75) +
-  scale_color_manual(values = cause_colors) +
+fred_cause |>
+  arrange(date) |>
+  mutate(across(all_of(paste0(cause_order, "_rate")), \(x) x - lag(x, 12), .names = "{.col}_chg"),
+         urate_chg = urate - lag(urate, 12)) |>
+  select(date, ends_with("_chg"), urate_chg) |>
+  pivot_longer(cols = ends_with("_rate_chg"), names_to = "cause", values_to = "chg") |>
+  mutate(cause = factor(str_remove(cause, "_rate_chg"), levels = cause_order)) |>
+  ggplot(aes(date, chg, fill = cause)) +
+  geom_col(alpha = 0.75, width = 25) +
+  geom_line(data = fred_cause |>
+              arrange(date) |>
+              mutate(urate_chg = urate - lag(urate, 12)),
+            aes(y = urate_chg, fill = NULL), color = "black", linewidth = 0.6) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.3) +
+  scale_fill_manual(values = cause_cols) +
   scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
   labs(
-    title = "Year-over-Year Change in Cause-Specific Unemployment Rates",
-    subtitle = "Each series is the 12-month change in the corresponding rate contribution",
+    title = "YoY Change in Unemployment Rate by Cause",
+    subtitle = "Additive decomposition: cause contributions sum to total YoY change",
     x = NULL,
     y = "Percentage points",
-    color = NULL
+    caption = "Source: local derived FRED/BLS unemployment panel"
   )
 ```
 
 ## 4.3 Composition Shares Over Time
 
-```{r}
-share_name_map <- c(
-  temp_layoff_share = "Temporary Layoff",
-  perm_job_loser_share = "Permanent Job Losers",
-  completed_temp_job_share = "Completed Temp Job",
-  job_leaver_share = "Job Leavers",
-  reentrant_share = "Reentrants",
-  new_entrant_share = "New Entrants"
-)
+For UI claims intensity, the relevant object is not the rate contribution of each cause but its share of total unemployment. A rising share of new entrants or reentrants means a larger fraction of the unemployed pool falls outside the traditional insured population.
 
-cause_share_long <- takeup_cause_df |>
-  select(date, ends_with("_share"), cc_ce, ic_ce) |>
-  pivot_longer(
-    cols = ends_with("_share"),
-    names_to = "share_name",
-    values_to = "share"
+```{r fig-stacked-shares}
+#| fig-cap: "Composition of unemployment by cause (shares of total unemployed). Labor force entrants comprise a large share of the unemployed pool outside recessions."
+
+fred_cause |>
+  transmute(
+    date,
+    `Temporary Layoff` = `Temporary Layoff` / Total * 100,
+    `Permanent Job Losers` = `Permanent Job Losers` / Total * 100,
+    `Completed Temp Job` = `Completed Temp Job` / Total * 100,
+    `Job Leavers` = `Job Leavers` / Total * 100,
+    Reentrants = Reentrants / Total * 100,
+    `New Entrants` = `New Entrants` / Total * 100
   ) |>
-  mutate(
-    cause = recode(share_name, !!!share_name_map),
-    cause = factor(cause, levels = cause_order)
-  )
-
-p_share <- ggplot(cause_share_long, aes(date, share, color = cause)) +
-  geom_line(linewidth = 0.8) +
-  scale_color_manual(values = cause_colors) +
-  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  pivot_longer(-date, names_to = "cause", values_to = "share") |>
+  mutate(cause = factor(cause, levels = cause_order)) |>
+  ggplot(aes(date, share, fill = cause)) +
+  geom_area(alpha = 0.85) +
+  scale_fill_manual(values = cause_cols) +
   scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
   labs(
-    title = "Composition Shares of Total Unemployment",
-    subtitle = "Monthly national reason-for-unemployment shares",
+    title = "Composition of Unemployment by Cause",
+    subtitle = "Shares of total unemployed",
     x = NULL,
-    y = "Share",
-    color = NULL
+    y = "Share of total unemployed (%)",
+    caption = "Source: local derived FRED/BLS unemployment panel"
   )
-
-p_corr <- cause_share_long |>
-  group_by(cause) |>
-  summarise(
-    corr_cc = cor(share, cc_ce, use = "complete.obs"),
-    corr_ic = cor(share, ic_ce, use = "complete.obs"),
-    .groups = "drop"
-  ) |>
-  pivot_longer(-cause, names_to = "outcome", values_to = "corr") |>
-  mutate(
-    outcome = recode(outcome, corr_cc = "CC/CE", corr_ic = "IC/CE")
-  ) |>
-  ggplot(aes(cause, corr, fill = outcome)) +
-  geom_col(position = "dodge", width = 0.7) +
-  geom_hline(yintercept = 0, color = "grey70", linewidth = 0.35) +
-  scale_y_continuous(labels = number_format(accuracy = 0.01)) +
-  labs(
-    title = "Correlation with Claims Intensity",
-    subtitle = "Contemporaneous monthly correlation of each share with claims intensity",
-    x = NULL,
-    y = "Correlation",
-    fill = NULL
-  ) +
-  theme(axis.text.x = element_text(angle = 25, hjust = 1))
-
-p_share / p_corr
 ```
+
+The key pattern for UI is straightforward: outside of recessions, labor force entrants, reentrants plus new entrants, comprise a large share of the unemployed. These are predominantly individuals with weak or no UI eligibility. During recessions, job losers surge and the entrant share compresses. The level of aggregate claims intensity historically associated with a given unemployment mix should therefore be higher in recessions and lower in expansions, even if nothing changes about the institutional environment.
 
 ### Correlation with Claims Intensity
 
-The composition series already hint at the benchmark logic. Shares that proxy weaker recent job attachment tend to line up with lower claims intensity, while shares tied more closely to recent separation from covered work tend to line up with higher claiming.
+To verify that the compositional patterns documented above are reflected in claims-intensity data, the figure below shows the correlation between each cause's share of unemployment and the two claims-intensity measures after a common seasonal-adjustment procedure. In the pandemic-exclusion sample, completed temporary jobs are close to neutral, which motivates their role as the omitted reference category in the regressions that follow.
+
+Seasonal adjustment matters here. Although some underlying labor-market series are already seasonally adjusted, the claims-intensity ratios and the cause shares can inherit residual seasonality through their denominators. To ensure the correlations reflect co-movement in trend and cycle rather than shared within-year patterns, all eight series entering the correlation, six cause shares plus CC/CE and IC/CE, are seasonally adjusted using Prophet before the correlations are computed.
+
+```{r fig-corr-heatmap}
+#| fig-cap: "Correlation between by-cause unemployment shares and claims-intensity measures, after Prophet seasonal adjustment. Left: full sample. Right: excluding the pandemic window from March 2020 through December 2021."
+#| fig-height: 4.5
+
+prophet_sa <- function(dates, values) {
+  df_in <- tibble(ds = as.Date(dates), y = as.numeric(values)) |> drop_na()
+  m <- suppressMessages(prophet(df_in, yearly.seasonality = TRUE, weekly.seasonality = FALSE,
+                                daily.seasonality = FALSE, seasonality.mode = "additive",
+                                uncertainty.samples = 0))
+  fc <- suppressMessages(predict(m, df_in))
+  tibble(ds = df_in$ds, y_sa = df_in$y - fc$yearly)
+}
+
+corr_raw <- takeup_cause_df |>
+  transmute(
+    date,
+    temp_layoff_raw = temp_layoff_share,
+    perm_job_loser_raw = perm_job_loser_share,
+    compl_temp_job_raw = completed_temp_job_share,
+    job_leaver_raw = job_leaver_share,
+    reentrant_raw = reentrant_share,
+    new_entrant_raw = new_entrant_share,
+    cc_ce_raw = cc_ce,
+    ic_ce_raw = ic_ce
+  )
+
+vars <- c("temp_layoff_raw", "perm_job_loser_raw", "compl_temp_job_raw", "job_leaver_raw",
+          "reentrant_raw", "new_entrant_raw", "cc_ce_raw", "ic_ce_raw")
+nice <- c("Temp. Layoff", "Perm. Job Loser", "Compl. Temp Job", "Job Leaver",
+          "Reentrant", "New Entrant", "CC / CE", "IC / CE")
+
+corr_sa <- corr_raw |> select(date)
+for (i in seq_along(vars)) {
+  corr_sa <- corr_sa |>
+    left_join(prophet_sa(corr_raw$date, corr_raw[[vars[i]]]) |>
+                rename(date = ds, !!nice[i] := y_sa),
+              by = "date")
+}
+
+compute_corr_long <- function(data) {
+  share_vars <- nice[1:6]
+  out_vars <- nice[7:8]
+  mat <- cor(data[, c(share_vars, out_vars)], use = "pairwise.complete.obs")
+  mat[share_vars, out_vars] |>
+    as.data.frame() |>
+    rownames_to_column("Cause Share") |>
+    pivot_longer(-`Cause Share`, names_to = "Outcome", values_to = "r") |>
+    mutate(`Cause Share` = factor(`Cause Share`, levels = rev(share_vars)))
+}
+
+bind_rows(
+  compute_corr_long(corr_sa) |> mutate(panel = "Full Sample"),
+  compute_corr_long(corr_sa |>
+                      filter(date < as.Date("2020-03-01") | date > as.Date("2021-12-01"))) |>
+    mutate(panel = "Excluding Pandemic")
+) |>
+  ggplot(aes(Outcome, `Cause Share`, fill = r)) +
+  geom_tile(color = "white", linewidth = 0.5) +
+  geom_text(aes(label = sprintf("%.2f", r)), size = 3.2) +
+  scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B",
+                       midpoint = 0, limits = c(-1, 1), name = "Correlation") +
+  facet_wrap(~panel) +
+  labs(title = "Correlation: Cause Shares vs. Claims Intensity", x = NULL, y = NULL) +
+  theme(panel.grid = element_blank())
+```
+
+In the pandemic-exclusion sample, completed temporary jobs stand out as essentially uncorrelated with either outcome, motivating their use as the omitted reference category in the regressions that follow. Permanent job losers show the strongest positive correlation with claims intensity, consistent with their position as the most UI-relevant group. New entrants, reentrants, and job leavers are negatively correlated with both outcomes, consistent with their weaker UI attachment.
 
 ## 4.4 Who Are the Unemployed by Cause?
 
-```{r}
-dominant_profiles |>
-  filter(
-    variant == "pooled",
-    dimension %in% c("Age", "Education", "Sex", "Race/Ethnicity", "Occupation", "Class")
-  ) |>
-  mutate(Share = percent(share, accuracy = 0.1)) |>
-  select(
-    Cause = cause,
-    Dimension = dimension,
-    `Dominant Group` = dominant_group,
-    Share
-  ) |>
-  gt(groupname_col = "Cause") |>
-  tab_options(
-    table.font.size = px(11),
-    column_labels.font.weight = "bold",
-    column_labels.background.color = "#2c3e50"
-  ) |>
-  tab_style(
-    style = cell_text(color = "white"),
-    locations = cells_column_labels()
+The compositional shifts documented above raise a natural question: who are the people in each cause category, and has their demographic profile changed over time? The current build stores precomputed dominant-profile summaries, which makes it possible to recreate the archived profile comparisons without re-reading CPS microdata during render.
+
+Two versions are presented for each cause: a pooled profile and a 2025-vs-pooled delta showing how the current composition differs from the historical average. The delta charts highlight secular demographic shifts that may affect the mapping from cause category to claims intensity if within-cause claiming propensities vary by demographic group.
+
+```{r radar-helpers}
+plot_dominant_radar_single <- function(profile_df, cause_name, subtitle) {
+  plot_df <- profile_df |>
+    filter(cause == cause_name) |>
+    arrange(dimension) |>
+    mutate(axis_id = row_number())
+
+  n_axes <- nrow(plot_df)
+  angles <- pi / 2 - 2 * pi * (seq_len(n_axes) - 1) / n_axes
+  radial_breaks <- c(0, 0.25, 0.50, 0.75, 1.00)
+
+  point_df <- plot_df |>
+    mutate(
+      angle = angles,
+      x = share * cos(angle),
+      y = share * sin(angle)
+    )
+
+  closed_df <- bind_rows(point_df, slice(point_df, 1))
+
+  spoke_df <- tibble(
+    axis_id = seq_len(n_axes),
+    angle = angles,
+    x = 0,
+    y = 0,
+    xend = cos(angle),
+    yend = sin(angle)
   )
+
+  ring_df <- map_dfr(
+    radial_breaks[-1],
+    \(ring) {
+      tibble(
+        ring = ring,
+        axis_id = c(seq_len(n_axes), 1L),
+        angle = angles[c(seq_len(n_axes), 1L)],
+        x = ring * cos(angle),
+        y = ring * sin(angle)
+      )
+    }
+  )
+
+  axis_label_df <- point_df |>
+    transmute(
+      dimension,
+      angle,
+      label_x = 1.17 * cos(angle),
+      label_y = 1.17 * sin(angle),
+      hjust = case_when(
+        label_x > 0.15 ~ 0,
+        label_x < -0.15 ~ 1,
+        TRUE ~ 0.5
+      ),
+      vjust = case_when(
+        label_y > 0.15 ~ 0,
+        label_y < -0.15 ~ 1,
+        TRUE ~ 0.5
+      )
+    )
+
+  point_label_df <- point_df |>
+    transmute(
+      axis_id,
+      angle,
+      point_label = label,
+      label_radius = case_when(
+        share >= 0.72 ~ pmax(share - 0.14, 0.16),
+        TRUE ~ pmin(share + 0.11, 0.88)
+      ),
+      tangent_shift = if_else(axis_id %% 2 == 0, 0.045, -0.045),
+      label_x = label_radius * cos(angle) + tangent_shift * (-sin(angle)),
+      label_y = label_radius * sin(angle) + tangent_shift * cos(angle),
+      hjust = case_when(
+        label_x > 0.18 ~ 0,
+        label_x < -0.18 ~ 1,
+        TRUE ~ 0.5
+      ),
+      vjust = case_when(
+        label_y > 0.18 ~ 0,
+        label_y < -0.18 ~ 1,
+        TRUE ~ 0.5
+      )
+    )
+
+  radial_label_df <- tibble(
+    ring = radial_breaks,
+    x = radial_breaks,
+    y = 0.02,
+    label = percent(radial_breaks, accuracy = 1)
+  )
+
+  ggplot() +
+    geom_path(
+      data = filter(ring_df, ring < 1),
+      aes(x = x, y = y, group = ring),
+      color = "grey72",
+      linewidth = 0.15
+    ) +
+    geom_path(
+      data = filter(ring_df, ring == 1),
+      aes(x = x, y = y, group = ring),
+      color = "grey72",
+      linewidth = 0.15
+    ) +
+    geom_segment(
+      data = spoke_df,
+      aes(x = x, y = y, xend = xend, yend = yend),
+      color = "grey76",
+      linewidth = 0.15
+    ) +
+    geom_polygon(
+      data = closed_df,
+      aes(x = x, y = y),
+      fill = scales::alpha(cause_cols[[cause_name]], 0.45),
+      color = cause_cols[[cause_name]],
+      linewidth = 0.15,
+      linejoin = "round"
+    ) +
+    geom_point(
+      data = point_df,
+      aes(x = x, y = y),
+      color = cause_cols[[cause_name]],
+      fill = cause_cols[[cause_name]],
+      shape = 21,
+      stroke = 0.2,
+      size = 1.4
+    ) +
+    geom_text(
+      data = point_label_df,
+      aes(x = label_x, y = label_y, label = point_label, hjust = hjust, vjust = vjust),
+      size = 2.7,
+      lineheight = 0.92,
+      color = cause_cols[[cause_name]]
+    ) +
+    geom_text(
+      data = axis_label_df,
+      aes(x = label_x, y = label_y, label = dimension, hjust = hjust, vjust = vjust),
+      size = 3.6,
+      lineheight = 0.9
+    ) +
+    geom_text(
+      data = radial_label_df,
+      aes(x = x, y = y, label = label),
+      color = "grey65",
+      size = 3.3,
+      hjust = 0.5,
+      vjust = 0
+    ) +
+    coord_equal(clip = "off") +
+    xlim(-1.28, 1.28) +
+    ylim(-1.26, 1.28) +
+    labs(
+      title = cause_name,
+      subtitle = subtitle,
+      x = NULL,
+      y = NULL
+    ) +
+    theme_report +
+    theme(
+      axis.text = element_blank(),
+      axis.ticks = element_blank(),
+      axis.line = element_blank(),
+      panel.grid = element_blank(),
+      plot.margin = margin(20, 35, 20, 35)
+    )
+}
+
+plot_dominant_radar_delta <- function(profile_df, cause_name, subtitle, max_abs_delta = 0.20) {
+  plot_df <- profile_df |>
+    filter(cause == cause_name) |>
+    arrange(dimension) |>
+    mutate(axis_id = row_number())
+
+  n_axes <- nrow(plot_df)
+  angles <- pi / 2 - 2 * pi * (seq_len(n_axes) - 1) / n_axes
+  radial_breaks <- c(-0.20, -0.10, 0, 0.10, 0.20)
+  radial_positions <- scales::rescale(
+    radial_breaks,
+    to = c(0, 1),
+    from = c(-max_abs_delta, max_abs_delta)
+  )
+
+  point_df <- plot_df |>
+    mutate(
+      angle = angles,
+      radius = scales::rescale(
+        delta,
+        to = c(0, 1),
+        from = c(-max_abs_delta, max_abs_delta)
+      ),
+      x = radius * cos(angle),
+      y = radius * sin(angle)
+    )
+
+  closed_df <- bind_rows(point_df, slice(point_df, 1))
+
+  spoke_df <- tibble(
+    axis_id = seq_len(n_axes),
+    angle = angles,
+    x = 0,
+    y = 0,
+    xend = cos(angle),
+    yend = sin(angle)
+  )
+
+  ring_df <- map_dfr(
+    seq_along(radial_breaks),
+    \(i) {
+      tibble(
+        ring_value = radial_breaks[[i]],
+        ring_position = radial_positions[[i]],
+        axis_id = c(seq_len(n_axes), 1L),
+        angle = angles[c(seq_len(n_axes), 1L)],
+        x = radial_positions[[i]] * cos(angle),
+        y = radial_positions[[i]] * sin(angle)
+      )
+    }
+  )
+
+  axis_label_df <- point_df |>
+    transmute(
+      dimension,
+      angle,
+      label_x = 1.17 * cos(angle),
+      label_y = 1.17 * sin(angle),
+      hjust = case_when(
+        label_x > 0.15 ~ 0,
+        label_x < -0.15 ~ 1,
+        TRUE ~ 0.5
+      ),
+      vjust = case_when(
+        label_y > 0.15 ~ 0,
+        label_y < -0.15 ~ 1,
+        TRUE ~ 0.5
+      )
+    )
+
+  point_label_df <- point_df |>
+    transmute(
+      axis_id,
+      angle,
+      point_label = label,
+      label_radius = case_when(
+        radius >= 0.80 ~ pmax(radius - 0.16, 0.14),
+        radius <= 0.20 ~ pmin(radius + 0.16, 0.32),
+        TRUE ~ pmin(radius + 0.11, 0.90)
+      ),
+      tangent_shift = if_else(axis_id %% 2 == 0, 0.045, -0.045),
+      label_x = label_radius * cos(angle) + tangent_shift * (-sin(angle)),
+      label_y = label_radius * sin(angle) + tangent_shift * cos(angle),
+      hjust = case_when(
+        label_x > 0.18 ~ 0,
+        label_x < -0.18 ~ 1,
+        TRUE ~ 0.5
+      ),
+      vjust = case_when(
+        label_y > 0.18 ~ 0,
+        label_y < -0.18 ~ 1,
+        TRUE ~ 0.5
+      )
+    )
+
+  radial_label_df <- tibble(
+    ring_value = radial_breaks,
+    x = radial_positions,
+    y = 0.02,
+    label = paste0(if_else(radial_breaks > 0, "+", ""), number(radial_breaks * 100, accuracy = 0.1))
+  )
+
+  ggplot() +
+    geom_path(
+      data = filter(ring_df, abs(ring_value) > 1e-9),
+      aes(x = x, y = y, group = ring_value),
+      color = "grey78",
+      linewidth = 0.15
+    ) +
+    geom_path(
+      data = filter(ring_df, abs(ring_value) <= 1e-9),
+      aes(x = x, y = y, group = ring_value),
+      color = "grey40",
+      linewidth = 0.6
+    ) +
+    geom_segment(
+      data = spoke_df,
+      aes(x = x, y = y, xend = xend, yend = yend),
+      color = "grey80",
+      linewidth = 0.15
+    ) +
+    geom_polygon(
+      data = closed_df,
+      aes(x = x, y = y),
+      fill = scales::alpha(cause_cols[[cause_name]], 0.22),
+      color = cause_cols[[cause_name]],
+      linewidth = 0.2,
+      linejoin = "round"
+    ) +
+    geom_point(
+      data = point_df,
+      aes(x = x, y = y),
+      color = cause_cols[[cause_name]],
+      fill = cause_cols[[cause_name]],
+      shape = 21,
+      stroke = 0.2,
+      size = 1.4
+    ) +
+    geom_text(
+      data = point_label_df,
+      aes(x = label_x, y = label_y, label = point_label, hjust = hjust, vjust = vjust),
+      size = 2.5,
+      lineheight = 0.92,
+      color = cause_cols[[cause_name]]
+    ) +
+    geom_text(
+      data = axis_label_df,
+      aes(x = label_x, y = label_y, label = dimension, hjust = hjust, vjust = vjust),
+      size = 3.6,
+      lineheight = 0.9
+    ) +
+    geom_text(
+      data = radial_label_df,
+      aes(x = x, y = y, label = label),
+      color = "grey60",
+      size = 3.0,
+      hjust = 0.5,
+      vjust = 0
+    ) +
+    coord_equal(clip = "off") +
+    xlim(-1.28, 1.28) +
+    ylim(-1.26, 1.28) +
+    labs(
+      title = cause_name,
+      subtitle = subtitle,
+      x = NULL,
+      y = NULL
+    ) +
+    theme_report +
+    theme(
+      axis.text = element_blank(),
+      axis.ticks = element_blank(),
+      axis.line = element_blank(),
+      panel.grid = element_blank(),
+      plot.margin = margin(20, 35, 20, 35)
+    )
+}
+
+pooled_profiles <- dominant_profiles |>
+  filter(variant == "pooled", cause %in% c("Temporary Layoff", "Permanent Job Losers", "New Entrants"))
+delta_profiles <- dominant_profiles |>
+  filter(variant == "delta_2025", cause %in% c("Temporary Layoff", "Permanent Job Losers", "New Entrants"))
 ```
+
+::: {.panel-tabset}
 
 ### Temporary Layoff
 
-Temporary layoffs remain the most recall-like category and should be relatively UI-relevant, though their spike behavior in large shocks makes them unusually volatile.
+::: {.panel-tabset}
+
+#### Pooled
+
+```{r fig-radar-temp-layoff-pooled}
+#| fig-cap: "Temporary Layoff dominant-profile radar, pooled sample."
+#| fig-height: 6
+
+plot_dominant_radar_single(pooled_profiles, "Temporary Layoff", "Pooled sample")
+```
+
+#### 2025 vs. Pooled
+
+```{r fig-radar-temp-layoff-delta}
+#| fig-cap: "Temporary Layoff dominant-profile radar, 2025 minus pooled share of the same dominant group."
+#| fig-height: 6
+
+plot_dominant_radar_delta(delta_profiles, "Temporary Layoff", "2025 minus pooled")
+```
+
+:::
 
 ### Permanent Job Losers
 
-Permanent job losers are the cleanest benchmark for strong recent employer attachment without a recall expectation. That is why they serve as the omitted category in the main composition regressions.
+::: {.panel-tabset}
+
+#### Pooled
+
+```{r fig-radar-perm-losers-pooled}
+#| fig-cap: "Permanent Job Losers dominant-profile radar, pooled sample."
+#| fig-height: 6
+
+plot_dominant_radar_single(pooled_profiles, "Permanent Job Losers", "Pooled sample")
+```
+
+#### 2025 vs. Pooled
+
+```{r fig-radar-perm-losers-delta}
+#| fig-cap: "Permanent Job Losers dominant-profile radar, 2025 minus pooled share of the same dominant group."
+#| fig-height: 6
+
+plot_dominant_radar_delta(delta_profiles, "Permanent Job Losers", "2025 minus pooled")
+```
+
+:::
 
 ### New Entrants
 
-New entrants are mechanically weak on UI eligibility because they have no prior job history. They anchor the low-attachment end of the composition story.
+::: {.panel-tabset}
+
+#### Pooled
+
+```{r fig-radar-new-entrants-pooled}
+#| fig-cap: "New Entrants dominant-profile radar, pooled sample."
+#| fig-height: 6
+
+plot_dominant_radar_single(pooled_profiles, "New Entrants", "Pooled sample")
+```
+
+#### 2025 vs. Pooled
+
+```{r fig-radar-new-entrants-delta}
+#| fig-cap: "New Entrants dominant-profile radar, 2025 minus pooled share of the same dominant group."
+#| fig-height: 6
+
+plot_dominant_radar_delta(delta_profiles, "New Entrants", "2025 minus pooled")
+```
+
+:::
+
+:::
 
 ### Summary of Demographic Profiles
 
-The dominant-profile summaries reinforce the benchmark intuition: the six cause groups differ materially in age, occupation, and class-of-worker composition, so it is reasonable to expect claims intensity to vary with the mix of causes.
+Three patterns stand out across the profile charts.
+
+Temporary layoffs remain the most clearly UI-attached category, but their dominant profile has become less singular over time. Permanent job losers have shifted toward more white-collar and more educated dominant groups, which matters if within-cause filing propensities differ across worker types. New entrants remain structurally distant from UI eligibility, but their profile also evolves over time, reinforcing the broader point that the composition of the unemployment pool changes both across causes and within causes.
 
 # 5. Data and Measurement
 
-## 5.1 UI Claims Data (FRED)
+The empirical analysis combines administrative UI claims series with CPS-based unemployment-composition measures in a common benchmarking framework.
 
-The report uses the project’s saved national UI take-up series:
+## 5.1 UI Claims Data
 
-- `CC/CE`: continued claims divided by covered employment
-- `IC/CE`: initial claims divided by covered employment
+Administrative UI claims data come from the project's FRED-based claims pipeline, now stored in local derived outputs rather than pulled ad hoc at render time. For each state, the underlying workflow tracks:
 
-Both are read from the parquet outputs built by [`build_panels.R`](C:/Users/aryan/OneDrive/Research/unemployment_decomposition/build_panels.R).
+- Initial claims: sum of weekly first-time UI claims within each calendar month
+- Continued claims: average weekly continued claims within each calendar month
+- Covered employment: the insured job base used to normalize claims
 
-## 5.2 Unemployment Composition Data (CPS)
+The two outcome variables are:
 
-The composition measures are the monthly unemployment shares by reason for unemployment. Those are now carried in derived parquet files rather than recomputed from microdata at render time.
+$$
+\text{CC/CE}_{st} = \frac{\text{Continued Claims}_{st}}{\text{Covered Employment}_{st}}, \qquad
+\text{IC/CE}_{st} = \frac{\text{Initial Claims}_{st}}{\text{Covered Employment}_{st}}
+$$
+
+These are intensity measures, not take-up rates. They condition on covered employment, the universe of jobs covered by state UI programs, rather than on the number of eligible unemployed. CC/CE is mechanically equivalent to the insured unemployment rate expressed as a share.
+
+## 5.2 Unemployment Composition Data
+
+The unemployment-composition measures are based on CPS reason-for-unemployment categories. In the updated workflow, those measures are read from the project's derived parquet outputs rather than recomputed from raw CPS microdata during report rendering. For each geography-period, the analysis uses weighted shares of the unemployed falling into the six BLS reason-for-unemployment categories defined in @tbl-cause-definitions. The broader project also carries additional composition measures, such as noncitizen share, white-collar share, blue-collar share, and prime-working-age share, though the benchmark here focuses on the by-cause structure.
 
 ## 5.3 Panel Construction
 
-The annual state panel comes from the parquet output [`ui_takeup_panel_state_year_analysis_ready.parquet`](C:/Users/aryan/OneDrive/Research/unemployment_decomposition/data/final/ui_takeup_panel_state_year_analysis_ready.parquet), which merges state claims outcomes with CPS composition measures and annual population weights.
+The state panels are available at monthly, quarterly, and annual frequency in the local derived-data pipeline. CPS composition measures are noisier at monthly frequency because state-month cells can be thin, particularly in smaller states. Aggregating from monthly to quarterly or annual raises effective sample sizes and reduces sampling noise. The annual panel is therefore the most stable benchmark for the state FE exercises, though it sacrifices short-run time variation.
 
 ## 5.4 Limitations
 
-This benchmark is intentionally reduced form. It does not separately identify eligibility, filing behavior, or administrative barriers; it only measures how much of claims intensity comoves with unemployment composition.
+The benchmark is intentionally reduced form. The composition regressors are measured from survey-based unemployment categories rather than administrative eligibility records, so the design does not separately identify eligibility, filing behavior, or administrative barriers. Classical measurement error in the survey-based composition measures will tend to attenuate slope estimates toward zero, with attenuation most severe at higher-frequency and smaller-cell levels of aggregation.
+
+The pandemic period, especially March 2020 through December 2021, involved extraordinary temporary UI programs, eligibility expansions, and administrative disruption. Those episodes temporarily broke the normal historical mapping between unemployment mix and claims intensity, which is why the report repeatedly compares full-sample estimates with pandemic-exclusion variants.
 
 # 6. Data Preparation
 
-```{r}
-takeup_cause_df <- takeup_cause_df |>
-  mutate(
-    month_of_year = factor(month_of_year, levels = month.abb),
-    year = year(date)
-  )
+```{r national-composition-setup}
+takeup_cause_df <- takeup_cause_df |> mutate(year = year(date))
 
 national_annual <- takeup_cause_df |>
-  mutate(year = year(date)) |>
   group_by(year) |>
   summarise(
     date = as.Date(paste0(first(year), "-01-01")),
@@ -385,67 +949,66 @@ national_annual <- takeup_cause_df |>
     new_entrant_share = mean(new_entrant_share, na.rm = TRUE),
     .groups = "drop"
   )
+
+fit_national_composition <- function(outcome) {
+  lm(as.formula(paste0(
+    outcome,
+    " ~ temp_layoff_share + perm_job_loser_share + job_leaver_share + reentrant_share + new_entrant_share + month_of_year"
+  )), data = takeup_cause_df)
+}
+
+cc_cause_model <- fit_national_composition("cc_ce")
+ic_cause_model <- fit_national_composition("ic_ce")
+takeup_cause_fitted <- takeup_cause_df |>
+  mutate(
+    cc_ce_hat = predict(cc_cause_model, newdata = takeup_cause_df),
+    ic_ce_hat = predict(ic_cause_model, newdata = takeup_cause_df),
+    cc_gap = cc_ce - cc_ce_hat,
+    ic_gap = ic_ce - ic_ce_hat
+  )
 ```
 
 # 7. Results
 
 ## 7.1 National Monthly Composition Regressions
 
-```{r}
-fit_national_composition <- function(outcome) {
-  lm(
-    as.formula(
-      paste0(
-        outcome,
-        " ~ temp_layoff_share + completed_temp_job_share + job_leaver_share + ",
-        "reentrant_share + new_entrant_share + month_of_year"
-      )
-    ),
-    data = takeup_cause_df
-  )
+As a descriptive starting point, I estimate national monthly regressions of claims intensity on by-cause unemployment shares with month-of-year fixed effects. Completed temporary jobs are the omitted reference category, because outside the pandemic period this group's share is close to neutral in the correlation diagnostics from Section 4.
+
+$$
+y_t = \alpha + \sum_{c \neq \text{CTJ}} \beta_c \, s_{ct} + \sum_{m=2}^{12} \gamma_m \mathbf{1}\{\text{month}(t) = m\} + \varepsilon_t
+$$
+
+where $y_t \in \{CC/CE_t, IC/CE_t\}$ and $s_{ct}$ is the national share of cause $c$ in month $t$.
+
+```{r national-composition-coefs}
+#| tbl-cap: "National monthly regressions of claims intensity on by-cause unemployment shares. Completed temporary jobs are the omitted reference category; coefficients are scaled to a 10 percentage-point shift in share."
+
+extract_share_terms <- function(model, outcome_label) {
+  summary(model)$coefficients |>
+    as.data.frame() |>
+    rownames_to_column("term") |>
+    as_tibble() |>
+    filter(term %in% c("temp_layoff_share", "perm_job_loser_share", "job_leaver_share", "reentrant_share", "new_entrant_share")) |>
+    mutate(
+      Outcome = outcome_label,
+      term = recode(
+        term,
+        temp_layoff_share = "Temporary layoff share",
+        perm_job_loser_share = "Permanent job-loser share",
+        job_leaver_share = "Job leaver share",
+        reentrant_share = "Reentrant share",
+        new_entrant_share = "New entrant share"
+      ),
+      `Coef (10 pp shift)` = Estimate * 0.10,
+      `Std. Error` = `Std. Error` * 0.10
+    ) |>
+    select(Outcome, Term = term, `Coef (10 pp shift)`, `Std. Error`, `p-value` = `Pr(>|t|)`)
 }
 
-cc_monthly_comp <- fit_national_composition("cc_ce")
-ic_monthly_comp <- fit_national_composition("ic_ce")
-
-coef_table <- bind_rows(
-  broom::tidy(cc_monthly_comp) |> mutate(outcome = "CC/CE"),
-  broom::tidy(ic_monthly_comp) |> mutate(outcome = "IC/CE")
-) |>
-  filter(term %in% c(
-    "temp_layoff_share",
-    "completed_temp_job_share",
-    "job_leaver_share",
-    "reentrant_share",
-    "new_entrant_share"
-  )) |>
-  mutate(
-    term = recode(
-      term,
-      temp_layoff_share = "Temporary layoff share",
-      completed_temp_job_share = "Completed temp-job share",
-      job_leaver_share = "Job leaver share",
-      reentrant_share = "Reentrant share",
-      new_entrant_share = "New entrant share"
-    ),
-    `Coef (10 pp shift)` = estimate * 0.10,
-    `Std. Error` = std.error * 0.10
-  ) |>
-  select(
-    Outcome = outcome,
-    Term = term,
-    `Coef (10 pp shift)`,
-    `Std. Error`,
-    `p-value` = p.value
-  )
-
-coef_table |>
-  mutate(
-    `Coef (10 pp shift)` = number(`Coef (10 pp shift)`, accuracy = 0.0001),
-    `Std. Error` = number(`Std. Error`, accuracy = 0.0001),
-    `p-value` = number(`p-value`, accuracy = 0.001)
-  ) |>
+bind_rows(extract_share_terms(cc_cause_model, "CC / CE"),
+          extract_share_terms(ic_cause_model, "IC / CE")) |>
   gt(groupname_col = "Outcome") |>
+  fmt_number(columns = c(`Coef (10 pp shift)`, `Std. Error`, `p-value`), decimals = 3) |>
   tab_options(
     table.font.size = px(11),
     column_labels.font.weight = "bold",
@@ -457,116 +1020,24 @@ coef_table |>
   )
 ```
 
-## 7.2 National Observed vs. Predicted Claims Intensity
+```{r national-composition-fit}
+#| tbl-cap: "Model fit for the national composition regressions."
 
-```{r}
-takeup_monthly_fitted <- takeup_cause_df |>
-  mutate(
-    cc_ce_hat = predict(cc_monthly_comp, newdata = takeup_cause_df),
-    ic_ce_hat = predict(ic_monthly_comp, newdata = takeup_cause_df),
-    cc_gap = cc_ce - cc_ce_hat,
-    ic_gap = ic_ce - ic_ce_hat
-  )
-
-p_cc_fit <- ggplot(takeup_monthly_fitted, aes(date)) +
-  geom_line(aes(y = cc_ce, color = "Observed"), linewidth = 0.9) +
-  geom_line(aes(y = cc_ce_hat, color = "Composition-predicted"), linewidth = 0.8, linetype = "dashed") +
-  scale_color_manual(values = c("Observed" = "#0073C2", "Composition-predicted" = "black")) +
-  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
-  labs(title = "CC/CE", x = NULL, y = NULL, color = NULL)
-
-p_ic_fit <- ggplot(takeup_monthly_fitted, aes(date)) +
-  geom_line(aes(y = ic_ce, color = "Observed"), linewidth = 0.9) +
-  geom_line(aes(y = ic_ce_hat, color = "Composition-predicted"), linewidth = 0.8, linetype = "dashed") +
-  scale_color_manual(values = c("Observed" = "#EFC000", "Composition-predicted" = "black")) +
-  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
-  labs(title = "IC/CE", x = NULL, y = NULL, color = NULL)
-
-p_cc_fit / p_ic_fit
-```
-
-### Annual Frequency
-
-```{r}
-national_annual_rhs <- "temp_layoff_share + perm_job_loser_share + job_leaver_share + reentrant_share + new_entrant_share"
-
-cc_annual_nat <- lm(as.formula(paste0("cc_ce ~ ", national_annual_rhs)), data = national_annual)
-ic_annual_nat <- lm(as.formula(paste0("ic_ce ~ ", national_annual_rhs)), data = national_annual)
-
-national_annual <- national_annual |>
-  mutate(
-    cc_ce_hat = predict(cc_annual_nat),
-    ic_ce_hat = predict(ic_annual_nat),
-    cc_gap = cc_ce - cc_ce_hat,
-    ic_gap = ic_ce - ic_ce_hat
-  )
-
-p_cc_ann <- ggplot(national_annual, aes(date)) +
-  geom_line(aes(y = cc_ce, color = "Observed"), linewidth = 0.9) +
-  geom_line(aes(y = cc_ce_hat, color = "Composition-predicted"), linewidth = 0.8, linetype = "dashed") +
-  scale_color_manual(values = c("Observed" = "#0073C2", "Composition-predicted" = "black")) +
-  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
-  labs(title = "Annual CC/CE", x = NULL, y = NULL, color = NULL)
-
-p_ic_ann <- ggplot(national_annual, aes(date)) +
-  geom_line(aes(y = ic_ce, color = "Observed"), linewidth = 0.9) +
-  geom_line(aes(y = ic_ce_hat, color = "Composition-predicted"), linewidth = 0.8, linetype = "dashed") +
-  scale_color_manual(values = c("Observed" = "#EFC000", "Composition-predicted" = "black")) +
-  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
-  labs(title = "Annual IC/CE", x = NULL, y = NULL, color = NULL)
-
-p_cc_ann / p_ic_ann
-```
-
-## 7.3 Robustness: Macro Labor-Market Benchmarks
-
-This rebuilt version keeps the benchmark-comparison idea from the archived HTML, but it limits the comparison set to variables available in the current local derived-data workflow. The point is still the same: compare the composition model with simpler aggregate alternatives rather than treat composition performance in isolation.
-
-```{r}
-bench_core <- takeup_cause_df |>
-  drop_na(cc_ce, ic_ce, urate)
-
-comp_rhs <- paste(
-  "temp_layoff_share + perm_job_loser_share +",
-  "job_leaver_share + reentrant_share + new_entrant_share + month_of_year"
-)
-
-mod_A_cc <- lm(as.formula(paste("cc_ce ~", comp_rhs)), data = bench_core)
-mod_A_ic <- lm(as.formula(paste("ic_ce ~", comp_rhs)), data = bench_core)
-
-mod_B_cc <- lm(cc_ce ~ urate + month_of_year, data = bench_core)
-mod_B_ic <- lm(ic_ce ~ urate + month_of_year, data = bench_core)
-
-mod_C_cc <- lm(
-  cc_ce ~ urate + temp_layoff_share + perm_job_loser_share + job_leaver_share +
-    reentrant_share + new_entrant_share + month_of_year,
-  data = bench_core
-)
-mod_C_ic <- lm(
-  ic_ce ~ urate + temp_layoff_share + perm_job_loser_share + job_leaver_share +
-    reentrant_share + new_entrant_share + month_of_year,
-  data = bench_core
-)
-
-fit_metrics <- function(model, model_name, outcome) {
-  tibble(
-    Model = model_name,
-    Outcome = outcome,
-    `R-squared` = summary(model)$r.squared,
-    RMSE = sqrt(mean(residuals(model)^2, na.rm = TRUE)),
-    N = nobs(model)
-  )
-}
-
-bind_rows(
-  fit_metrics(mod_A_cc, "A: Composition", "CC/CE"),
-  fit_metrics(mod_B_cc, "B: Unemployment rate", "CC/CE"),
-  fit_metrics(mod_C_cc, "C: Composition + unemployment rate", "CC/CE"),
-  fit_metrics(mod_A_ic, "A: Composition", "IC/CE"),
-  fit_metrics(mod_B_ic, "B: Unemployment rate", "IC/CE"),
-  fit_metrics(mod_C_ic, "C: Composition + unemployment rate", "IC/CE")
+tibble(
+  Outcome = c("CC / CE", "IC / CE"),
+  `R-squared` = c(summary(cc_cause_model)$r.squared, summary(ic_cause_model)$r.squared),
+  RMSE = c(
+    sqrt(mean(residuals(cc_cause_model)^2, na.rm = TRUE)),
+    sqrt(mean(residuals(ic_cause_model)^2, na.rm = TRUE))
+  ),
+  `Sample Start` = min(takeup_cause_df$date),
+  `Sample End` = max(takeup_cause_df$date)
 ) |>
-  gt(groupname_col = "Outcome") |>
+  mutate(
+    `Sample Start` = format(`Sample Start`, "%Y-%m"),
+    `Sample End` = format(`Sample End`, "%Y-%m")
+  ) |>
+  gt() |>
   fmt_number(columns = c(`R-squared`, RMSE), decimals = 3) |>
   tab_options(
     table.font.size = px(11),
@@ -579,71 +1050,462 @@ bind_rows(
   )
 ```
 
+The national monthly regressions confirm that by-cause unemployment composition carries substantial explanatory power for claims intensity. The CC/CE model explains a very large share of monthly variation, and the IC/CE model also fits strongly. The most intuitive coefficient pattern survives clearly: higher job-leaver and new-entrant shares are associated with lower claims intensity, while temporary layoffs load positively. That is exactly what the benchmark should capture if it is picking up claimant relevance rather than merely generic cycle conditions.
+
+## 7.2 National Observed vs. Predicted Claims Intensity
+
+The fitted values from the national composition model provide a first-pass benchmark: the claims intensity that the by-cause mix and seasonality would predict, versus what is actually observed.
+
+```{r fig-national-fit}
+#| fig-cap: "Observed versus composition-predicted national claims intensity, full monthly sample from 1994 onward."
+#| fig-height: 9
+
+(ggplot(takeup_cause_fitted, aes(date)) +
+   geom_line(aes(y = cc_ce, color = "Observed"), linewidth = 0.9) +
+   geom_line(aes(y = cc_ce_hat, color = "Predicted"), linewidth = 0.8, linetype = "dashed") +
+   scale_color_manual(values = c("Observed" = "#0073C2", "Predicted" = "black")) +
+   scale_x_date(date_breaks = "5 years", date_labels = "%b\n'%y") +
+   scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+   labs(title = "CC / CE", subtitle = "Observed vs. composition-predicted", x = NULL, y = NULL)) /
+  (ggplot(takeup_cause_fitted, aes(date)) +
+     geom_line(aes(y = ic_ce, color = "Observed"), linewidth = 0.9) +
+     geom_line(aes(y = ic_ce_hat, color = "Predicted"), linewidth = 0.8, linetype = "dashed") +
+     scale_color_manual(values = c("Observed" = "#EFC000", "Predicted" = "black")) +
+     scale_x_date(date_breaks = "5 years", date_labels = "%b\n'%y") +
+     scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+     labs(title = "IC / CE", subtitle = "Observed vs. composition-predicted", x = NULL, y = NULL)) &
+  theme(legend.position = "top")
+```
+
+```{r fig-national-gap}
+#| fig-cap: "Gap between observed and composition-predicted national claims intensity, full monthly sample from 1994 onward. Negative values mean the composition model overpredicts."
+#| fig-height: 9
+
+(ggplot(takeup_cause_fitted, aes(date, cc_gap)) +
+   geom_hline(yintercept = 0, color = "grey60", linewidth = 0.5) +
+   geom_col(fill = "#0073C2", alpha = 0.85, width = 25) +
+   scale_x_date(date_breaks = "5 years", date_labels = "%b\n'%y") +
+   scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+   labs(title = "CC / CE Gap", subtitle = "Observed minus composition-predicted", x = NULL, y = NULL)) /
+  (ggplot(takeup_cause_fitted, aes(date, ic_gap)) +
+     geom_hline(yintercept = 0, color = "grey60", linewidth = 0.5) +
+     geom_col(fill = "#EFC000", alpha = 0.9, width = 25) +
+     scale_x_date(date_breaks = "5 years", date_labels = "%b\n'%y") +
+     scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+     labs(title = "IC / CE Gap", subtitle = "Observed minus composition-predicted", x = NULL, y = NULL))
+```
+
+The monthly observed-versus-predicted plots show that the composition benchmark tracks the broad level and cyclical swings of claims intensity well. But the gap plots also reveal the main result of the report: in the modern period, especially after the pandemic, observed claims intensity sits below the level historically associated with the realized unemployment mix.
+
+### Annual Frequency
+
+To facilitate comparison with the state-panel gap exercise in Section 7.5, I also estimate the national composition model at annual frequency. Aggregating to annual removes seasonal variation and aligns the national exercise with the annual state panel. Without month-of-year fixed effects, the annual specification is:
+
+$$
+\bar{y}_t = \alpha + \sum_{c \neq \text{CTJ}} \beta_c \, \bar{s}_{ct} + \varepsilon_t
+$$
+
+where $\bar{y}_t$ and $\bar{s}_{ct}$ are annual averages of claims intensity and cause shares, respectively.
+
+```{r national-annual-models}
+annual_rhs <- "temp_layoff_share + perm_job_loser_share + job_leaver_share + reentrant_share + new_entrant_share"
+cc_annual_nat <- lm(as.formula(paste0("cc_ce ~ ", annual_rhs)), data = national_annual)
+ic_annual_nat <- lm(as.formula(paste0("ic_ce ~ ", annual_rhs)), data = national_annual)
+national_annual <- national_annual |>
+  mutate(cc_ce_hat = predict(cc_annual_nat), ic_ce_hat = predict(ic_annual_nat),
+         cc_gap = cc_ce - cc_ce_hat, ic_gap = ic_ce - ic_ce_hat)
+```
+
+```{r fig-national-annual-fit}
+#| fig-cap: "Observed versus composition-predicted national claims intensity at annual frequency. This is the national analog of the state-panel gap exercise."
+#| fig-height: 9
+
+(ggplot(national_annual, aes(date)) +
+   geom_line(aes(y = cc_ce, color = "Observed"), linewidth = 0.9) +
+   geom_line(aes(y = cc_ce_hat, color = "Predicted"), linewidth = 0.8, linetype = "dashed") +
+   scale_color_manual(values = c("Observed" = "#0073C2", "Predicted" = "black")) +
+   scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+   scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+   labs(title = "CC / CE (Annual)", subtitle = "National aggregate, by-cause composition only", x = NULL, y = NULL)) /
+  (ggplot(national_annual, aes(date)) +
+     geom_line(aes(y = ic_ce, color = "Observed"), linewidth = 0.9) +
+     geom_line(aes(y = ic_ce_hat, color = "Predicted"), linewidth = 0.8, linetype = "dashed") +
+     scale_color_manual(values = c("Observed" = "#EFC000", "Predicted" = "black")) +
+     scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+     scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+     labs(title = "IC / CE (Annual)", subtitle = "National aggregate, by-cause composition only", x = NULL, y = NULL)) &
+  theme(legend.position = "top")
+```
+
+```{r fig-national-annual-gap}
+#| fig-cap: "Annual national composition gap. Compare with the state-panel gap in Section 7.5."
+#| fig-height: 9
+
+(ggplot(national_annual, aes(date, cc_gap)) +
+   geom_hline(yintercept = 0, color = "grey60", linewidth = 0.5) +
+   geom_col(fill = "#0073C2", alpha = 0.85, width = 300) +
+   scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+   scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+   labs(title = "CC / CE Gap (Annual)", subtitle = "Observed minus composition-predicted", x = NULL, y = NULL)) /
+  (ggplot(national_annual, aes(date, ic_gap)) +
+     geom_hline(yintercept = 0, color = "grey60", linewidth = 0.5) +
+     geom_col(fill = "#EFC000", alpha = 0.9, width = 300) +
+     scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+     scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+     labs(title = "IC / CE Gap (Annual)", subtitle = "Observed minus composition-predicted", x = NULL, y = NULL))
+```
+
+At annual frequency the same substantive pattern remains: the benchmark explains a large share of the path of claims intensity, but the residual turns persistently negative in the modern period and widens materially after roughly the mid-2010s.
+
+## 7.3 Robustness: Macro Labor-Market Benchmarks
+
+Because the national monthly fit may partly reflect broad aggregate forces that jointly shape unemployment composition and claims intensity, this subsection compares the composition benchmark with alternative monthly macro labor-market benchmarks. These exercises are descriptive and reduced form; they do not identify causal effects. The goal is to evaluate whether unemployment composition has predictive or interpretive value beyond broad labor-market conditions, or whether any variable set correlated with the same omitted aggregate forces can track the national time path of claims intensity equally well.
+
+Five classes of models are compared, all estimated at monthly frequency with month-of-year fixed effects to absorb within-year seasonality:
+
+- **Model A (Composition):** the by-cause unemployment shares from Section 7.1. This is the paper's main benchmark, included here as the reference point.
+- **Model B (Unemployment rate):** the headline U-3 unemployment rate alone. This is the most natural strawman: if the level of unemployment is all that matters for claims intensity, composition adds nothing.
+- **Model C (Expanded aggregate):** U-3, labor force participation rate, employment-population ratio, and year-over-year payroll employment growth.
+- **Model D (Slack/duration):** U-6 underemployment rate, short-term unemployment share, long-term unemployment share, and median unemployment duration.
+- **Model E (JOLTS):** job openings rate, hires rate, quits rate, and layoffs-and-discharges rate. The shorter sample begins in December 2000.
+- **Model F (Nested):** the expanded aggregate variables from Model C plus the composition shares.
+
+The specifications are:
+
+**Model A (Composition):**
+$$
+y_t = \alpha + \sum_{c \neq \text{CTJ}} \beta_c \, s_{ct} + \sum_{m=2}^{12} \gamma_m \mathbf{1}\{\text{month}(t) = m\} + \varepsilon_t
+$$
+
+**Model B (Unemployment rate):**
+$$
+y_t = \alpha + \beta \, u_t + \sum_{m=2}^{12} \gamma_m \mathbf{1}\{\text{month}(t) = m\} + \varepsilon_t
+$$
+
+**Model C (Expanded aggregate):**
+$$
+y_t = \alpha + \beta_1 \, u_t + \beta_2 \, \text{LFPR}_t + \beta_3 \, \text{EPOP}_t + \beta_4 \, \Delta_{12} \ln \text{Payroll}_t + \sum_{m=2}^{12} \gamma_m \mathbf{1}\{\text{month}(t) = m\} + \varepsilon_t
+$$
+
+**Model D (Slack/duration):**
+$$
+y_t = \alpha + \beta_1 \, u^{6}_t + \beta_2 \, \text{ShortShare}_t + \beta_3 \, \text{LongShare}_t + \beta_4 \, \text{MedDur}_t + \sum_{m=2}^{12} \gamma_m \mathbf{1}\{\text{month}(t) = m\} + \varepsilon_t
+$$
+
+**Model E (JOLTS):**
+$$
+y_t = \alpha + \beta_1 \, \text{JOR}_t + \beta_2 \, \text{HIR}_t + \beta_3 \, \text{QUR}_t + \beta_4 \, \text{LDR}_t + \sum_{m=2}^{12} \gamma_m \mathbf{1}\{\text{month}(t) = m\} + \varepsilon_t
+$$
+
+**Model F (Nested):**
+$$
+y_t = \alpha + \beta_1 \, u_t + \beta_2 \, \text{LFPR}_t + \beta_3 \, \text{EPOP}_t + \beta_4 \, \Delta_{12} \ln \text{Payroll}_t + \sum_{c \neq \text{CTJ}} \delta_c \, s_{ct} + \sum_{m=2}^{12} \gamma_m \mathbf{1}\{\text{month}(t) = m\} + \varepsilon_t
+$$
+
+If the unemployment rate alone predicts national claims intensity nearly as well as the composition benchmark, then the monthly national fit should not be taken as unique evidence for the composition channel. If composition improves materially on the unemployment-rate benchmark, that supports the paper's claim that who is unemployed matters in addition to how many are unemployed. If composition continues to add fit after broader macro indicators are included, that strengthens the case that the composition benchmark is substantively useful even if it is not causally identified.
+
+```{r macro-benchmark-data}
+#| cache: true
+
+macro_series <- c(
+  "UNRATE",
+  "CIVPART",
+  "EMRATIO",
+  "LNS12300060",
+  "PAYEMS",
+  "U6RATE",
+  "UEMPLT5",
+  "UEMP27OV",
+  "UEMPMED"
+)
+
+macro_raw <- map_dfr(macro_series, \(id) {
+  fredr_retry(id, observation_start = as.Date("1994-01-01")) |>
+    transmute(date, series = id, value)
+})
+
+macro_wide <- macro_raw |>
+  pivot_wider(names_from = series, values_from = value) |>
+  left_join(fred_cause |> select(date, UNEMPLOY = Total), by = "date") |>
+  arrange(date) |>
+  mutate(
+    payroll_growth_12m = (log(PAYEMS) - log(lag(PAYEMS, 12))) * 100,
+    short_term_unemp_share = UEMPLT5 / UNEMPLOY,
+    long_term_unemp_share = UEMP27OV / UNEMPLOY
+  )
+
+jolts_series <- c("JTSJOR", "JTSHIR", "JTSQUR", "JTSLDR")
+
+jolts_raw <- map_dfr(jolts_series, \(id) {
+  fredr_retry(id, observation_start = as.Date("2000-12-01")) |>
+    transmute(date, series = id, value)
+})
+
+jolts_wide <- jolts_raw |>
+  pivot_wider(names_from = series, values_from = value)
+
+bench_df <- takeup_cause_df |>
+  left_join(
+    macro_wide |>
+      select(date, UNRATE, CIVPART, EMRATIO, LNS12300060,
+             payroll_growth_12m, U6RATE, short_term_unemp_share,
+             long_term_unemp_share, UEMPMED),
+    by = "date"
+  ) |>
+  left_join(jolts_wide, by = "date")
+
+bench_core <- bench_df |>
+  filter(!is.na(UNRATE), !is.na(payroll_growth_12m), !is.na(U6RATE), !is.na(UEMPMED))
+
+bench_jolts <- bench_core |>
+  filter(!is.na(JTSJOR), !is.na(JTSHIR), !is.na(JTSQUR), !is.na(JTSLDR))
+```
+
+```{r macro-benchmark-models}
+comp_rhs <- paste(
+  "temp_layoff_share + perm_job_loser_share +",
+  "job_leaver_share + reentrant_share + new_entrant_share +",
+  "month_of_year"
+)
+
+mod_A_cc <- lm(as.formula(paste("cc_ce ~", comp_rhs)), data = bench_core)
+mod_A_ic <- lm(as.formula(paste("ic_ce ~", comp_rhs)), data = bench_core)
+
+mod_B_cc <- lm(cc_ce ~ UNRATE + month_of_year, data = bench_core)
+mod_B_ic <- lm(ic_ce ~ UNRATE + month_of_year, data = bench_core)
+
+mod_C_cc <- lm(cc_ce ~ UNRATE + CIVPART + EMRATIO + payroll_growth_12m + month_of_year, data = bench_core)
+mod_C_ic <- lm(ic_ce ~ UNRATE + CIVPART + EMRATIO + payroll_growth_12m + month_of_year, data = bench_core)
+
+mod_D_cc <- lm(cc_ce ~ U6RATE + short_term_unemp_share + long_term_unemp_share + UEMPMED + month_of_year, data = bench_core)
+mod_D_ic <- lm(ic_ce ~ U6RATE + short_term_unemp_share + long_term_unemp_share + UEMPMED + month_of_year, data = bench_core)
+
+mod_E_cc <- lm(cc_ce ~ JTSJOR + JTSHIR + JTSQUR + JTSLDR + month_of_year, data = bench_jolts)
+mod_E_ic <- lm(ic_ce ~ JTSJOR + JTSHIR + JTSQUR + JTSLDR + month_of_year, data = bench_jolts)
+
+mod_A_cc_jolts <- lm(as.formula(paste("cc_ce ~", comp_rhs)), data = bench_jolts)
+mod_A_ic_jolts <- lm(as.formula(paste("ic_ce ~", comp_rhs)), data = bench_jolts)
+
+mod_F_cc <- lm(as.formula(paste(
+  "cc_ce ~ UNRATE + CIVPART + EMRATIO + payroll_growth_12m +",
+  "temp_layoff_share + perm_job_loser_share + job_leaver_share +",
+  "reentrant_share + new_entrant_share + month_of_year"
+)), data = bench_core)
+
+mod_F_ic <- lm(as.formula(paste(
+  "ic_ce ~ UNRATE + CIVPART + EMRATIO + payroll_growth_12m +",
+  "temp_layoff_share + perm_job_loser_share + job_leaver_share +",
+  "reentrant_share + new_entrant_share + month_of_year"
+)), data = bench_core)
+
+fit_metrics <- function(model, label, outcome_label) {
+  s <- summary(model)
+  fitted_vals <- fitted(model)
+  observed <- model$model[[1]]
+  tibble(
+    Model = label,
+    Outcome = outcome_label,
+    k = length(coef(model)) - 1L,
+    N = nobs(model),
+    `Adj. R-squared` = s$adj.r.squared,
+    RMSE = sqrt(mean(s$residuals^2)),
+    AIC = AIC(model),
+    BIC = BIC(model),
+    `Cor(y, yhat)` = cor(observed, fitted_vals)
+  )
+}
+```
+
+```{r tbl-macro-benchmark-fit}
+#| tbl-cap: "Model fit comparison: composition benchmark versus macro labor-market benchmarks for national monthly claims intensity. All models include month-of-year fixed effects. The JOLTS model uses a shorter sample beginning December 2000; Model A (JOLTS sample) re-estimates the composition benchmark on the same subsample for comparability."
+
+bind_rows(
+  fit_metrics(mod_A_cc, "A: Composition", "CC/CE"),
+  fit_metrics(mod_B_cc, "B: Unemployment rate", "CC/CE"),
+  fit_metrics(mod_C_cc, "C: Expanded aggregate", "CC/CE"),
+  fit_metrics(mod_D_cc, "D: Slack/duration", "CC/CE"),
+  fit_metrics(mod_E_cc, "E: JOLTS", "CC/CE"),
+  fit_metrics(mod_A_cc_jolts, "A: Composition (JOLTS sample)", "CC/CE"),
+  fit_metrics(mod_F_cc, "F: Aggregate + composition", "CC/CE"),
+  fit_metrics(mod_A_ic, "A: Composition", "IC/CE"),
+  fit_metrics(mod_B_ic, "B: Unemployment rate", "IC/CE"),
+  fit_metrics(mod_C_ic, "C: Expanded aggregate", "IC/CE"),
+  fit_metrics(mod_D_ic, "D: Slack/duration", "IC/CE"),
+  fit_metrics(mod_E_ic, "E: JOLTS", "IC/CE"),
+  fit_metrics(mod_A_ic_jolts, "A: Composition (JOLTS sample)", "IC/CE"),
+  fit_metrics(mod_F_ic, "F: Aggregate + composition", "IC/CE")
+) |>
+  gt(groupname_col = "Outcome") |>
+  fmt_number(columns = c(k, N), decimals = 0) |>
+  fmt_number(columns = c(`Adj. R-squared`, RMSE, `Cor(y, yhat)`), decimals = 3) |>
+  fmt_number(columns = c(AIC, BIC), decimals = 0) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+```{r fig-macro-benchmark-fitted}
+#| fig-cap: "Observed versus fitted CC/CE for selected benchmark models. The composition benchmark (Model A) and the nested model (Model F) are compared against the unemployment-rate-only benchmark (Model B) and the expanded aggregate benchmark (Model C)."
+#| fig-height: 8
+
+fit_colors <- c(
+  "Observed" = "grey30",
+  "A: Composition" = "#0073C2",
+  "B: Unemployment rate" = "#E64B35",
+  "C: Expanded aggregate" = "#EFC000",
+  "F: Aggregate + composition" = "#00A087"
+)
+
+fit_linetypes <- c(
+  "Observed" = "solid",
+  "A: Composition" = "dashed",
+  "B: Unemployment rate" = "dashed",
+  "C: Expanded aggregate" = "dashed",
+  "F: Aggregate + composition" = "dashed"
+)
+
+bench_fitted <- bench_core |>
+  transmute(
+    date,
+    Observed = cc_ce,
+    `A: Composition` = fitted(mod_A_cc),
+    `B: Unemployment rate` = fitted(mod_B_cc),
+    `C: Expanded aggregate` = fitted(mod_C_cc),
+    `F: Aggregate + composition` = fitted(mod_F_cc)
+  ) |>
+  pivot_longer(-date, names_to = "series", values_to = "value")
+
+add_recessions(
+  ggplot(bench_fitted, aes(date, value, color = series, linetype = series)) +
+    geom_line(linewidth = 0.7) +
+    scale_color_manual(values = fit_colors) +
+    scale_linetype_manual(values = fit_linetypes) +
+    scale_y_continuous(labels = percent_format(accuracy = 0.1)) +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    labs(
+      title = "CC / CE: Observed vs. Benchmark Fitted Values",
+      subtitle = "National monthly, all models include month-of-year fixed effects",
+      x = NULL, y = NULL
+    ) +
+    theme(legend.position = "top", legend.text = element_text(size = 7))
+)
+```
+
+```{r fig-macro-benchmark-fitted-ic}
+#| fig-cap: "Observed versus fitted IC/CE for selected benchmark models."
+#| fig-height: 8
+
+bench_fitted_ic <- bench_core |>
+  transmute(
+    date,
+    Observed = ic_ce,
+    `A: Composition` = fitted(mod_A_ic),
+    `B: Unemployment rate` = fitted(mod_B_ic),
+    `C: Expanded aggregate` = fitted(mod_C_ic),
+    `F: Aggregate + composition` = fitted(mod_F_ic)
+  ) |>
+  pivot_longer(-date, names_to = "series", values_to = "value")
+
+add_recessions(
+  ggplot(bench_fitted_ic, aes(date, value, color = series, linetype = series)) +
+    geom_line(linewidth = 0.7) +
+    scale_color_manual(values = fit_colors) +
+    scale_linetype_manual(values = fit_linetypes) +
+    scale_y_continuous(labels = percent_format(accuracy = 0.1)) +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    labs(
+      title = "IC / CE: Observed vs. Benchmark Fitted Values",
+      subtitle = "National monthly, all models include month-of-year fixed effects",
+      x = NULL, y = NULL
+    ) +
+    theme(legend.position = "top", legend.text = element_text(size = 7))
+)
+```
+
 ### Interpretation
 
-If the composition model meaningfully outperforms an unemployment-rate-only benchmark, that is evidence that reason-for-unemployment mix contains distinct signal about claims intensity rather than merely proxying the headline cycle.
+The model comparison yields three findings relevant to the paper's benchmark framing.
+
+**Composition substantially outperforms the unemployment rate alone.** The composition benchmark explains far more variation than the unemployment-rate-only benchmark on both outcomes. The headline unemployment rate captures the broad cyclical pattern of claims intensity but misses substantial variation that the by-cause mix explains.
+
+**Broader macro indicators narrow the gap but do not eliminate it.** The expanded aggregate benchmark and the slack/duration benchmark improve on the unemployment-rate-only specification, as expected for variable sets that jointly proxy the state of the labor market. The JOLTS benchmark contributes additional information about labor-market flows. Yet none of these macro benchmarks consistently dominate the composition model across both outcomes and all fit metrics.
+
+**Composition retains incremental value in the nested specification.** The nested model, which combines the expanded aggregate variables with the composition shares, outperforms both the composition-only and aggregate-only models. This indicates that composition and macro indicators capture partially non-overlapping variation in claims intensity.
 
 ## 7.4 Annual By-Cause State-Panel Estimates
 
-```{r}
-panel_year <- panel_year |>
-  filter(year <= 2025)
+The most direct state-panel test of the conceptual framework uses the by-cause shares in an annual state-year panel with state and year fixed effects:
 
-yr_nopan <- panel_year |>
-  filter(!year %in% c(2020L, 2021L))
+$$
+y_{st} = \sum_{c \neq \text{CTJ}} \beta_c \, s_{cst} + \alpha_s + \gamma_t + \varepsilon_{st}
+$$
 
+where $y_{st} \in \{\text{CC/CE}_{st}, \text{IC/CE}_{st}\}$, $s_{cst}$ is the share of unemployment in cause $c$ in state $s$ at time $t$, $\alpha_s$ are state fixed effects, $\gamma_t$ are year fixed effects, and completed temporary jobs are the omitted reference category. Standard errors are clustered by state and regressions are weighted by annual state population. Because the six cause shares sum to one, one category must be excluded; completed temporary jobs are the natural choice because, outside the pandemic period, this group's share is close to neutral in the correlation diagnostics from Section 4.
+
+The remaining identifying variation is within-state deviation from the national time path after absorbing persistent state differences and common national trends. The design estimates the reduced-form predictive content of by-cause composition for claims intensity; it does not identify the causal effect of any specific compositional shift or barrier to access.
+
+```{r annual-bycause-models}
+yr_nopan <- panel_year |> filter(!year %in% c(2020L, 2021L))
+annual_bycause_rhs <- "temp_layoff_share + perm_job_loser_share + job_leaver_share + reentrant_share + new_entrant_share"
 fit_annual_bycause <- function(outcome, data) {
-  feols(
-    as.formula(
-      paste0(
-        outcome,
-        " ~ temp_layoff_share + completed_temp_job_share + job_leaver_share + ",
-        "reentrant_share + new_entrant_share | state + year"
-      )
-    ),
-    data = data,
-    weights = ~annual_population,
-    cluster = ~state
-  )
+  feols(as.formula(paste0(outcome, " ~ ", annual_bycause_rhs, " | state + year")),
+        data = data, weights = ~annual_population, cluster = ~state)
 }
-
 ccu_yr_bycause <- fit_annual_bycause("continued_claims_per_covered_employment", panel_year)
 icu_yr_bycause <- fit_annual_bycause("initial_claims_per_covered_employment", panel_year)
 ccu_yr_bycause_nopan <- fit_annual_bycause("continued_claims_per_covered_employment", yr_nopan)
 icu_yr_bycause_nopan <- fit_annual_bycause("initial_claims_per_covered_employment", yr_nopan)
 ```
 
-```{r}
+::: {.panel-tabset}
+
+### CC/CE
+
+```{r annual-bycause-ccce}
 msummary_styled(
-  list(
-    "CC/CE full" = ccu_yr_bycause,
-    "CC/CE excl. pandemic" = ccu_yr_bycause_nopan,
-    "IC/CE full" = icu_yr_bycause,
-    "IC/CE excl. pandemic" = icu_yr_bycause_nopan
-  ),
-  title = "Annual By-Cause State-Panel Estimates",
-  notes = "Annual state-year regressions with state and year fixed effects, state-clustered standard errors, and annual population weights. Permanent job losers are omitted."
+  list("Annual Full" = ccu_yr_bycause, "Annual Excl. Pandemic" = ccu_yr_bycause_nopan),
+  title = "Annual By-Cause Composition: Continued Claims / Covered Employment",
+  notes = "Annual state-year regressions with state and year fixed effects, state-clustered standard errors, and annual state population weights. Completed temporary jobs are the omitted reference category."
 )
 ```
 
+### IC/CE
+
+```{r annual-bycause-icce}
+msummary_styled(
+  list("Annual Full" = icu_yr_bycause, "Annual Excl. Pandemic" = icu_yr_bycause_nopan),
+  title = "Annual By-Cause Composition: Initial Claims / Covered Employment",
+  notes = "Annual state-year regressions with state and year fixed effects, state-clustered standard errors, and annual state population weights. Completed temporary jobs are the omitted reference category."
+)
+```
+
+:::
+
+The saturated fixed-effects specification shows that much of the raw predictive power of unemployment composition reflects broad aggregate time movement and persistent state differences rather than rich within-state identifying variation. That does not eliminate the usefulness of the composition benchmark. It clarifies that the benchmark’s main value lies in tracking the aggregate evolution of claims intensity rather than in identifying a sharp within-state causal effect.
+
+The reduced-form coefficient patterns are nonetheless informative. In the full-sample CC/CE model, temporary layoffs and permanent job losers load positively relative to the completed-temp-job baseline, indicating that within-state shifts toward those job-loss categories are associated with higher insured-unemployment intensity in the historical data. Excluding the pandemic sharpens the picture and makes the negative job-leaver relationship more apparent. For IC/CE, the coefficients are noisier, which is consistent with initial claims being a flow measure more sensitive to short-run administrative dynamics that the composition benchmark does not capture well.
+
 ## 7.5 State-Panel Observed vs. Predicted Gap
 
-```{r}
-fit_annual_gap_model <- function(outcome, data) {
-  feols(
-    as.formula(
-      paste0(
-        outcome,
-        " ~ temp_layoff_share + perm_job_loser_share + job_leaver_share + ",
-        "reentrant_share + new_entrant_share | state"
-      )
-    ),
-    data = data,
-    weights = ~annual_population,
-    cluster = ~state
-  )
-}
+For the gap-over-time exercise, the specification drops year fixed effects so that composition must explain the aggregate time path:
 
+$$
+y_{st} = \sum_{c \neq \text{CTJ}} \beta_c \, s_{cst} + \alpha_s + \varepsilon_{st}
+$$ {#eq-gap}
+
+The fitted values are the composition-predicted claims intensity. The population-weighted annual average of $y_{st} - \hat{y}_{st}$ traces the residual gap over time.
+
+```{r annual-gap-models}
+fit_annual_gap_model <- function(outcome, data) {
+  feols(as.formula(paste0(outcome, " ~ ", annual_bycause_rhs, " | state")),
+        data = data, weights = ~annual_population, cluster = ~state)
+}
 ccu_yr_gap_model <- fit_annual_gap_model("continued_claims_per_covered_employment", panel_year)
 icu_yr_gap_model <- fit_annual_gap_model("initial_claims_per_covered_employment", panel_year)
 
@@ -667,27 +1529,52 @@ annual_gap_summary <- panel_year_gap |>
   )
 ```
 
-```{r}
-p_cc_gap_fit <- ggplot(annual_gap_summary, aes(date)) +
-  geom_line(aes(y = observed_cc_ce, color = "Observed"), linewidth = 0.9) +
-  geom_line(aes(y = expected_cc_ce, color = "Composition-predicted"), linewidth = 0.8, linetype = "dashed") +
-  scale_color_manual(values = c("Observed" = "#0073C2", "Composition-predicted" = "black")) +
-  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
-  labs(title = "Annual CC/CE", x = NULL, y = NULL, color = NULL)
+```{r fig-annual-gap-fit}
+#| fig-height: 9
+#| fig-cap: "Population-weighted annual observed versus by-cause-predicted claims intensity from a state-year model with state fixed effects only."
 
-p_ic_gap_fit <- ggplot(annual_gap_summary, aes(date)) +
-  geom_line(aes(y = observed_ic_ce, color = "Observed"), linewidth = 0.9) +
-  geom_line(aes(y = expected_ic_ce, color = "Composition-predicted"), linewidth = 0.8, linetype = "dashed") +
-  scale_color_manual(values = c("Observed" = "#EFC000", "Composition-predicted" = "black")) +
-  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
-  labs(title = "Annual IC/CE", x = NULL, y = NULL, color = NULL)
-
-p_cc_gap_fit / p_ic_gap_fit
+(ggplot(annual_gap_summary, aes(date)) +
+   geom_line(aes(y = observed_cc_ce, color = "Observed"), linewidth = 0.9) +
+   geom_line(aes(y = expected_cc_ce, color = "Predicted"), linewidth = 0.8, linetype = "dashed") +
+   scale_color_manual(values = c("Observed" = "#0073C2", "Predicted" = "black")) +
+   scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+   scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+   labs(title = "CC/CE", subtitle = "Population-weighted state-year average", x = NULL, y = NULL)) /
+  (ggplot(annual_gap_summary, aes(date)) +
+     geom_line(aes(y = observed_ic_ce, color = "Observed"), linewidth = 0.9) +
+     geom_line(aes(y = expected_ic_ce, color = "Predicted"), linewidth = 0.8, linetype = "dashed") +
+     scale_color_manual(values = c("Observed" = "#EFC000", "Predicted" = "black")) +
+     scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+     scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+     labs(title = "IC/CE", subtitle = "Population-weighted state-year average", x = NULL, y = NULL)) &
+  theme(legend.position = "top")
 ```
+
+```{r fig-annual-gap-bars}
+#| fig-height: 9
+#| fig-cap: "Annual gap between observed and composition-predicted claims intensity. Persistent negative gaps indicate that the composition model overpredicts."
+
+(ggplot(annual_gap_summary, aes(date, cc_ce_gap)) +
+   geom_hline(yintercept = 0, color = "grey60", linewidth = 0.5) +
+   geom_col(fill = "#0073C2", alpha = 0.85, width = 300) +
+   scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+   scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+   labs(title = "CC/CE Gap", subtitle = "Observed minus composition-predicted", x = NULL, y = NULL)) /
+  (ggplot(annual_gap_summary, aes(date, ic_ce_gap)) +
+     geom_hline(yintercept = 0, color = "grey60", linewidth = 0.5) +
+     geom_col(fill = "#EFC000", alpha = 0.9, width = 300) +
+     scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+     scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+     labs(title = "IC/CE Gap", subtitle = "Observed minus composition-predicted", x = NULL, y = NULL))
+```
+
+With year fixed effects removed, the composition benchmark must account for the time path of claims intensity. The observed and benchmark-predicted lines track each other reasonably well through earlier decades, but a systematic divergence emerges in the modern period: observed claims intensity falls below the benchmark-predicted path and the gap widens materially.
 
 ### Comparison: National Aggregate vs. State Panel
 
-```{r}
+The state-panel gap uses state-level composition and absorbs cross-state level differences through state fixed effects. To isolate how much the state FE matter, I collapse the state panel to a single national annual series and compare that gap with the national annual benchmark from Section 7.2.
+
+```{r collapsed-national-gap}
 national_from_panel <- panel_year |>
   group_by(year) |>
   summarise(
@@ -711,33 +1598,134 @@ national_from_panel <- national_from_panel |>
     cc_gap = cc_ce - predict(cc_collapsed),
     ic_gap = ic_ce - predict(ic_collapsed)
   )
+```
 
-bind_rows(
+```{r fig-collapsed-vs-panel-gap}
+#| fig-cap: "Annual composition gap: national benchmark, collapsed state panel, and state panel with state fixed effects."
+#| fig-height: 10
+
+gap_comparison <- bind_rows(
   national_annual |>
-    transmute(date, cc_gap, ic_gap, source = "National monthly aggregation"),
+    transmute(date, cc_gap, ic_gap, source = "National"),
+  national_from_panel |>
+    transmute(date, cc_gap, ic_gap, source = "Collapsed state panel"),
   annual_gap_summary |>
-    transmute(date, cc_gap = cc_ce_gap, ic_gap = ic_ce_gap, source = "State panel (annual FE benchmark)")
+    transmute(date, cc_gap = cc_ce_gap, ic_gap = ic_ce_gap, source = "State panel with state FE")
 ) |>
   pivot_longer(c(cc_gap, ic_gap), names_to = "outcome", values_to = "gap") |>
-  mutate(outcome = recode(outcome, cc_gap = "CC/CE gap", ic_gap = "IC/CE gap")) |>
-  ggplot(aes(date, gap, color = source)) +
-  geom_hline(yintercept = 0, color = "grey70", linewidth = 0.35) +
-  geom_line(linewidth = 0.8) +
-  facet_wrap(~outcome, ncol = 1) +
-  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
-  labs(
-    title = "Comparison: National Aggregate vs. State Panel Gap",
-    subtitle = "Both series measure observed minus composition-predicted claims intensity",
-    x = NULL,
-    y = "Gap",
-    color = NULL
+  mutate(
+    outcome = recode(outcome, cc_gap = "CC / CE Gap", ic_gap = "IC / CE Gap"),
+    source = factor(source, levels = c("National", "Collapsed state panel", "State panel with state FE"))
   )
+
+ggplot(gap_comparison, aes(date, gap, color = source)) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.3) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 1.1, alpha = 0.7) +
+  facet_wrap(~outcome, ncol = 1) +
+  scale_color_manual(values = c("#0073C2", "#E64B35", "grey30")) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(title = "Comparison: National Aggregate vs. State Panel Gap", x = NULL, y = NULL, color = NULL)
 ```
+
+The three-way comparison shows both reassuring consistency and informative differences. All three approaches agree on the broad time path: residuals closer to zero in earlier decades, a recessionary positive spike around the Great Recession and pandemic disruptions, and a persistent negative drift in the modern period. The state-FE series is smoother, which is exactly what one would expect when persistent cross-state level differences are absorbed by fixed effects rather than left to inflate the residual.
+
+The differences between the approaches are also informative. The national benchmark and the collapsed state-panel benchmark occasionally diverge because they are built from different data sources and levels of aggregation. The state-panel model with state FE generally produces the smoothest series because those fixed effects absorb persistent cross-state level differences that would otherwise inflate the residual. For IC/CE, the gaps are proportionally larger than for CC/CE, consistent with initial claims being a point-of-entry flow measure where short-run administrative and institutional forces may matter more.
 
 # 8. Interpretation
 
-The benchmark results support a middle position. Composition plainly matters: the reason-for-unemployment mix explains a nontrivial share of claims intensity variation, both nationally and in the annual state panel. But composition does not explain everything. The remaining gap is where administrative frictions, policy design, and employer-side behavior still matter.
+The results support a two-part conclusion.
+
+**The composition benchmark has substantial reduced-form predictive content.** At the national level, by-cause unemployment shares and seasonality account for roughly 90 percent of the variation in CC/CE and 74 percent in IC/CE. Relative to completed temporary jobs, higher shares of job leavers and new entrants are associated with significantly lower claims intensity, consistent with these groups' weaker UI attachment. In the state panel with both state and year fixed effects, the within $R^2$ drops sharply, indicating that much of the raw predictive power of unemployment composition reflects persistent state differences and common national time movement rather than rich within-state identifying variation. This does not invalidate the composition benchmark; it clarifies that the benchmark's value lies in tracking the aggregate evolution of claims intensity rather than in identifying sharp within-state effects. When year fixed effects are dropped and composition must account for the time path, the within $R^2$ rises substantially, confirming that composition tracks the broad level and cyclical pattern of claims intensity under the historical reduced-form relationship.
+
+**But composition does not fully account for the modern shortfall.** The gap between observed and benchmark-predicted claims intensity is persistently negative from roughly 2014 onward and widens through 2024 to 2025. Observed claims intensity falls below the level historically associated with the realized unemployment mix. This residual, the portion not captured by the composition benchmark, appears across the national annual model, the state-panel gap model with state fixed effects only, and the collapsed-national comparison, with broadly consistent time paths across all three approaches. The convergence across specifications and data sources indicates a robust empirical regularity rather than a specification artifact.
+
+The residual is consistent with several non-composition factors the literature has identified:
+
+- Administrative burden: burdens in UI have increased and may depress claiming.
+- Employer deterrence: firm effects on claiming are substantial, with high-appeal firms showing lower claim rates.
+- Benefit generosity: declining real generosity would reduce claiming conditional on unemployment composition.
+- State policy tightening: several states shortened durations and tightened administration after the Great Recession.
+- Racial and demographic disparities: persistent gaps in UI receipt can operate through claiming conditional on eligibility rather than eligibility itself.
+- Information frictions and stigma: perceived ineligibility and other barriers can suppress application behavior among otherwise relevant workers.
+
+This paper does not identify which of these channels dominates. The reduced-form design lacks the individual-level variation in eligibility, employer behavior, or administrative friction needed for that identification. What it does establish is the quantitative benchmark: how much of the variation in claims intensity is accounted for by the observable composition of unemployment under the historical reduced-form relationship, and therefore how large the residual is that mechanism-specific studies must collectively explain.
 
 # 9. Conclusion
 
-The recreated benchmark confirms the main logic visible in the archived HTML report while fitting the current project architecture. The benchmark is now downstream of the project’s parquet pipeline, so it can be rerendered without reprocessing CPS microdata at report time. The key empirical takeaway survives the workflow change: unemployment composition has meaningful explanatory power for UI claims intensity, but an important residual remains after composition is accounted for.
+The composition of unemployment accounts for a meaningful share of the variation in UI claims intensity under the historical reduced-form relationship but does not fully account for the modern shortfall. The by-cause composition of unemployment, particularly the shares of job leavers and new entrants relative to the near-neutral completed-temp-job category, tracks the broad level and cyclical pattern of claims intensity at the national level and in state-panel models where within-state and within-year fixed effects absorb the aggregate confounds that a single national time series cannot isolate. The remaining gap is substantial, has turned persistently negative since roughly 2014, and has widened through 2024 to 2025.
+
+This paper provides a composition-based benchmark for UI claims intensity and shows that recent claims intensity falls below the level historically associated with the realized unemployment mix. The literature has long recognized that job losers are more UI-relevant than new entrants, but it has not systematically estimated how much reduced-form explanatory leverage that compositional fact provides in a panel setting. The answer is: substantial, but not sufficient. The unexplained residual is large and growing, indicating that a complete account of low UI claims intensity requires understanding both the composition of the unemployment pool and the non-composition factors that shape claiming behavior.
+
+The value of the composition benchmark rests on its institutional content, not on fit alone. Reason-for-unemployment categories are not data-mined predictors; they map directly onto the eligibility architecture of the UI system, giving the benchmark a clear interpretation that generic macro covariates would lack. Other variable sets that comove with the same cyclical and secular forces could also track the national time path reasonably well, but they would not answer the question the benchmark is designed to address: how much of the observed path of claims intensity is consistent with shifts in who becomes unemployed and how close those individuals are to the UI system's historically intended beneficiaries? The composition benchmark is useful not because it is the only variable set that could fit the data, but because it is the one whose fit has direct institutional content.
+
+Three implications follow. First, the by-cause unemployment mix offers a conceptually principled and empirically useful benchmark for UI claims intensity, one grounded in the structure of the program itself. Second, the residual gap between observed and composition-predicted claims intensity quantifies the target that institutional, administrative, and behavioral explanations must collectively account for. Third, the composition channel is likely to become more important as the structure of the labor market continues to evolve, with shifts in occupational mix, gig employment, and immigration patterns all affecting who shows up in the unemployment count and how close those individuals are to the UI system's originally intended beneficiaries.
+
+# Explainer for Safi
+
+This note clarifies why the state-panel estimated residual can sit below the national residual so consistently, even when the code is working as intended.
+
+Let the national residual be
+
+$$
+r^{N}_t = y^{N}_t - \hat y^{N}_t
+$$
+
+where $y^{N}_t$ is national claims intensity and $\hat y^{N}_t$ comes from the national aggregate regression.
+
+Let the state-panel residual be
+
+$$
+r^{S}_t = \sum_s \omega_{st}\bigl(y_{st} - \hat y_{st}\bigr)
+$$
+
+where $\omega_{st}$ are population weights and
+
+$$
+\hat y_{st} = \alpha_s + x'_{st}\beta
+$$
+
+comes from the state fixed-effects model.
+
+Then the difference between the two residual series is
+
+$$
+r^{S}_t - r^{N}_t
+=
+\Bigl[\sum_s \omega_{st} y_{st} - y^{N}_t\Bigr]
+-
+\Bigl[\sum_s \omega_{st}\hat y_{st} - \hat y^{N}_t\Bigr].
+$$
+
+So there are only two sources of divergence:
+
+1. Outcome aggregation difference:
+
+$$
+\sum_s \omega_{st} y_{st} - y^{N}_t
+$$
+
+The population-weighted state outcome is not exactly the same object as the national series.
+
+2. Prediction-model difference:
+
+$$
+\sum_s \omega_{st}\hat y_{st} - \hat y^{N}_t
+$$
+
+This is usually the bigger piece. The state-panel model predicts using state intercepts and state-level composition, while the national model predicts from one aggregate regression.
+
+If the weighted state fixed-effects prediction is systematically higher than the national prediction, then
+
+$$
+\sum_s \omega_{st}\hat y_{st} > \hat y^{N}_t
+$$
+
+which implies
+
+$$
+r^{S}_t < r^{N}_t.
+$$
+
+That is the algebraic version of the intuition: the state-panel benchmark is often a tougher counterfactual, so it leaves a more negative residual.
