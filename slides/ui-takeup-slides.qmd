@@ -1,0 +1,742 @@
+---
+title: "UI Take-Up and the Composition of Unemployment"
+author: "Aryan Safi"
+date: today
+format:
+  revealjs:
+    theme: default
+    slide-number: true
+    fig-width: 10
+    fig-height: 6
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+  echo: false
+execute-dir: project
+---
+
+```{r setup}
+library(tidyverse)
+library(here)
+library(fredr)
+library(ggsci)
+library(scales)
+library(gt)
+library(lubridate)
+library(ipumsr)
+library(patchwork)
+library(zoo)
+
+here::i_am("unemployment_decomposition.qmd")
+
+fredr_set_key("ccd350785a210a7653a20d02ce92d83a")
+
+theme_report <- theme_minimal(base_size = 11, base_family = "sans") +
+  theme(
+    plot.title = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(color = "grey50", size = 9),
+    plot.caption = element_text(color = "grey60", size = 7, hjust = 0),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.title = element_text(size = 9, color = "grey40"),
+    axis.text = element_text(size = 8, color = "grey50"),
+    legend.position = "top",
+    legend.text = element_text(size = 8),
+    legend.title = element_blank()
+  )
+
+theme_set(theme_report)
+
+cause_cols <- pal_jco()(6)
+names(cause_cols) <- c("Temporary Layoff", "Permanent Job Losers",
+                       "Completed Temp Job", "Job Leavers",
+                       "Reentrants", "New Entrants")
+
+group_cols <- c("Job Separations" = "#0073C2", "Labor Force Entry" = "#EFC000")
+
+recessions <- tibble(
+  start = as.Date(c("2001-03-01", "2007-12-01", "2020-02-01")),
+  end   = as.Date(c("2001-11-01", "2009-06-01", "2020-04-01"))
+)
+
+add_recessions <- function(p, alpha = 0.08) {
+  p + annotate("rect",
+    xmin = recessions$start, xmax = recessions$end,
+    ymin = -Inf, ymax = Inf,
+    fill = "grey40", alpha = alpha
+  )
+}
+```
+
+```{r data-pull}
+#| cache: true
+
+series_ids_6 <- c(
+  "LNS13023653", "LNS13026638", "LNS13026637",
+  "LNS13023705", "LNS13023557", "LNS13023569",
+  "UNEMPLOY", "CLF16OV"
+)
+series_names_6 <- c("Temporary Layoff", "Permanent Job Losers", "Completed Temp Job",
+                     "Job Leavers", "Reentrants", "New Entrants", "Total", "CLF")
+
+raw6 <- map2_dfr(series_ids_6, series_names_6, \(id, nm) {
+  fredr(series_id = id,
+        observation_start = as.Date("1994-01-01"),
+        observation_end   = Sys.Date()) |>
+    transmute(date, series = nm, value)
+})
+
+cause_order <- c("Temporary Layoff", "Permanent Job Losers", "Completed Temp Job",
+                 "Job Leavers", "Reentrants", "New Entrants")
+
+df6 <- raw6 |>
+  pivot_wider(names_from = series, values_from = value) |>
+  drop_na() |>
+  mutate(
+    across(all_of(cause_order), \(x) x / CLF * 100, .names = "{.col}_rate"),
+    urate = Total / CLF * 100
+  )
+
+df6_long <- df6 |>
+  select(date, ends_with("_rate")) |>
+  pivot_longer(-date, names_to = "cause", values_to = "rate") |>
+  mutate(
+    cause = str_remove(cause, "_rate"),
+    cause = factor(cause, levels = cause_order)
+  )
+
+group_order <- c("Job Separations", "Labor Force Entry")
+
+df2 <- df6 |>
+  mutate(
+    `Job Separations` = `Temporary Layoff` + `Permanent Job Losers` +
+                         `Completed Temp Job` + `Job Leavers`,
+    `Labor Force Entry` = Reentrants + `New Entrants`,
+    `Job Separations_rate` = `Job Separations` / CLF * 100,
+    `Labor Force Entry_rate` = `Labor Force Entry` / CLF * 100
+  )
+
+df2_long <- df2 |>
+  select(date, `Job Separations_rate`, `Labor Force Entry_rate`) |>
+  pivot_longer(-date, names_to = "group", values_to = "rate") |>
+  mutate(
+    group = str_remove(group, "_rate"),
+    group = factor(group, levels = group_order)
+  )
+
+# YoY change
+df6_chg <- df6 |>
+  arrange(date) |>
+  mutate(
+    across(all_of(paste0(cause_order, "_rate")),
+           \(x) x - lag(x, 12), .names = "{.col}_chg"),
+    urate_chg = urate - lag(urate, 12)
+  ) |>
+  filter(!is.na(urate_chg))
+
+df6_chg_long <- df6_chg |>
+  select(date, ends_with("_rate_chg")) |>
+  pivot_longer(-date, names_to = "cause", values_to = "chg") |>
+  mutate(
+    cause = str_remove(cause, "_rate_chg"),
+    cause = factor(cause, levels = cause_order)
+  )
+
+df2_chg <- df2 |>
+  arrange(date) |>
+  mutate(
+    `Job Separations_rate_chg` = `Job Separations_rate` - lag(`Job Separations_rate`, 12),
+    `Labor Force Entry_rate_chg` = `Labor Force Entry_rate` - lag(`Labor Force Entry_rate`, 12),
+    urate_chg = urate - lag(urate, 12)
+  ) |>
+  filter(!is.na(urate_chg))
+
+df2_chg_long <- df2_chg |>
+  select(date, ends_with("_rate_chg")) |>
+  pivot_longer(-date, names_to = "group", values_to = "chg") |>
+  mutate(
+    group = str_remove(group, "_rate_chg"),
+    group = factor(group, levels = group_order)
+  )
+```
+
+```{r ipums-load}
+#| cache: true
+
+path_to_ddi <- here("data", "CPS", "cps_unified.xml")
+path_to_csv <- here("data", "CPS", "cps_unified.csv.gz")
+
+ddi     <- read_ipums_ddi(path_to_ddi)
+cps_raw <- read_ipums_micro(ddi, data_file = path_to_csv, verbose = FALSE)
+
+cps_all <- cps_raw |>
+  mutate(
+    cause = factor(WHYUNEMP, levels = 1:6, labels = cause_order),
+    age_group = cut(AGE,
+      breaks = c(15, 24, 34, 44, 54, 64, Inf),
+      labels = c("16-24", "25-34", "35-44", "45-54", "55-64", "65+"),
+      right  = TRUE
+    ),
+    educ_group = case_when(
+      EDUC <= 71               ~ "Below HS",
+      EDUC == 73               ~ "HS Diploma",
+      EDUC %in% c(81, 91, 92)  ~ "Some College",
+      EDUC >= 111              ~ "College+",
+      TRUE                     ~ NA_character_
+    ) |> factor(levels = c("Below HS", "HS Diploma", "Some College", "College+")),
+    sex_label = factor(SEX, levels = 1:2, labels = c("Male", "Female")),
+    race_eth = case_when(
+      HISPAN > 0 & HISPAN < 900 ~ "Hispanic",
+      RACE == 100                ~ "White non-Hisp",
+      RACE == 200                ~ "Black non-Hisp",
+      RACE >= 650 & RACE <= 652 ~ "Asian/PI non-Hisp",
+      TRUE                       ~ "Other"
+    ) |> factor(levels = c("White non-Hisp", "Black non-Hisp",
+                            "Hispanic", "Asian/PI non-Hisp", "Other")),
+    occ_group4 = case_when(
+      OCC1990 >= 3   & OCC1990 <= 391 ~ "White Collar",
+      OCC1990 >= 403 & OCC1990 <= 469 ~ "Service",
+      (OCC1990 >= 473 & OCC1990 <= 499) |
+        (OCC1990 >= 503 & OCC1990 <= 890) ~ "Blue Collar",
+      TRUE ~ "No Prior Job / Other"
+    ) |> factor(levels = c("White Collar", "Service", "Blue Collar", "No Prior Job / Other")),
+    class_label = case_when(
+      CLASSWKR %in% c(20, 21, 22, 23) ~ "Private Sector",
+      CLASSWKR %in% c(24, 25, 26, 27, 28) ~ "Government",
+      CLASSWKR %in% c(10, 13, 14)  ~ "Self-Employed",
+      CLASSWKR == 29               ~ "Unpaid Family",
+      CLASSWKR == 0                ~ "No Prior Job",
+      TRUE                         ~ "Other"
+    ) |> factor(levels = c("Private Sector", "Government", "Self-Employed",
+                            "Unpaid Family", "No Prior Job", "Other"))
+  )
+
+cps <- cps_all |> filter(WHYUNEMP %in% 1:6)
+```
+
+```{r radar-helpers}
+profile_shares <- function(data, demo_var, dimension_label) {
+  data |>
+    filter(!is.na(.data[[demo_var]])) |>
+    group_by(cause, .data[[demo_var]]) |>
+    summarise(n = sum(WTFINL, na.rm = TRUE), .groups = "drop") |>
+    rename(group = 2) |>
+    group_by(cause) |>
+    mutate(share = n / sum(n)) |>
+    ungroup() |>
+    transmute(cause, dimension = dimension_label, group_key = as.character(group), share)
+}
+
+build_profile_shares <- function(data) {
+  bind_rows(
+    profile_shares(data, "age_group", "Age"),
+    profile_shares(data, "educ_group", "Education"),
+    profile_shares(data, "sex_label", "Sex"),
+    profile_shares(data, "race_eth", "Race/Ethnicity"),
+    profile_shares(data, "occ_group4", "Occupation"),
+    profile_shares(data, "class_label", "Class")
+  ) |>
+    mutate(dimension = factor(dimension,
+      levels = c("Age", "Education", "Sex", "Race/Ethnicity", "Occupation", "Class")))
+}
+
+build_dominant_profile <- function(data) {
+  build_profile_shares(data) |>
+    group_by(cause, dimension) |>
+    slice_max(order_by = share, n = 1, with_ties = FALSE) |>
+    ungroup() |>
+    mutate(
+      dominant_group = group_key,
+      dimension = factor(dimension,
+        levels = c("Age", "Education", "Sex", "Race/Ethnicity", "Occupation", "Class")),
+      label = paste0(dominant_group, "\n", percent(share, accuracy = 1)),
+      label_y = pmin(share + 0.08, 1.05)
+    ) |>
+    arrange(cause, dimension)
+}
+
+build_dominant_profile_delta <- function(current_data, reference_data) {
+  current_profile <- build_dominant_profile(current_data) |>
+    select(cause, dimension, group_key, dominant_group, share_2025 = share)
+  reference_profile <- build_profile_shares(reference_data) |>
+    rename(share_pooled = share)
+  current_profile |>
+    left_join(reference_profile, by = c("cause", "dimension", "group_key")) |>
+    mutate(
+      delta = share_2025 - share_pooled,
+      label = paste0(dominant_group, "\n",
+                     if_else(delta > 0, "+", ""),
+                     scales::number(delta * 100, accuracy = 0.1), " pp")
+    ) |>
+    arrange(cause, dimension)
+}
+
+plot_dominant_radar_single <- function(profile_df, cause_name, subtitle) {
+  plot_df <- profile_df |>
+    filter(cause == cause_name) |>
+    arrange(dimension) |>
+    mutate(axis_id = row_number())
+
+  n_axes <- nrow(plot_df)
+  angles <- pi / 2 - 2 * pi * (seq_len(n_axes) - 1) / n_axes
+  radial_breaks <- c(0, 0.25, 0.50, 0.75, 1.00)
+
+  point_df <- plot_df |>
+    mutate(angle = angles, x = share * cos(angle), y = share * sin(angle))
+  closed_df <- bind_rows(point_df, slice(point_df, 1))
+  spoke_df <- tibble(axis_id = seq_len(n_axes), angle = angles,
+                     x = 0, y = 0, xend = cos(angle), yend = sin(angle))
+  ring_df <- map_dfr(radial_breaks[-1], \(ring) {
+    tibble(ring = ring, axis_id = c(seq_len(n_axes), 1L),
+           angle = angles[c(seq_len(n_axes), 1L)],
+           x = ring * cos(angle), y = ring * sin(angle))
+  })
+  axis_label_df <- point_df |>
+    transmute(dimension, angle, label_x = 1.17 * cos(angle), label_y = 1.17 * sin(angle),
+              hjust = case_when(label_x > 0.15 ~ 0, label_x < -0.15 ~ 1, TRUE ~ 0.5),
+              vjust = case_when(label_y > 0.15 ~ 0, label_y < -0.15 ~ 1, TRUE ~ 0.5))
+  point_label_df <- point_df |>
+    transmute(axis_id, angle, point_label = label,
+              label_radius = case_when(share >= 0.72 ~ pmax(share - 0.14, 0.16), TRUE ~ pmin(share + 0.11, 0.88)),
+              tangent_shift = if_else(axis_id %% 2 == 0, 0.045, -0.045),
+              label_x = label_radius * cos(angle) + tangent_shift * (-sin(angle)),
+              label_y = label_radius * sin(angle) + tangent_shift * cos(angle),
+              hjust = case_when(label_x > 0.18 ~ 0, label_x < -0.18 ~ 1, TRUE ~ 0.5),
+              vjust = case_when(label_y > 0.18 ~ 0, label_y < -0.18 ~ 1, TRUE ~ 0.5))
+  radial_label_df <- tibble(ring = radial_breaks, x = radial_breaks, y = 0.02,
+                            label = percent(radial_breaks, accuracy = 1))
+
+  ggplot() +
+    geom_path(data = filter(ring_df, ring < 1), aes(x, y, group = ring), color = "grey72", linewidth = 0.15) +
+    geom_path(data = filter(ring_df, ring == 1), aes(x, y, group = ring), color = "grey72", linewidth = 0.15) +
+    geom_segment(data = spoke_df, aes(x = x, y = y, xend = xend, yend = yend), color = "grey76", linewidth = 0.15) +
+    geom_polygon(data = closed_df, aes(x, y), fill = scales::alpha(cause_cols[[cause_name]], 0.45),
+                 color = cause_cols[[cause_name]], linewidth = 0.15, linejoin = "round") +
+    geom_point(data = point_df, aes(x, y), color = cause_cols[[cause_name]],
+               fill = cause_cols[[cause_name]], shape = 21, stroke = 0.2, size = 1.4) +
+    geom_text(data = point_label_df, aes(label_x, label_y, label = point_label, hjust = hjust, vjust = vjust),
+              size = 2.7, lineheight = 0.92, color = cause_cols[[cause_name]]) +
+    geom_text(data = axis_label_df, aes(label_x, label_y, label = dimension, hjust = hjust, vjust = vjust),
+              size = 3.6, lineheight = 0.9) +
+    geom_text(data = radial_label_df, aes(x, y, label = label), color = "grey65", size = 3.3, hjust = 0.5, vjust = 0) +
+    coord_equal(clip = "off") + xlim(-1.28, 1.28) + ylim(-1.26, 1.28) +
+    labs(title = cause_name, subtitle = subtitle, x = NULL, y = NULL) +
+    theme_report +
+    theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.line = element_blank(),
+          panel.grid = element_blank(), plot.margin = margin(20, 35, 20, 35))
+}
+
+plot_dominant_radar_delta <- function(profile_df, cause_name, subtitle, max_abs_delta = 0.20) {
+  plot_df <- profile_df |>
+    filter(cause == cause_name) |>
+    arrange(dimension) |>
+    mutate(axis_id = row_number())
+
+  n_axes <- nrow(plot_df)
+  angles <- pi / 2 - 2 * pi * (seq_len(n_axes) - 1) / n_axes
+  radial_breaks <- c(-0.20, -0.10, 0, 0.10, 0.20)
+  radial_positions <- scales::rescale(radial_breaks, to = c(0, 1), from = c(-max_abs_delta, max_abs_delta))
+
+  point_df <- plot_df |>
+    mutate(angle = angles,
+           radius = scales::rescale(delta, to = c(0, 1), from = c(-max_abs_delta, max_abs_delta)),
+           x = radius * cos(angle), y = radius * sin(angle))
+  closed_df <- bind_rows(point_df, slice(point_df, 1))
+  spoke_df <- tibble(axis_id = seq_len(n_axes), angle = angles,
+                     x = 0, y = 0, xend = cos(angle), yend = sin(angle))
+  ring_df <- map_dfr(seq_along(radial_breaks), \(i) {
+    tibble(ring_value = radial_breaks[[i]], ring_position = radial_positions[[i]],
+           axis_id = c(seq_len(n_axes), 1L), angle = angles[c(seq_len(n_axes), 1L)],
+           x = radial_positions[[i]] * cos(angle), y = radial_positions[[i]] * sin(angle))
+  })
+  axis_label_df <- point_df |>
+    transmute(dimension, angle, label_x = 1.17 * cos(angle), label_y = 1.17 * sin(angle),
+              hjust = case_when(label_x > 0.15 ~ 0, label_x < -0.15 ~ 1, TRUE ~ 0.5),
+              vjust = case_when(label_y > 0.15 ~ 0, label_y < -0.15 ~ 1, TRUE ~ 0.5))
+  point_label_df <- point_df |>
+    transmute(axis_id, angle, point_label = label,
+              label_radius = case_when(radius >= 0.80 ~ pmax(radius - 0.16, 0.14),
+                                       radius <= 0.20 ~ pmin(radius + 0.16, 0.32),
+                                       TRUE ~ pmin(radius + 0.11, 0.90)),
+              tangent_shift = if_else(axis_id %% 2 == 0, 0.045, -0.045),
+              label_x = label_radius * cos(angle) + tangent_shift * (-sin(angle)),
+              label_y = label_radius * sin(angle) + tangent_shift * cos(angle),
+              hjust = case_when(label_x > 0.18 ~ 0, label_x < -0.18 ~ 1, TRUE ~ 0.5),
+              vjust = case_when(label_y > 0.18 ~ 0, label_y < -0.18 ~ 1, TRUE ~ 0.5))
+  radial_label_df <- tibble(ring_value = radial_breaks, x = radial_positions, y = 0.02,
+                            label = paste0(if_else(radial_breaks > 0, "+", ""),
+                                           scales::number(radial_breaks * 100, accuracy = 0.1)))
+
+  ggplot() +
+    geom_path(data = filter(ring_df, abs(ring_value) > 1e-9), aes(x, y, group = ring_value),
+              color = "grey78", linewidth = 0.15) +
+    geom_path(data = filter(ring_df, abs(ring_value) <= 1e-9), aes(x, y, group = ring_value),
+              color = "grey40", linewidth = 0.6, linetype = "solid") +
+    geom_segment(data = spoke_df, aes(x = x, y = y, xend = xend, yend = yend), color = "grey80", linewidth = 0.15) +
+    geom_polygon(data = closed_df, aes(x, y), fill = scales::alpha(cause_cols[[cause_name]], 0.22),
+                 color = cause_cols[[cause_name]], linewidth = 0.2, linejoin = "round") +
+    geom_point(data = point_df, aes(x, y), color = cause_cols[[cause_name]],
+               fill = cause_cols[[cause_name]], shape = 21, stroke = 0.2, size = 1.4) +
+    geom_text(data = point_label_df, aes(label_x, label_y, label = point_label, hjust = hjust, vjust = vjust),
+              size = 2.5, lineheight = 0.92, color = cause_cols[[cause_name]]) +
+    geom_text(data = axis_label_df, aes(label_x, label_y, label = dimension, hjust = hjust, vjust = vjust),
+              size = 3.6, lineheight = 0.9) +
+    geom_text(data = radial_label_df, aes(x, y, label = label), color = "grey60", size = 3.0, hjust = 0.5, vjust = 0) +
+    coord_equal(clip = "off") + xlim(-1.28, 1.28) + ylim(-1.26, 1.28) +
+    labs(title = cause_name, subtitle = subtitle, x = NULL, y = NULL) +
+    theme_report +
+    theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.line = element_blank(),
+          panel.grid = element_blank(), plot.margin = margin(20, 35, 20, 35))
+}
+
+dominant_profile_pooled <- build_dominant_profile(cps)
+dominant_profile_delta_2025 <- build_dominant_profile_delta(cps |> filter(YEAR == 2025), cps)
+```
+
+## UI Take-Up Is Low Relative to History
+
+```{r slide1-takeup}
+#| fig-height: 6
+
+national_raw <- bind_rows(
+  fredr("CCSA",   observation_start = as.Date("1994-01-01")) |> transmute(date, series = "CCSA",   value),
+  fredr("ICSA",   observation_start = as.Date("1994-01-01")) |> transmute(date, series = "ICSA",   value),
+  fredr("COVEMP", observation_start = as.Date("1994-01-01")) |> transmute(date, series = "COVEMP", value)
+)
+
+national_monthly <- national_raw |>
+  mutate(month = floor_date(date, "month")) |>
+  summarise(
+    .by = c(series, month),
+    value = case_when(
+      first(series) == "ICSA"   ~ sum(value, na.rm = TRUE),
+      first(series) == "CCSA"   ~ mean(value, na.rm = TRUE),
+      first(series) == "COVEMP" ~ mean(value, na.rm = TRUE)
+    )
+  ) |>
+  pivot_wider(names_from = series, values_from = value) |>
+  filter(!is.na(COVEMP), COVEMP > 0) |>
+  mutate(cc_ce = CCSA / COVEMP, ic_ce = ICSA / COVEMP) |>
+  filter(month >= as.Date("1994-01-01"))
+
+hist_avg <- national_monthly |>
+  summarise(cc_ce_avg = mean(cc_ce, na.rm = TRUE),
+            ic_ce_avg = mean(ic_ce, na.rm = TRUE))
+
+recent <- national_monthly |> filter(month >= as.Date("2023-01-01"))
+
+p_cc <- ggplot(recent, aes(month, cc_ce)) +
+  geom_hline(yintercept = hist_avg$cc_ce_avg, linetype = "dashed", color = "grey50", linewidth = 0.5) +
+  annotate("text", x = min(recent$month), y = hist_avg$cc_ce_avg,
+           label = paste0("1994-2025 avg: ", scales::percent(hist_avg$cc_ce_avg, accuracy = 0.01)),
+           hjust = 0, vjust = 1.5, size = 3, color = "grey40") +
+  geom_line(color = "#0073C2", linewidth = 0.8) +
+  geom_point(color = "#0073C2", size = 1.2) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.01)) +
+  labs(title = "Continued Claims / Covered Employment", x = NULL, y = "CC / CE")
+
+p_ic <- ggplot(recent, aes(month, ic_ce)) +
+  geom_hline(yintercept = hist_avg$ic_ce_avg, linetype = "dashed", color = "grey50", linewidth = 0.5) +
+  annotate("text", x = min(recent$month), y = hist_avg$ic_ce_avg,
+           label = paste0("1994-2025 avg: ", scales::percent(hist_avg$ic_ce_avg, accuracy = 0.01)),
+           hjust = 0, vjust = 1.5, size = 3, color = "grey40") +
+  geom_line(color = "#EFC000", linewidth = 0.8) +
+  geom_point(color = "#EFC000", size = 1.2) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.01)) +
+  labs(title = "Initial Claims / Covered Employment", x = NULL, y = "IC / CE")
+
+p_cc / p_ic +
+  plot_annotation(caption = "Source: FRED (CCSA, ICSA, COVEMP). Weekly claims aggregated to monthly.")
+```
+
+::: {.notes}
+Both CC/CE and IC/CE are running well below their 1994-2025 historical averages. This motivates the question: why is take-up so low?
+:::
+
+## People Are Saying...
+
+**Two main stories:**
+
+::: {.incremental}
+
+1. **Eligibility / composition story.** A larger share of the unemployed may be made up of workers with weak UI eligibility, especially **new entrants** with no prior work history, and possibly some **migrant groups**.
+
+2. **Claim-propensity story.** Even among plausibly eligible workers, some groups may be less likely to claim UI because the costs of claiming are high relative to the expected benefit. One candidate mechanism is that some displaced **white-collar workers** receive severance packages or expect rapid re-employment and therefore do not bother filing.
+
+:::
+
+. . .
+
+**Our question:** Does variation in the state-time composition of unemployment help explain variation in UI claims intensity and IUR?
+
+## New Entrants: A Proxy for Weak Eligibility {.smaller}
+
+```{r slide3-new-entrants}
+#| fig-height: 5.8
+#| fig-width: 11
+#| out-width: "100%"
+
+ne_share <- df6 |>
+  transmute(date, share = `New Entrants` / Total * 100) |>
+  mutate(ma12 = zoo::rollmean(share, k = 12, fill = NA, align = "right"))
+
+p_ne_unemp <- ne_share |>
+  ggplot(aes(x = date)) +
+  geom_line(aes(y = share), color = cause_cols["New Entrants"], alpha = 0.3, linewidth = 0.4) +
+  geom_line(aes(y = ma12), color = cause_cols["New Entrants"], linewidth = 1, alpha = 0.75) +
+  scale_y_continuous(labels = \(x) paste0(x, "%")) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(title = "New Entrants as a Share of Total Unemployed",
+       subtitle = "Monthly (light) and 12-month moving average (bold)",
+       y = "Share (%)", x = NULL)
+p_ne_unemp <- add_recessions(p_ne_unemp)
+
+ne_clf <- df6 |>
+  transmute(date, share = `New Entrants` / CLF * 100) |>
+  mutate(ma12 = zoo::rollmean(share, k = 12, fill = NA, align = "right"))
+
+p_ne_clf <- ne_clf |>
+  ggplot(aes(x = date)) +
+  geom_line(aes(y = share), color = cause_cols["New Entrants"], alpha = 0.3, linewidth = 0.4) +
+  geom_line(aes(y = ma12), color = cause_cols["New Entrants"], linewidth = 1, alpha = 0.75) +
+  scale_y_continuous(labels = \(x) paste0(x, "%")) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(title = "New Entrants as a Share of the Civilian Labor Force",
+       subtitle = "Monthly (light) and 12-month moving average (bold)",
+       y = "Share (%)", x = NULL)
+p_ne_clf <- add_recessions(p_ne_clf)
+
+p_ne_unemp / p_ne_clf +
+  plot_annotation(caption = "Source: BLS via FRED (LNS13023569, UNEMPLOY, CLF16OV)")
+```
+
+## Who Comprises the Unemployed? (1) {.smaller}
+
+The CPS classifies every unemployed person into one of six mutually exclusive categories.
+
+```{r slide4-definitions}
+#| output: asis
+
+def_df <- tibble(
+  Category = cause_order,
+  `BLS Definition` = c(
+    "Given a return date or expects recall within 6 months",
+    "Permanently separated -- position eliminated, fired, or employer closed",
+    "Temporary job or assignment has ended",
+    "Voluntarily quit and now actively searching",
+    "Previously held a job, left the labor force, now returned to searching",
+    "Never held a job; actively looking for first one"
+  ),
+  `Two-Group` = c(rep("Job Separations", 4), rep("Labor Force Entry", 2))
+)
+
+bg <- ifelse(def_df$`Two-Group` == "Job Separations", "#dce8f5", "#fef3d0")
+
+cat('<table style="font-size: 0.7em; border-collapse: collapse; width: 100%;">\n')
+cat('<thead><tr style="background-color: #2c3e50; color: white;">')
+cat('<th style="padding: 6px 10px;">Category</th>')
+cat('<th style="padding: 6px 10px;">BLS Definition</th>')
+cat('<th style="padding: 6px 10px;">Two-Group</th></tr></thead>\n<tbody>\n')
+for (i in seq_len(nrow(def_df))) {
+  cat(sprintf(
+    '<tr style="background-color: %s;"><td style="padding: 6px 10px; font-weight: bold;">%s</td><td style="padding: 6px 10px;">%s</td><td style="padding: 6px 10px;">%s</td></tr>\n',
+    bg[i], def_df$Category[i], def_df$`BLS Definition`[i], def_df$`Two-Group`[i]
+  ))
+}
+cat('</tbody></table>\n')
+```
+
+## Who Comprises the Cause Categories? (1a) {.smaller}
+
+Dominant demographic group on each margin, pooled CPS 1994--present: **Job Separation** causes.
+
+```{r slide5a-radar-pooled-sep}
+#| fig-height: 5.5
+#| fig-width: 14
+#| out-width: "100%"
+
+sep_causes <- cause_order[1:3]
+radars_sep <- map(sep_causes, \(cn) {
+  plot_dominant_radar_single(dominant_profile_pooled, cn, "Pooled 1994-present") +
+    theme(plot.margin = margin(5, 15, 5, 15))
+})
+
+wrap_plots(radars_sep, ncol = 3)
+```
+
+## Who Comprises the Cause Categories? (1b) {.smaller}
+
+Dominant demographic group on each margin, pooled CPS 1994--present: **Job Separation** (cont.) and **Labor Force Entry** causes.
+
+```{r slide5b-radar-pooled-entry}
+#| fig-height: 5.5
+#| fig-width: 14
+#| out-width: "100%"
+
+entry_causes <- cause_order[4:6]
+radars_entry <- map(entry_causes, \(cn) {
+  plot_dominant_radar_single(dominant_profile_pooled, cn, "Pooled 1994-present") +
+    theme(plot.margin = margin(5, 15, 5, 15))
+})
+
+wrap_plots(radars_entry, ncol = 3)
+```
+
+## Who Comprises the Cause Categories? (2a) {.smaller}
+
+Change in dominant-group share, 2025 vs. pooled (pp): **Job Separation** causes.
+
+```{r slide6a-radar-delta-sep}
+#| fig-height: 5.5
+#| fig-width: 14
+#| out-width: "100%"
+
+radars_delta_sep <- map(sep_causes, \(cn) {
+  plot_dominant_radar_delta(dominant_profile_delta_2025, cn, "2025 minus pooled (pp)") +
+    theme(plot.margin = margin(5, 15, 5, 15))
+})
+
+wrap_plots(radars_delta_sep, ncol = 3)
+```
+
+## Who Comprises the Cause Categories? (2b) {.smaller}
+
+Change in dominant-group share, 2025 vs. pooled (pp): **Job Separation** (cont.) and **Labor Force Entry** causes.
+
+```{r slide6b-radar-delta-entry}
+#| fig-height: 5.5
+#| fig-width: 14
+#| out-width: "100%"
+
+radars_delta_entry <- map(entry_causes, \(cn) {
+  plot_dominant_radar_delta(dominant_profile_delta_2025, cn, "2025 minus pooled (pp)") +
+    theme(plot.margin = margin(5, 15, 5, 15))
+})
+
+wrap_plots(radars_delta_entry, ncol = 3)
+```
+
+::: {.notes}
+New entrants are demographically quite different from the other cause categories -- younger, less educated, more likely to have never held a job. The delta plots show how 2025 composition differs from the historical pooled average.
+:::
+
+## Who Comprises the Unemployed? (2) {.smaller}
+
+```{r slide7-urate-6way}
+#| fig-height: 5.8
+#| fig-width: 11
+#| out-width: "100%"
+
+p_full6 <- df6_long |>
+  ggplot(aes(x = date, y = rate, fill = cause)) +
+  geom_col(alpha = 0.85, width = 28, position = "stack") +
+  geom_line(data = df6, aes(x = date, y = urate, fill = NULL), color = "black", linewidth = 0.4, alpha = 0.5) +
+  scale_fill_manual(values = cause_cols) +
+  scale_y_continuous(labels = \(x) paste0(x, "%"), expand = expansion(mult = c(0, 0.02))) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(title = "Unemployment Rate by Cause (Six-Way)", y = "Rate (%)", x = NULL)
+p_full6 <- add_recessions(p_full6)
+
+p_recent6 <- df6_long |>
+  filter(date >= as.Date("2023-01-01")) |>
+  ggplot(aes(x = date, y = rate, fill = cause)) +
+  geom_col(alpha = 0.85, width = 22, position = "stack") +
+  geom_line(data = df6 |> filter(date >= as.Date("2023-01-01")),
+            aes(x = date, y = urate, fill = NULL), color = "black", linewidth = 0.5, alpha = 0.5) +
+  geom_point(data = df6 |> filter(date >= as.Date("2023-01-01")),
+             aes(x = date, y = urate, fill = NULL), color = "black", size = 1) +
+  scale_fill_manual(values = cause_cols) +
+  scale_y_continuous(labels = \(x) paste0(x, "%"), expand = expansion(mult = c(0, 0.02))) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n'%y") +
+  labs(title = "Recent Detail (2023-Present)", y = "Rate (%)", x = NULL) +
+  theme(legend.position = "none")
+
+p_full6 / p_recent6 +
+  plot_annotation(caption = "Source: BLS via FRED. Bars stack to total unemployment rate.")
+```
+
+## Who Comprises the Unemployed? (3) {.smaller}
+
+```{r slide8-urate-2way}
+#| fig-height: 5.8
+#| fig-width: 11
+#| out-width: "100%"
+
+p_full2 <- df2_long |>
+  ggplot(aes(x = date, y = rate, fill = group)) +
+  geom_col(alpha = 0.85, width = 28, position = "stack") +
+  geom_line(data = df2, aes(x = date, y = urate, fill = NULL), color = "black", linewidth = 0.4, alpha = 0.5) +
+  scale_fill_manual(values = group_cols) +
+  scale_y_continuous(labels = \(x) paste0(x, "%"), expand = expansion(mult = c(0, 0.02))) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(title = "Unemployment Rate: Separations vs. Entry", y = "Rate (%)", x = NULL)
+p_full2 <- add_recessions(p_full2)
+
+p_recent2 <- df2_long |>
+  filter(date >= as.Date("2023-01-01")) |>
+  ggplot(aes(x = date, y = rate, fill = group)) +
+  geom_col(alpha = 0.85, width = 22, position = "stack") +
+  geom_line(data = df2 |> filter(date >= as.Date("2023-01-01")),
+            aes(x = date, y = urate, fill = NULL), color = "black", linewidth = 0.5, alpha = 0.5) +
+  geom_point(data = df2 |> filter(date >= as.Date("2023-01-01")),
+             aes(x = date, y = urate, fill = NULL), color = "black", size = 1) +
+  scale_fill_manual(values = group_cols) +
+  scale_y_continuous(labels = \(x) paste0(x, "%"), expand = expansion(mult = c(0, 0.02))) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n'%y") +
+  labs(title = "Recent Detail (2023-Present)", y = "Rate (%)", x = NULL) +
+  theme(legend.position = "none")
+
+p_full2 / p_recent2 +
+  plot_annotation(caption = "Source: BLS via FRED. Separations = layoffs + completed temp + quits; Entry = reentrants + new entrants.")
+```
+
+## Who Is Driving Changes in Unemployment? (1) {.smaller}
+
+```{r slide9-chg-6way}
+#| fig-height: 5.2
+#| fig-width: 11
+#| out-width: "100%"
+
+df6_chg_recent <- df6_chg |> filter(date >= as.Date("2023-01-01"))
+df6_chg_recent_long <- df6_chg_long |> filter(date >= as.Date("2023-01-01"))
+
+df6_chg_recent_long |>
+  ggplot(aes(x = date, y = chg, fill = cause)) +
+  geom_col(alpha = 0.75, width = 22) +
+  geom_line(data = df6_chg_recent, aes(x = date, y = urate_chg, fill = NULL), color = "black", linewidth = 0.7) +
+  geom_point(data = df6_chg_recent, aes(x = date, y = urate_chg, fill = NULL), color = "black", size = 1) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.3) +
+  scale_fill_manual(values = cause_cols) +
+  scale_y_continuous(labels = \(x) paste0(sprintf("%+.1f", x), "pp")) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n'%y") +
+  labs(title = "YoY Change in Unemployment Rate by Cause (Six-Way), 2023-Present",
+       subtitle = "Cause contributions sum to total YoY change (black line)",
+       y = "Change (pp)", x = NULL,
+       caption = "Source: BLS via FRED · CPS Table A-11")
+```
+
+## Who Is Driving Changes in Unemployment? (2) {.smaller}
+
+```{r slide10-chg-2way}
+#| fig-height: 5.2
+#| fig-width: 11
+#| out-width: "100%"
+
+df2_chg_recent <- df2_chg |> filter(date >= as.Date("2023-01-01"))
+df2_chg_recent_long <- df2_chg_long |> filter(date >= as.Date("2023-01-01"))
+
+df2_chg_recent_long |>
+  ggplot(aes(x = date, y = chg, fill = group)) +
+  geom_col(alpha = 0.75, width = 22) +
+  geom_line(data = df2_chg_recent, aes(x = date, y = urate_chg, fill = NULL), color = "black", linewidth = 0.7) +
+  geom_point(data = df2_chg_recent, aes(x = date, y = urate_chg, fill = NULL), color = "black", size = 1) +
+  geom_hline(yintercept = 0, color = "grey60", linewidth = 0.3) +
+  scale_fill_manual(values = group_cols) +
+  scale_y_continuous(labels = \(x) paste0(sprintf("%+.1f", x), "pp")) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b\n'%y") +
+  labs(title = "YoY Change: Separations vs. Entry, 2023-Present",
+       subtitle = "Two-group contributions sum to total YoY change (black line)",
+       y = "Change (pp)", x = NULL,
+       caption = "Source: BLS via FRED · CPS Table A-11")
+```

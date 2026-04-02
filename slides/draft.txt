@@ -1,0 +1,55 @@
+UI Takeup 
+
+Slide 1: Historical vs recent ic/ce & cc/ce plots. this illustrates that takeup is low relative to historical average 
+
+Slide 2: People are saying...
+Two main stories: 
+1) Eligibility/composition story: A larger share of the unemployed may be made up of workers with weak UI eligibility, especially *new entrants* with no prior work history and possibly some *migrant groups*. 
+
+2) Claim-propensity story. Even among plausibily eligible workers, people may be less likely to claim UI because the costs of claiming are high relative to the expected benefit. One candidate mechanism that some displaced white collar workers receive severance packages or expect re-employment and therefore do not bother filing. 
+
+In this we ask whether variation in state-time composition of unemployment helps explain variation in UI claims intensity and IUR. 
+
+Slide 3: New Entrants share as preferred proxy for eligibility
+
+[Insert new entrants as a share of total unemployed (above) and new entrants as a share of CLF (below]
+
+Purpose: illustrate that the fraction of persons with weak eligibility is growing 
+
+Slide 4: Who comprises the unemployed? (1)
+
+The CPS provides detailed data on the unemployed *by cause* which are exhaustive and mutually exclusive. [Insert Table 1: BLS unemployment categories) from unemployment_decomposition.qmd and html. Please also add a column which indicates the assigned two-group category. 
+
+Slide 5: Who comprises the cause categories? (1) 
+
+[Insert 2 x 3 panel of pooled radar plots for all 6 causes]
+
+Slide 6: Who comprises the cause categories? (2) 
+
+[Insert 2 x 3 panel of difference radar plots for all 6 causes]
+
+Purpose 5-6: Provide a demographic profile to the cause categories. Also to illustrate that 
+new entrants are quite different from everyone else 
+
+Slide 7: Who comprises the unemployed? (2) 
+
+[Insert six-way unemployment rate by cause full history and recent detail above/below]
+
+Slide 8: Who comprises the unemployed? (3) 
+
+[Insert two-way unemployment rate by cause full history and recent detail above/below]
+
+Slide 9: Who is driving the changes in the unemployment rate? (1) 
+
+[Insert six-way unemployment rate yoy change by cause full history and recent detail above/below]
+
+Slide 10: Who is driving the changes in the unemployment rate? (2) 
+
+[Insert two-way unemployment rate yoy change by cause full history and recent detail above/below]
+
+
+Purpose for 7-10: Does this rise in new entrants translate to the unemployment rate?
+
+
+----Note: All plots above can be found in unemployment_decomposition.qmd----
+

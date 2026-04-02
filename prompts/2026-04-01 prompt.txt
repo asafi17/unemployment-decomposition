@@ -1,0 +1,149 @@
+You are revising an applied economics / public policy paper draft on unemployment composition and UI claims intensity. Your task is not to change the empirical results, but to reframe the paper so that its claims match what the design can actually support.
+
+Core instruction
+The paper should be framed as a **composition-based benchmark paper**, not as a causal paper about the effect of unemployment composition on UI take-up.
+
+What the paper is about
+The programmatic premise is:
+
+- UI was designed for a narrower insured population than all unemployed persons.
+- Reason-for-unemployment categories proxy distance from that original insured population.
+- Therefore, the realized composition of the unemployment pool should be informative about the level of aggregate UI claims intensity historically associated with that unemployment mix.
+
+The correct empirical question is:
+
+> Given the realized composition of the unemployment pool, what level of UI claims intensity does the historical reduced-form relationship in the data predict?
+
+The paper’s contribution is:
+
+> To construct a composition-based benchmark for UI claims intensity and quantify the gap between observed claims intensity and the level historically associated with the realized unemployment mix.
+
+What the paper is NOT claiming
+Do **not** frame the paper as identifying:
+- the causal effect of unemployment composition per se
+- the causal determinants of UI claiming behavior
+- a structural counterfactual in which unemployment composition is exogenous
+- pure UI take-up conditional on eligibility
+
+Do **not** say things like:
+- “if only composition mattered”
+- “holding other shocks fixed”
+- “the effect of composition on claims intensity”
+- “take-up” when the outcome is actually CC/CE, IC/CE, IUR-like measures, or similar aggregate ratios
+
+Correct terminology
+Use this distinction consistently:
+
+- **Take-up** = claiming or receipt among eligibles
+- **Claims intensity / insured-unemployment intensity** = aggregate claims or insured unemployment relative to a broader base such as covered employment
+
+Unless eligibility is actually in the denominator, do not casually call the outcome “take-up.”
+
+Preferred phrases:
+- composition-based benchmark
+- reduced-form benchmark
+- claims intensity implied by the realized unemployment mix
+- historically associated with the unemployment mix
+- observed vs predicted claims-intensity gap
+- unexplained residual gap
+- reduced-form mapping from unemployment composition to claims intensity
+
+Conceptual framing to use
+The paper should say something like:
+
+> We do not interpret the fitted values as the causal effect of unemployment composition on claims intensity. Instead, we interpret them as a reduced-form benchmark for the level of claims intensity historically associated with a given unemployment mix.
+
+And:
+
+> The gap between observed and predicted claims intensity is interpreted as the portion not accounted for by unemployment composition under that historical reduced-form relationship.
+
+And:
+
+> This benchmark is informative even though unemployment composition is endogenous, because it summarizes an empirical regularity rather than identifying a pure causal channel.
+
+How to discuss endogeneity / omitted variables
+Be explicit that broader shocks may jointly shape both unemployment composition and claims intensity, including:
+- recessions
+- sectoral shocks
+- state policy changes
+- employer behavior
+- administrative changes
+- demographic shifts
+
+Therefore:
+- the by-cause shares are not exogenous treatments
+- the coefficients are reduced-form loadings, not structural effects
+- the fitted values are not causal counterfactuals
+
+Good language:
+> The prediction should be interpreted as a composition-conditioned reduced-form benchmark, not a causal counterfactual, since the composition of unemployment and claims intensity are jointly shaped by broader labor-market and policy shocks.
+
+Bad language:
+> We estimate what claims intensity would be if only composition mattered.
+
+How to discuss the state + year FE results
+Interpret the fixed-effects results carefully.
+
+Do not say:
+- “the FE model proves omitted variable bias”
+- “the composition story disappears”
+- “the exercise fails because year FE absorb everything”
+
+Instead say:
+- state FE absorb persistent cross-state level differences
+- year FE absorb common national shocks
+- the remaining identifying variation is within-state deviation around the national time path
+- the sharp drop in within-R2 means much of the raw predictive power comes from persistent state differences and common time movement
+- composition may still retain predictive content, but the paper is stronger as a benchmark/decomposition paper than as a strongly identified within-state causal panel paper
+
+Preferred language:
+> The saturated fixed-effects specification shows that much of the raw predictive power of unemployment composition reflects broad aggregate time movement and persistent state differences, rather than rich within-state identifying variation. This does not eliminate the usefulness of the composition benchmark; it clarifies that the paper’s main contribution is to benchmark the aggregate evolution of claims intensity rather than to identify a sharp within-state causal effect.
+
+How to discuss the residual
+The residual should be described carefully.
+
+Do say:
+- the residual is the part of claims intensity not captured by the composition benchmark
+- the residual may reflect administrative burden, employer deterrence, benefit generosity, state rules, racial disparities, information frictions, or other non-composition factors
+- the paper does not identify which of these dominates
+
+Do not say:
+- the residual proves administrative burden
+- the residual is causal evidence of employer deterrence
+- the residual is pure take-up failure
+
+Suggested one-sentence summary
+Use something like:
+
+> Changes in the composition of unemployment explain part of the variation in UI claims intensity, but a substantial residual gap remains that is not accounted for by unemployment composition alone.
+
+Or:
+
+> The paper provides a composition-based benchmark for UI claims intensity and shows that recent claims intensity falls below the level historically associated with the realized unemployment mix.
+
+Revision tasks
+Please revise the paper so that:
+1. the introduction states the contribution as a reduced-form benchmark, not a causal mechanism paper
+2. the literature review positions the paper as quantifying the explanatory power and limits of unemployment composition
+3. the conceptual framework clearly defines the fitted values as benchmark predictions, not causal effects
+4. all terminology is cleaned up so “claims intensity” is used where appropriate instead of “take-up”
+5. sections interpreting observed vs predicted plots use benchmark language rather than counterfactual causal language
+6. the state + year FE discussion is reframed as clarifying the source of predictive power, not invalidating the exercise
+7. the conclusion emphasizes that composition matters but does not fully explain the shortfall
+
+Writing style
+Write in the style of a serious applied economics working paper:
+- precise
+- understated
+- honest about limitations
+- no hype
+- no overclaiming
+- no blog tone
+
+Final deliverable
+Please return:
+1. revised language for the introduction framing
+2. revised language for the conceptual framework / fitted-values interpretation
+3. revised language for the FE-results discussion
+4. revised language for the conclusion
+5. a short list of any sentences/phrases in the existing draft that should be removed or replaced because they overclaim causality or misuse “take-up”
