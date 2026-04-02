@@ -55,10 +55,10 @@ cat("Selected", length(ipums_samples), "monthly CPS samples\n")
 #   Core identifiers:  YEAR, SERIAL, MONTH, HWTFINL, CPSID, PERNUM, WTFINL,
 #                      CPSIDP, CPSIDV, STATEFIP
 #   Demographics:      AGE, SEX, RACE, HISPAN, EDUC
-#   Labor force:       EMPSTAT, WHYUNEMP (cases 1-6 only), OCC1990, CLASSWKR
+#   Labor force:       EMPSTAT, WHYUNEMP, OCC1990, CLASSWKR
 #   Immigration:       NATIVITY, CITIZEN
 
-extract_description <- "Unified CPS extract: WHYUNEMP demographics + state + nativity + occupation, 1994-present"
+extract_description <- "Unified CPS extract: all persons, demographics + state + nativity + occupation, 1994-present"
 
 extract_def <- define_extract_micro(
   collection  = "cps",
@@ -69,7 +69,7 @@ extract_def <- define_extract_micro(
     "WTFINL", "CPSIDP", "CPSIDV", "STATEFIP",
     "AGE", "SEX", "RACE", "HISPAN", "EDUC",
     "EMPSTAT",
-    var_spec("WHYUNEMP", case_selections = as.character(1:6)),
+    "WHYUNEMP",
     "OCC1990", "CLASSWKR",
     "NATIVITY", "CITIZEN"
   ),
