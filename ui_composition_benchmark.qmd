@@ -108,6 +108,8 @@ takeup_monthly <- read_final_parquet("ui_national_takeup_monthly.parquet") |>
   mutate(month = as.Date(month))
 takeup_cause_df <- read_final_parquet("ui_national_takeup_cause.parquet") |>
   mutate(date = as.Date(date), month_of_year = factor(month_of_year, levels = month.abb))
+nativity_shares <- read_final_parquet("unemployment_nativity_shares.parquet") |>
+  mutate(date = as.Date(date))
 dominant_profiles <- read_final_parquet("unemployment_dominant_profiles.parquet") |>
   mutate(
     cause = factor(cause, levels = cause_order),
@@ -932,7 +934,40 @@ The pandemic period, especially March 2020 through December 2021, involved extra
 # 6. Data Preparation
 
 ```{r national-composition-setup}
-takeup_cause_df <- takeup_cause_df |> mutate(year = year(date))
+national_foreign_born <- nativity_shares |>
+  filter(panel == "share_of_total_unemployed", series == "Foreign Born") |>
+  transmute(date, foreign_born_share = share / 100)
+
+national_fb_two_group <- nativity_shares |>
+  filter(
+    panel == "share_of_total_unemployed",
+    series %in% c("LF Entrants × FB", "Job Separators × FB")
+  ) |>
+  transmute(
+    date,
+    series,
+    share = share / 100
+  ) |>
+  pivot_wider(
+    names_from = series,
+    values_from = share
+  ) |>
+  rename(
+    foreign_born_entrant_share = `LF Entrants × FB`,
+    foreign_born_separator_share = `Job Separators × FB`
+  )
+
+takeup_cause_df <- takeup_cause_df |>
+  left_join(national_foreign_born, by = "date") |>
+  left_join(national_fb_two_group, by = "date") |>
+  mutate(
+    year = year(date),
+    labor_market_entrant_share = reentrant_share + new_entrant_share,
+    job_separator_share = temp_layoff_share + perm_job_loser_share +
+      completed_temp_job_share + job_leaver_share,
+    native_entrant_share = labor_market_entrant_share - foreign_born_entrant_share,
+    native_separator_share = job_separator_share - foreign_born_separator_share
+  )
 
 national_annual <- takeup_cause_df |>
   group_by(year) |>
@@ -963,6 +998,40 @@ takeup_cause_fitted <- takeup_cause_df |>
   mutate(
     cc_ce_hat = predict(cc_cause_model, newdata = takeup_cause_df),
     ic_ce_hat = predict(ic_cause_model, newdata = takeup_cause_df),
+    cc_gap = cc_ce - cc_ce_hat,
+    ic_gap = ic_ce - ic_ce_hat
+  )
+
+fit_national_two_group <- function(outcome) {
+  lm(as.formula(paste0(
+    outcome,
+    " ~ labor_market_entrant_share + month_of_year"
+  )), data = takeup_cause_df)
+}
+
+cc_two_group_model <- fit_national_two_group("cc_ce")
+ic_two_group_model <- fit_national_two_group("ic_ce")
+takeup_two_group_fitted <- takeup_cause_df |>
+  mutate(
+    cc_ce_hat = predict(cc_two_group_model, newdata = takeup_cause_df),
+    ic_ce_hat = predict(ic_two_group_model, newdata = takeup_cause_df),
+    cc_gap = cc_ce - cc_ce_hat,
+    ic_gap = ic_ce - ic_ce_hat
+  )
+
+fit_national_two_group_interaction <- function(outcome) {
+  lm(as.formula(paste0(
+    outcome,
+    " ~ native_entrant_share + foreign_born_entrant_share + foreign_born_separator_share + month_of_year"
+  )), data = takeup_cause_df)
+}
+
+cc_two_group_interaction_model <- fit_national_two_group_interaction("cc_ce")
+ic_two_group_interaction_model <- fit_national_two_group_interaction("ic_ce")
+takeup_two_group_interaction_fitted <- takeup_cause_df |>
+  mutate(
+    cc_ce_hat = predict(cc_two_group_interaction_model, newdata = takeup_cause_df),
+    ic_ce_hat = predict(ic_two_group_interaction_model, newdata = takeup_cause_df),
     cc_gap = cc_ce - cc_ce_hat,
     ic_gap = ic_ce - ic_ce_hat
   )
@@ -1632,6 +1701,265 @@ ggplot(gap_comparison, aes(date, gap, color = source)) +
 The three-way comparison shows both reassuring consistency and informative differences. All three approaches agree on the broad time path: residuals closer to zero in earlier decades, a recessionary positive spike around the Great Recession and pandemic disruptions, and a persistent negative drift in the modern period. The state-FE series is smoother, which is exactly what one would expect when persistent cross-state level differences are absorbed by fixed effects rather than left to inflate the residual.
 
 The differences between the approaches are also informative. The national benchmark and the collapsed state-panel benchmark occasionally diverge because they are built from different data sources and levels of aggregation. The state-panel model with state FE generally produces the smoothest series because those fixed effects absorb persistent cross-state level differences that would otherwise inflate the residual. For IC/CE, the gaps are proportionally larger than for CC/CE, consistent with initial claims being a point-of-entry flow measure where short-run administrative and institutional forces may matter more.
+
+## 7.6 National Monthly Two-Group Composition Regressions
+
+As a more aggregated benchmark, I also estimate national monthly regressions that collapse the six reason-for-unemployment categories into two groups: **labor market entrants** (reentrants plus new entrants) and **job separators** (temporary layoffs, permanent job losers, completed temporary jobs, and job leavers). Because the two shares sum to one, the omitted category is **job separators**. The reported coefficient therefore measures how claims intensity changes when unemployment shifts toward labor market entrants and away from job separators, holding month-of-year fixed effects constant.
+
+$$
+y_t = \alpha + \beta \,\text{EntrantShare}_t + \sum_{m=2}^{12} \gamma_m \mathbf{1}\{\text{month}(t) = m\} + \varepsilon_t
+$$
+
+where $y_t \in \{CC/CE_t, IC/CE_t\}$ and $\text{EntrantShare}_t$ is the share of unemployment accounted for by labor market entrants in month $t$.
+
+```{r national-two-group-coefs}
+#| tbl-cap: "National monthly regressions of claims intensity on the two-group unemployment composition. Labor market entrants are the included share; job separators are the omitted reference category. Coefficients are scaled to a 10 percentage-point shift in share."
+
+extract_two_group_terms <- function(model, outcome_label) {
+  summary(model)$coefficients |>
+    as.data.frame() |>
+    rownames_to_column("term") |>
+    as_tibble() |>
+    filter(term == "labor_market_entrant_share") |>
+    mutate(
+      Outcome = outcome_label,
+      Term = "Labor market entrant share",
+      `Coef (10 pp shift)` = Estimate * 0.10,
+      `Std. Error` = `Std. Error` * 0.10
+    ) |>
+    select(Outcome, Term, `Coef (10 pp shift)`, `Std. Error`, `p-value` = `Pr(>|t|)`)
+}
+
+bind_rows(
+  extract_two_group_terms(cc_two_group_model, "CC / CE"),
+  extract_two_group_terms(ic_two_group_model, "IC / CE")
+) |>
+  gt(groupname_col = "Outcome") |>
+  fmt_number(columns = c(`Coef (10 pp shift)`, `Std. Error`, `p-value`), decimals = 3) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+```{r national-two-group-fit}
+#| tbl-cap: "Model fit for the national monthly two-group composition regressions."
+
+tibble(
+  Outcome = c("CC / CE", "IC / CE"),
+  `R-squared` = c(summary(cc_two_group_model)$r.squared, summary(ic_two_group_model)$r.squared),
+  RMSE = c(
+    sqrt(mean(residuals(cc_two_group_model)^2, na.rm = TRUE)),
+    sqrt(mean(residuals(ic_two_group_model)^2, na.rm = TRUE))
+  ),
+  `Sample Start` = min(takeup_two_group_fitted$date),
+  `Sample End` = max(takeup_two_group_fitted$date)
+) |>
+  mutate(
+    `Sample Start` = format(`Sample Start`, "%Y-%m"),
+    `Sample End` = format(`Sample End`, "%Y-%m")
+  ) |>
+  gt() |>
+  fmt_number(columns = c(`R-squared`, RMSE), decimals = 3) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+This two-group benchmark asks a narrower question than the six-way model: how much of claims intensity is explained by the balance between labor market entrants and job separators alone? If the coefficient on the entrant share is negative, that means claims intensity is lower in months when unemployment is tilted away from job separators and toward entrants, consistent with weaker UI attachment among the latter group.
+
+## 7.7 National Observed vs. Predicted Claims Intensity: Two-Group Benchmark
+
+The fitted values from the two-group model provide a second national benchmark: the claims intensity predicted by the entrant-versus-separator split plus seasonality, versus what is actually observed.
+
+```{r fig-national-two-group-fit}
+#| fig-cap: "Observed versus composition-predicted national claims intensity from the two-group benchmark, full monthly sample from 1994 onward."
+#| fig-height: 9
+
+(ggplot(takeup_two_group_fitted, aes(date)) +
+   geom_line(aes(y = cc_ce, color = "Observed"), linewidth = 0.9) +
+   geom_line(aes(y = cc_ce_hat, color = "Predicted"), linewidth = 0.8, linetype = "dashed") +
+   scale_color_manual(values = c("Observed" = "#0073C2", "Predicted" = "black")) +
+   scale_x_date(date_breaks = "5 years", date_labels = "%b\n'%y") +
+   scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+   labs(title = "CC / CE", subtitle = "Observed vs. two-group composition-predicted", x = NULL, y = NULL)) /
+  (ggplot(takeup_two_group_fitted, aes(date)) +
+     geom_line(aes(y = ic_ce, color = "Observed"), linewidth = 0.9) +
+     geom_line(aes(y = ic_ce_hat, color = "Predicted"), linewidth = 0.8, linetype = "dashed") +
+     scale_color_manual(values = c("Observed" = "#EFC000", "Predicted" = "black")) +
+     scale_x_date(date_breaks = "5 years", date_labels = "%b\n'%y") +
+     scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+     labs(title = "IC / CE", subtitle = "Observed vs. two-group composition-predicted", x = NULL, y = NULL)) &
+  theme(legend.position = "top")
+```
+
+```{r fig-national-two-group-gap}
+#| fig-cap: "Gap between observed and two-group composition-predicted national claims intensity, full monthly sample from 1994 onward. Negative values mean the two-group model overpredicts."
+#| fig-height: 9
+
+(ggplot(takeup_two_group_fitted, aes(date, cc_gap)) +
+   geom_hline(yintercept = 0, color = "grey60", linewidth = 0.5) +
+   geom_col(fill = "#0073C2", alpha = 0.85, width = 25) +
+   scale_x_date(date_breaks = "5 years", date_labels = "%b\n'%y") +
+   scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+   labs(title = "CC / CE Gap", subtitle = "Observed minus two-group composition-predicted", x = NULL, y = NULL)) /
+  (ggplot(takeup_two_group_fitted, aes(date, ic_gap)) +
+     geom_hline(yintercept = 0, color = "grey60", linewidth = 0.5) +
+     geom_col(fill = "#EFC000", alpha = 0.9, width = 25) +
+     scale_x_date(date_breaks = "5 years", date_labels = "%b\n'%y") +
+     scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+     labs(title = "IC / CE Gap", subtitle = "Observed minus two-group composition-predicted", x = NULL, y = NULL))
+```
+
+The two-group observed-versus-predicted plots show how much explanatory power survives after collapsing the detailed six-way composition into a single entrant-versus-separator margin. Comparing these plots with Sections 7.1 and 7.2 makes it possible to see how much of the six-way benchmark's fit comes from the broad entrant/separator split versus finer distinctions within job separators and within labor market entrants.
+
+## 7.8 National Monthly Two-Group Regressions by Nativity
+
+I next refine the two-group benchmark by splitting the unemployment pool into four nativity-by-group cells: native entrants, foreign-born entrants, native job separators, and foreign-born job separators. Because these shares sum to one, the omitted category is **native job separators**. The reported coefficients therefore measure how claims intensity changes when unemployment shifts away from native job separators and toward each of the other three groups, holding month-of-year fixed effects constant.
+
+$$
+y_t = \alpha + \beta_1 \,\text{NativeEntrantShare}_t + \beta_2 \,\text{ForeignBornEntrantShare}_t + \beta_3 \,\text{ForeignBornSeparatorShare}_t + \sum_{m=2}^{12} \gamma_m \mathbf{1}\{\text{month}(t) = m\} + \varepsilon_t
+$$
+
+where $y_t \in \{CC/CE_t, IC/CE_t\}$ and native job separators are the reference group.
+
+```{r national-two-group-interaction-coefs}
+#| tbl-cap: "National monthly nativity-by-two-group regressions. Native job separators are the omitted reference category. Coefficients are scaled to a 10 percentage-point shift in share."
+
+extract_two_group_interaction_terms <- function(model, outcome_label) {
+  summary(model)$coefficients |>
+    as.data.frame() |>
+    rownames_to_column("term") |>
+    as_tibble() |>
+    filter(term %in% c(
+      "native_entrant_share",
+      "foreign_born_entrant_share",
+      "foreign_born_separator_share"
+    )) |>
+    mutate(
+      Outcome = outcome_label,
+      Term = recode(
+        term,
+        native_entrant_share = "Native entrant share",
+        foreign_born_entrant_share = "Foreign-born entrant share",
+        foreign_born_separator_share = "Foreign-born separator share"
+      ),
+      `Coef (10 pp shift)` = Estimate * 0.10,
+      `Std. Error` = `Std. Error` * 0.10
+    ) |>
+    select(Outcome, Term, `Coef (10 pp shift)`, `Std. Error`, `p-value` = `Pr(>|t|)`)
+}
+
+bind_rows(
+  extract_two_group_interaction_terms(cc_two_group_interaction_model, "CC / CE"),
+  extract_two_group_interaction_terms(ic_two_group_interaction_model, "IC / CE")
+) |>
+  gt(groupname_col = "Outcome") |>
+  fmt_number(columns = c(`Coef (10 pp shift)`, `Std. Error`, `p-value`), decimals = 3) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+```{r national-two-group-interaction-fit}
+#| tbl-cap: "Model fit for the national monthly nativity-by-two-group regressions."
+
+tibble(
+  Outcome = c("CC / CE", "IC / CE"),
+  `R-squared` = c(summary(cc_two_group_interaction_model)$r.squared, summary(ic_two_group_interaction_model)$r.squared),
+  RMSE = c(
+    sqrt(mean(residuals(cc_two_group_interaction_model)^2, na.rm = TRUE)),
+    sqrt(mean(residuals(ic_two_group_interaction_model)^2, na.rm = TRUE))
+  ),
+  `Sample Start` = min(takeup_two_group_interaction_fitted$date),
+  `Sample End` = max(takeup_two_group_interaction_fitted$date)
+) |>
+  mutate(
+    `Sample Start` = format(`Sample Start`, "%Y-%m"),
+    `Sample End` = format(`Sample End`, "%Y-%m")
+  ) |>
+  gt() |>
+  fmt_number(columns = c(`R-squared`, RMSE), decimals = 3) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+This specification replaces the interaction model with a directly interpretable four-cell decomposition. Relative to native job separators, the coefficients show whether claims intensity is lower or higher when unemployment is instead concentrated among native entrants, foreign-born entrants, or foreign-born job separators.
+
+## 7.9 National Observed vs. Predicted Claims Intensity: Nativity-by-Two-Group Benchmark
+
+The fitted values from this nativity-by-two-group model provide a third national benchmark: the claims intensity predicted by the four-group decomposition and seasonality, versus what is actually observed.
+
+```{r fig-national-two-group-interaction-fit}
+#| fig-cap: "Observed versus composition-predicted national claims intensity from the nativity-by-two-group benchmark, full monthly sample from 1994 onward."
+#| fig-height: 9
+
+(ggplot(takeup_two_group_interaction_fitted, aes(date)) +
+   geom_line(aes(y = cc_ce, color = "Observed"), linewidth = 0.9) +
+   geom_line(aes(y = cc_ce_hat, color = "Predicted"), linewidth = 0.8, linetype = "dashed") +
+   scale_color_manual(values = c("Observed" = "#0073C2", "Predicted" = "black")) +
+   scale_x_date(date_breaks = "5 years", date_labels = "%b\n'%y") +
+   scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+   labs(title = "CC / CE", subtitle = "Observed vs. nativity-by-two-group predicted", x = NULL, y = NULL)) /
+  (ggplot(takeup_two_group_interaction_fitted, aes(date)) +
+     geom_line(aes(y = ic_ce, color = "Observed"), linewidth = 0.9) +
+     geom_line(aes(y = ic_ce_hat, color = "Predicted"), linewidth = 0.8, linetype = "dashed") +
+     scale_color_manual(values = c("Observed" = "#EFC000", "Predicted" = "black")) +
+     scale_x_date(date_breaks = "5 years", date_labels = "%b\n'%y") +
+     scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+     labs(title = "IC / CE", subtitle = "Observed vs. nativity-by-two-group predicted", x = NULL, y = NULL)) &
+  theme(legend.position = "top")
+```
+
+```{r fig-national-two-group-interaction-gap}
+#| fig-cap: "Gap between observed and nativity-by-two-group-predicted national claims intensity, full monthly sample from 1994 onward. Negative values mean the nativity-by-two-group model overpredicts."
+#| fig-height: 9
+
+(ggplot(takeup_two_group_interaction_fitted, aes(date, cc_gap)) +
+   geom_hline(yintercept = 0, color = "grey60", linewidth = 0.5) +
+   geom_col(fill = "#0073C2", alpha = 0.85, width = 25) +
+   scale_x_date(date_breaks = "5 years", date_labels = "%b\n'%y") +
+   scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+   labs(title = "CC / CE Gap", subtitle = "Observed minus nativity-by-two-group predicted", x = NULL, y = NULL)) /
+  (ggplot(takeup_two_group_interaction_fitted, aes(date, ic_gap)) +
+     geom_hline(yintercept = 0, color = "grey60", linewidth = 0.5) +
+     geom_col(fill = "#EFC000", alpha = 0.9, width = 25) +
+     scale_x_date(date_breaks = "5 years", date_labels = "%b\n'%y") +
+     scale_y_continuous(labels = percent_format(accuracy = 0.01)) +
+     labs(title = "IC / CE Gap", subtitle = "Observed minus nativity-by-two-group predicted", x = NULL, y = NULL))
+```
+
+These plots show whether separating entrants and job separators by nativity materially improves the national benchmark relative to the simpler two-group model in Sections 7.6 and 7.7. If the fitted paths or residual gaps improve noticeably, that would indicate that nativity composition within the entrant/separator split carries additional information beyond the broad two-group distinction alone.
+
+### Interpretation
+
+The nativity-by-two-group results sharpen the interpretation of the simpler entrant-versus-separator benchmark. Relative to **native job separators**, both **native entrants** and **foreign-born entrants** are associated with significantly lower claims intensity, but the penalty is much larger for **foreign-born entrants**. In the `CC/CE` regression, a 10 percentage-point shift toward native entrants lowers predicted claims intensity by about 2.0 percentage points, while the same shift toward foreign-born entrants lowers it by about 5.4 percentage points. In the `IC/CE` regression, the corresponding magnitudes are about 1.2 and 2.7 percentage points. By contrast, **foreign-born job separators** look much closer to **native job separators**, especially in the `CC/CE` specification, where the difference is small and not statistically distinguishable from zero.
+
+This pattern suggests that the nativity margin matters mainly within the **entrant** category, not uniformly across the entire unemployed pool. The broad two-group result remains intact: entrants are less closely linked to UI claims than job separators. But the decomposition shows that this relationship is especially strong when the unemployment increase comes from **foreign-born entrants**, whereas **foreign-born separators** are much more similar to the omitted benchmark of native job separators. In that sense, nativity appears to add explanatory power not through a general foreign-born penalty, but through the particularly weak claims-intensity association of the **foreign-born entrant** margin.
 
 # 8. Interpretation
 
