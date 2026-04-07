@@ -1146,6 +1146,42 @@ build_profile_shares <- function(data) {
     )
 }
 
+lf_profile_shares <- function(data, demo_var, dimension_label) {
+  data |>
+    filter(!is.na(.data[[demo_var]])) |>
+    group_by(.data[[demo_var]]) |>
+    summarise(n = sum(WTFINL, na.rm = TRUE), .groups = "drop") |>
+    rename(group = 1) |>
+    mutate(
+      dimension = dimension_label,
+      group_key = as.character(group),
+      lf_share = n / sum(n)
+    ) |>
+    select(dimension, group_key, lf_share)
+}
+
+build_lf_profile_shares <- function(data) {
+  bind_rows(
+    lf_profile_shares(data, "age_group", "Age"),
+    lf_profile_shares(data, "educ_group", "Education"),
+    lf_profile_shares(data, "sex_label", "Sex"),
+    lf_profile_shares(data, "race_eth", "Race/Ethnicity"),
+    lf_profile_shares(data, "occ_group4", "Occupation"),
+    lf_profile_shares(data, "class_label", "Class"),
+    lf_profile_shares(data, "foreign_born", "Foreign Born"),
+    lf_profile_shares(data, "noncitizen", "Noncitizen")
+  ) |>
+    mutate(
+      dimension = factor(
+        dimension,
+        levels = c(
+          "Age", "Education", "Sex", "Race/Ethnicity",
+          "Occupation", "Class", "Foreign Born", "Noncitizen"
+        )
+      )
+    )
+}
+
 build_dominant_profile <- function(data) {
   build_profile_shares(data) |>
     group_by(cause, dimension) |>
@@ -1181,6 +1217,51 @@ build_dominant_profile_delta <- function(current_data, reference_data) {
     arrange(cause, dimension)
 }
 
+build_dominant_profile_ratio <- function(data, lf_data) {
+  dominant_profile <- build_dominant_profile(data) |>
+    select(cause, dimension, group_key, dominant_group, share)
+
+  lf_profile <- build_lf_profile_shares(lf_data)
+
+  dominant_profile |>
+    left_join(lf_profile, by = c("dimension", "group_key")) |>
+    mutate(
+      ratio = share / lf_share,
+      label = paste0(dominant_group, "\n", scales::number(ratio, accuracy = 0.01), "x")
+    ) |>
+    arrange(cause, dimension)
+}
+
+build_dominant_profile_ratio_delta <- function(current_data, reference_data, current_lf_data, reference_lf_data) {
+  current_ratio <- build_dominant_profile_ratio(current_data, current_lf_data) |>
+    select(
+      cause, dimension, group_key, dominant_group,
+      share_2025 = share, lf_share_2025 = lf_share, ratio_2025 = ratio
+    )
+
+  reference_ratio <- build_profile_shares(reference_data) |>
+    left_join(build_lf_profile_shares(reference_lf_data), by = c("dimension", "group_key")) |>
+    mutate(ratio_pooled = share / lf_share) |>
+    select(
+      cause, dimension, group_key,
+      share_pooled = share, lf_share_pooled = lf_share, ratio_pooled
+    )
+
+  current_ratio |>
+    left_join(reference_ratio, by = c("cause", "dimension", "group_key")) |>
+    mutate(
+      delta = ratio_2025 - ratio_pooled,
+      label = paste0(
+        dominant_group,
+        "\n",
+        if_else(delta > 0, "+", ""),
+        scales::number(delta, accuracy = 0.01),
+        "x"
+      )
+    ) |>
+    arrange(cause, dimension)
+}
+
 dominant_profile_pooled <- build_dominant_profile(cps_unemp) |>
   mutate(variant = "pooled")
 
@@ -1200,6 +1281,34 @@ unemployment_dominant_profiles <- bind_rows(
 )
 
 write_final_parquet(unemployment_dominant_profiles, "unemployment_dominant_profiles.parquet")
+
+dominant_profile_ratio_pooled <- build_dominant_profile_ratio(cps_unemp, cps_lf) |>
+  mutate(variant = "pooled_ratio")
+
+dominant_profile_ratio_2025 <- build_dominant_profile_ratio(
+  cps_unemp |> filter(YEAR == 2025),
+  cps_lf |> filter(YEAR == 2025)
+) |>
+  mutate(variant = "year_2025_ratio")
+
+dominant_profile_ratio_delta_2025 <- build_dominant_profile_ratio_delta(
+  cps_unemp |> filter(YEAR == 2025),
+  cps_unemp,
+  cps_lf |> filter(YEAR == 2025),
+  cps_lf
+) |>
+  mutate(variant = "delta_2025_ratio")
+
+unemployment_dominant_profile_ratios <- bind_rows(
+  dominant_profile_ratio_pooled,
+  dominant_profile_ratio_2025,
+  dominant_profile_ratio_delta_2025
+)
+
+write_final_parquet(
+  unemployment_dominant_profile_ratios,
+  "unemployment_dominant_profile_ratios.parquet"
+)
 
 # -----------------------------------------------------------------------------
 # 9. Metadata / codebooks for report-facing tables
