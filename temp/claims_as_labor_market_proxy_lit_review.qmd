@@ -1,0 +1,696 @@
+---
+title: "UI Claims as a Proxy for Labor Market Health"
+subtitle: "A Practitioner-Oriented Review of Blogs, News, and Policy Commentary"
+author: "Aryan Safi"
+date: today
+format:
+  html:
+    theme: flatly
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+---
+
+> **Purpose of this document.** This is a draft motivation section for
+> `ui_composition_benchmark.qmd`. The main report already contains an academic
+> literature review (Section 2) covering the recipiency-decline puzzle
+> (Burtless 1983; Blank and Card 1991; Anderson and Meyer 1997; Kuka and Stuart
+> 2025; Lachowska, Sorkin, and Woodbury 2025). What that section does *not* do
+> is explain why the question matters to the people who actually consume UI
+> data in real time: Fed economists, Wall Street strategists, journalists, and
+> policymakers who treat Thursday's claims print as a labor-market temperature
+> check. This document fills that gap with a practitioner-oriented review of
+> blog posts, news coverage, and policy commentary.
+>
+> **A note on links.** Where possible I link directly to the specific
+> piece (Fed Economic Letter, think-tank report, blog post, or
+> newsletter). Hub/landing-page URLs appear only when the reference is to
+> an ongoing series (e.g., FEDS Notes as a venue) rather than a specific
+> article. Paywalled outlets like Bloomberg, WSJ, and Reuters rotate and
+> gate their URLs; for those I name authors and dates so the pieces can
+> be located via site search even if a direct link rots.
+
+# 1. Why UI Claims Became the Market's Favorite Labor Indicator
+
+The U.S. Department of Labor releases initial and continued unemployment
+insurance claims every Thursday at 8:30 a.m. Eastern, covering the week that
+ended the previous Saturday for initial claims and the week before that for
+continued claims. The release is posted at
+[oui.doleta.gov/unemploy/claims.asp](https://oui.doleta.gov/unemploy/claims.asp)
+and as a DOL news release at
+[dol.gov/ui/data.pdf](https://www.dol.gov/ui/data.pdf). The two headline
+series, ICSA and CCSA, are mirrored at FRED:
+[fred.stlouisfed.org/series/ICSA](https://fred.stlouisfed.org/series/ICSA) and
+[fred.stlouisfed.org/series/CCSA](https://fred.stlouisfed.org/series/CCSA).
+
+Three features make claims unusually attractive as a real-time signal
+relative to the monthly BLS employment situation release:
+
+1. **Frequency.** Weekly, not monthly. In a turning-point environment, a
+   monthly lag is an eternity.
+2. **Timeliness.** Published with a five-day lag, versus the three-week lag
+   on the BLS payroll report.
+3. **Administrative grounding.** Claims are counted when people file, not
+   estimated from a survey with a response rate that has fallen from the
+   high-80s in the early 2010s to the low-70s in the 2020s (see the Census
+   Bureau's CPS nonresponse documentation at
+   [census.gov/programs-surveys/cps/technical-documentation](https://www.census.gov/programs-surveys/cps/technical-documentation.html)).
+
+Because of these features, claims became the default "nowcast" input for
+labor-market watchers long before high-frequency alternatives like Homebase,
+Kronos/UKG, and ADP's research series existed. The Federal Reserve Bank of
+St. Louis explains the role of claims as a leading indicator on its
+*On the Economy* blog at
+[stlouisfed.org/on-the-economy](https://www.stlouisfed.org/on-the-economy),
+and FRED tags ICSA as a leading business-cycle indicator on its series page.
+
+# 2. Claims, Flows, and the Unemployment Rate: An Accounting Primer
+
+Before getting into how practitioners use claims, it helps to be explicit
+about what the three headline objects — initial claims (ICSA), continued
+claims (CCSA), and the unemployment rate — mechanically measure. Each
+sits at a different point in the labor-market flow diagram, and their
+relationships are not symmetric.
+
+## 2.1 Initial claims: a firing-margin flow with an eligibility filter
+
+ICSA is the weekly *inflow* into the insured-unemployment pool. Almost
+every initial claim is filed because of a separation the filer did not
+initiate — layoffs, plant closures, temporary furloughs, completed temp
+contracts — because federal-state UI provides benefits only to workers
+"unemployed through no fault of their own (as determined under state
+law)" (U.S. Department of Labor, ["How Do I File for Unemployment
+Insurance?"](https://www.dol.gov/general/topic/unemployment-insurance)).
+Two gaps on either side of that mapping:
+
+- **Fires that don't generate claims.** The unemployed person must
+  satisfy monetary eligibility (sufficient base-period covered earnings),
+  be able and available for work, be actively seeking work, and not have
+  been discharged for misconduct. Long-tenured workers at covered
+  employers clear these bars easily; short-tenure workers, part-timers,
+  and gig/1099 workers often do not. State-by-state rules for each of
+  these requirements are catalogued in DOL ETA's ["Comparison of State
+  Unemployment Insurance Laws,
+  2023"](https://oui.doleta.gov/unemploy/comparison/2020-2029/comparison2023.asp)
+  (see especially the chapters on *Monetary Entitlement* and *Nonmonetary
+  Eligibility*). The size of this gap is exactly the ineligible share of
+  the unemployed — the composition variable this report focuses on.
+- **Non-fires that do generate claims.** Most quits are denied (job
+  leavers fail the "through no fault of own" test), but certain
+  "good-cause" quits qualify in some states. The *Nonmonetary
+  Eligibility* chapter of the DOL Comparison catalogues state rules on
+  good-cause exceptions including domestic violence, spousal relocation,
+  health reasons, and (in a subset of states) good cause not attributable
+  to the employer.
+
+So ICSA is a noisy, undercounted read on firings, where the undercount
+moves with who the unemployed are.
+
+## 2.2 Continued claims: a stock that picks up hiring only indirectly
+
+CCSA is the *stock* of people currently drawing benefits. The accounting
+identity is:
+
+$$
+\text{CCSA}_t \;=\; \text{CCSA}_{t-1} + \text{ICSA}_t - \text{exits}_t
+$$
+
+Exits happen for three reasons: (i) find a job (the hiring margin); (ii)
+exhaust benefits (duration caps, which range from 12 weeks in Florida,
+Kentucky, and North Carolina to 30 weeks in Massachusetts under current
+state laws, per the Congressional Research Service report ["Unemployment
+Insurance: Programs and
+Benefits"](https://www.congress.gov/crs-product/RL33362)); (iii) lose
+continuing eligibility — failing the weekly able-and-available, active
+work-search, or earnings-reporting requirements documented in the
+*Continued Eligibility* section of the DOL ["Comparison of State
+Unemployment Insurance Laws,
+2023"](https://oui.doleta.gov/unemploy/comparison/2020-2029/comparison2023.asp),
+or leaving the labor force entirely. Holding ICSA fixed, weaker hiring →
+slower exits → higher CCSA. That is why practitioners read *rising CCSA
+alongside stable ICSA* as a classic "hiring is weakening" signal, and
+why the new Chicago Fed Labor Market Indicators explicitly split this
+blended object into a separate separations rate and a hiring rate for
+the unemployed (see §5.3).
+
+## 2.3 The unemployment rate: mostly a hiring-margin object
+
+The canonical steady-state approximation (Shimer 2005, 2012; Hall 2005)
+is:
+
+$$
+u^* \;\approx\; \frac{s}{s+f}
+$$
+
+where $s$ is the separation rate into unemployment and $f$ is the
+job-finding rate out of unemployment. Decomposing the cyclical variance
+of $u$ into contributions from $s$ and $f$:
+
+- **Shimer (2005, 2012):** roughly 75% from $f$, 25% from $s$.
+- **Elsby–Michaels–Solon (2009), Fujita–Ramey (2009):** $s$ matters more
+  at turning points and in deep recessions than Shimer's long-sample
+  estimate suggests; closer to 60/40 at business-cycle frequencies.
+- **Qualitative consensus:** in mild cycles $f$ dominates; in deep
+  recessions both move, with $s$ contributing an early spike and $f$
+  dominating the slow recovery.
+
+David Wiczer's 2014 St. Louis Fed *On the Economy* piece ["The Issues
+with New Unemployment Insurance Claims as a Labor Market
+Indicator"](https://www.stlouisfed.org/on-the-economy/2014/september/the-issues-with-new-unemployment-insurance-claims-as-a-labor-market-indicator)
+is the earliest practitioner-facing restatement of this point: 75–80% of
+unemployment-rate movement comes from the job-finding rate, so a
+series that reads the separation rate is inherently a weak predictor of
+the unemployment rate.
+
+## 2.4 Why the claims-to-unemployment mapping is inherently unstable
+
+Putting the three objects together:
+
+| Object | Primary driver | What it misses |
+|---|---|---|
+| ICSA | eligible fires | ineligible fires (the composition gap); hiring |
+| CCSA | insured-unemployment stock | uninsured unemployed; picks up hiring only indirectly |
+| Unemployment rate | mostly hiring (job-finding); separations second | — |
+
+Because the unemployment rate is *predominantly* a hiring-margin object
+while ICSA is *primarily* a firing-margin object, there is no mechanical
+reason for the two to move together in a stable way. Two distinct
+channels can drive them apart:
+
+1. **Flow composition drift (the Shimer/Wiczer channel).** Shifts in the
+   share of unemployment-rate variation coming from $s$ versus $f$
+   automatically change the co-movement between claims (which read $s$)
+   and the unemployment rate. Low-churn "low-hire, low-fire" regimes —
+   the 2014 environment Wiczer flagged, and the 2023–2024 environment
+   Bunker, Berger, and CFLMI document — are the canonical example.
+2. **Stock composition drift (the channel this report focuses on).**
+   Even holding $s$ and $f$ fixed, if the mix of the unemployed shifts
+   toward groups that do not generate claims (job leavers, new entrants,
+   reentrants, and the administratively ineligible), ICSA undercounts
+   the firing margin by an amount that varies over time.
+
+The practitioner literature reviewed below engages with both channels
+informally. The composition benchmark formalizes channel (2), holding
+channel (1) fixed by construction.
+
+# 3. Claims in Recession Calls and Turning-Point Debates
+
+## 3.1 The 2008–2009 recession
+
+During the Great Recession, claims were the indicator journalists used to
+communicate labor-market deterioration in real time because payroll
+revisions were arriving months after the fact. The Brookings Institution's
+Hamilton Project tracked claims alongside payrolls in its recession coverage;
+its economic-indicators hub is at
+[hamiltonproject.org](https://www.hamiltonproject.org/). Contemporary
+coverage in The New York Times' Economix blog and at Calculated Risk
+([calculatedriskblog.com](https://www.calculatedriskblog.com/)) treated the
+Thursday claims release as the most important weekly data point of 2008–2009.
+Calculated Risk in particular popularized the four-week moving average of
+ICSA as a smoothing device, and the "break above 400K" threshold as a
+shorthand for recession-consistent claims levels — a rule of thumb that
+circulated through Bloomberg and WSJ commentary for years afterward.
+
+## 3.2 The 2020 pandemic shock
+
+In the pandemic, claims became the dominant labor-market story for roughly
+six weeks in March and April 2020 because they updated in real time while
+the April payroll report did not arrive until May 8. The week-ending
+March 21, 2020 release of 3.28 million initial claims, followed by 6.87
+million the following week, was the single most-cited economic data point
+of the early pandemic and appeared on the front page of essentially every
+major U.S. newspaper. Fed research published several pieces in 2020–2022
+analyzing the divergence between claims and household-survey unemployment
+— a divergence the present report argues is partly about composition. The
+San Francisco Fed's *Economic Letter* ["Unemployment Insurance
+Withdrawal"](https://www.frbsf.org/research-and-insights/publications/economic-letter/2022/04/unemployment-insurance-withdrawal/)
+(Petrosky-Nadeau and Valletta, April 2022) compared hiring in states that
+ended enhanced UI early against those that did not. More recently, the SF
+Fed's ["Tracking Labor Market
+Stress"](https://www.frbsf.org/research-and-insights/publications/economic-letter/2025/08/tracking-labor-market-stress/)
+(Garimella, Jordà, and Singh, August 2025) builds a state-level claims-based
+stress indicator and explicitly discusses the July 2024 "false alarm" in
+which national aggregates overstated stress that remained geographically
+concentrated — directly relevant framing for the state-panel approach of
+this report.
+
+The pandemic episode also exposed the limits of claims as a
+denominator-free indicator. The enormous PUA (Pandemic Unemployment
+Assistance) program temporarily extended coverage to gig workers and the
+self-employed, groups normally excluded from ICSA. Andrew Stettner's
+Century Foundation report ["A Pandemic Lifeline: Nation's Unemployment
+System Is Inadequate and Unprepared for Next
+Downturn"](https://tcf.org/content/report/a-pandemic-lifeline-nations-unemployment-system-is-inadequate-and-unprepared-for-next-downturn/)
+and ["Unemployment Trust Fund Recovery Is Helping Employers, not
+Workers"](https://tcf.org/content/report/unemployment-trust-fund-recovery-helping-employers-not-workers/)
+document why regular-program claims behaved strangely during 2020–2021 and
+why the system entered the post-pandemic period structurally thinner than
+official recipiency rates suggested.
+
+## 3.3 The 2023–2024 soft-landing debate
+
+The most recent and most relevant episode for the present report is the
+soft-landing debate of 2023 through early 2025. Throughout this period,
+initial claims stayed historically low — typically 200K to 240K per week —
+while the unemployment rate drifted up from 3.4 percent in April 2023 to
+4.2 percent by mid-2024. This divergence is exactly the kind of
+claims-intensity gap that the composition benchmark is designed to
+characterize.
+
+Key commentators who wrote repeatedly about this tension, with
+representative pieces:
+
+- **Claudia Sahm**, *Stay-At-Home Macro*. Sahm is the inventor of the Sahm
+  Rule recession indicator (documented at the FRED series page
+  [SAHMREALTIME](https://fred.stlouisfed.org/series/SAHMREALTIME); she
+  walks through the construction in ["The Sahm rule: step by
+  step"](https://stayathomemacro.substack.com/p/the-sahm-rule-step-by-step)).
+  On the 2024 trigger, see ["The Sahm rule: I created a
+  monster"](https://stayathomemacro.substack.com/p/the-sahm-rule-i-created-a-monster)
+  — her own argument that the rule is *overstating* weakness because the
+  2024 rise in unemployment was being driven by labor-force entry and
+  reentry rather than layoffs, which do not generate UI claims. ["A Year
+  With No Jobs—But No
+  Recession"](https://stayathomemacro.substack.com/p/a-year-with-no-jobsbut-no-recession)
+  develops the broader soft-landing-plus-weak-hiring story.
+- **Nick Bunker**, Indeed Hiring Lab. See Bunker's ["January 2024 JOLTS
+  Statement: Quitting is Slowing
+  Down"](https://www.hiringlab.org/2024/03/06/january-2024-jolts-statement/)
+  and ["July 2024 Labor Market
+  Update"](https://www.hiringlab.org/2024/07/11/july-labor-market-update-slowdown-posted-wage-growth/),
+  both of which characterize the 2024 environment as one where both
+  hiring and separations have fallen to pre-pandemic or below-pre-pandemic
+  levels — the "low-hire, low-fire" pattern that is also now the organizing
+  frame of the new Chicago Fed Labor Market Indicators (see §4.3).
+- **Guy Berger**, Burning Glass Institute (previously LinkedIn Economic
+  Graph). See the ["Labor Market Outlook August
+  2024"](https://www.burningglassinstitute.org/research/labor-market-outlook-august-2024)
+  and Berger's interview coverage of ["The Great
+  Stay"](https://www.housingwire.com/articles/burning-glass-institutes-guy-berger-explores-the-great-stay-in-the-labor-and-housing-markets/),
+  in which he stresses the historically low rate of involuntary
+  separations as the defining feature of the 2024 labor market — a near
+  restatement of this report's composition story.
+- **Ernie Tedeschi**, Yale Budget Lab (formerly CEA Chief Economist). The
+  most directly relevant piece is the accounting exercise ["Immigration
+  and the U.S. Economy Since the
+  Pandemic"](https://www.briefingbook.info/p/immigration-and-the-us-economy-since),
+  which decomposes post-2019 labor-supply growth into direct and
+  unemployment-rate effects of immigration. See also the Georgetown
+  FinPolicy talk ["Looking Back on the US Economy in 2024 and its Outlook
+  for
+  2025"](https://finpolicy.georgetown.edu/wp-content/uploads/2024/12/US-Economy-in-2024-and-2025.pdf).
+- **Jed Kolko**, formerly Commerce Department chief economist. See ["No,
+  Native-Born Employment Has Not
+  Soared"](https://jedkolko.substack.com/p/no-native-born-employment-has-not)
+  on native-vs-foreign-born unemployment divergence, and ["Can new data
+  solve an immigration
+  puzzle?"](https://www.slowboring.com/p/can-new-data-solve-an-immigration)
+  on the census-vs-CBO immigration measurement gap that shaped
+  labor-market nowcasts in 2024.
+- **Heidi Shierholz**, Economic Policy Institute. See ["Assessing the
+  strength of the labor market"
+  (EPI, 2024)](https://www.epi.org/blog/assessing-the-strength-of-the-labor-market-preliminary-downward-revisions-do-not-necessarily-signal-a-weaker-2024-labor-market-but-there-are-warning-signs-for-2025/),
+  which argues that preliminary payroll revisions do not imply a weaker
+  2024 labor market but flags warning signs for 2025.
+- **Arindrajit Dube** and others writing at the Washington Center for
+  [Equitable Growth](https://equitablegrowth.org/) have made related
+  arguments about composition, recipiency, and labor-market slack.
+
+# 4. Claims as a Recession Indicator: Rules of Thumb
+
+Three rules of thumb for reading claims as a labor-market signal circulate
+widely in the financial and policy press. All three are relevant to the
+composition benchmark because all three implicitly assume a stable mapping
+from claims to unemployment, which the present report documents has
+weakened.
+
+## 4.1 The four-week moving average and the "400K line"
+
+Weekly initial claims are genuinely noisy. Three sources of week-to-week
+variation make the raw series hard to read in real time:
+
+1. **Fixed-week holiday effects.** Thanksgiving, Christmas/New Year's,
+   Independence Day, and Memorial Day shift the number of filing days in
+   the reference week and change the timing of when people file; the BLS
+   seasonal adjustment handles the typical calendar pattern but not
+   timing quirks like years when a holiday falls midweek. The DOL release
+   itself reports both the weekly seasonally-adjusted level and the
+   four-week moving average for exactly this reason (see the standing
+   release template at
+   [dol.gov/ui/data.pdf](https://www.dol.gov/ui/data.pdf) and FRED series
+   [IC4WSA](https://fred.stlouisfed.org/series/IC4WSA)).
+2. **Weather and one-off shocks.** Hurricanes, winter storms, auto-plant
+   retooling weeks, and government shutdowns can move a single weekly
+   print by 20,000–100,000 without any underlying change in labor-market
+   conditions. The four-week average attenuates these one-off events.
+3. **Seasonal-adjustment difficulty at weekly frequency.** UI claims are
+   among the hardest official series to seasonally adjust because the
+   seasonal factors are estimated from short weekly windows and the
+   underlying seasonal pattern has shifted as industries (construction,
+   retail hiring) have restructured. Multiplicative seasonal factors at
+   holiday weeks are especially unstable.
+
+Averaging four consecutive weeks of the seasonally-adjusted series
+suppresses these sources of noise while preserving the underlying
+persistent movements a labor-market analyst is trying to read. Crucially,
+because each Thursday release publishes the *prior* week's claims, the
+four-week moving average is only five weeks stale at most — still faster
+than monthly payrolls — so the smoothing trades a modest amount of
+timeliness for a large reduction in sampling-style noise.
+
+Overlaid on this smoothing convention, the rule of thumb that a
+four-week-average ICSA above roughly 400K (in a labor force of ~160M) is
+recession-consistent dates at least to the 1990s. Calculated Risk
+([calculatedriskblog.com](https://www.calculatedriskblog.com/)) maintained
+running commentary on this threshold through every cycle from 2008 to
+present. The rule is crude but historically effective — until 2023, when
+claims stayed well below 250K while the unemployment rate climbed. That
+breakdown is the motivation for the composition-adjusted benchmark.
+
+## 4.2 The Sahm Rule
+
+Claudia Sahm's recession indicator (FRED series
+[SAHMREALTIME](https://fred.stlouisfed.org/series/SAHMREALTIME)) is not a
+claims rule per se — it uses the unemployment rate — but it is often
+discussed in the same breath as claims because both are framed as
+real-time recession signals. Sahm's own self-contained explainer of how
+the rule is constructed is ["The Sahm rule: step by
+step"](https://stayathomemacro.substack.com/p/the-sahm-rule-step-by-step).
+(The rule was originally introduced in a 2019 Hamilton Project chapter on
+automatic stabilizers as a trigger for direct stimulus payments; the
+chapter itself is about fiscal stabilization policy, not about the rule
+as a standalone recession signal, so it is not the natural primary
+citation for the indicator.)
+
+In July 2024 the Sahm Rule triggered while claims remained benign. The
+resulting commentary leaned heavily on the distinction between "bad
+unemployment" (layoffs, which claims capture) and "good unemployment"
+(entry and reentry, which claims miss) — exactly the
+job-separations-versus-labor-force-entry split that organizes the
+present report. Sahm's own response to the trigger (["The Sahm rule: I
+created a
+monster"](https://stayathomemacro.substack.com/p/the-sahm-rule-i-created-a-monster))
+argued that the rule was overstating weakness precisely because the
+composition of the unemployment rise was anomalous.
+
+## 4.3 Continued claims and duration
+
+Continued claims (CCSA) are more closely tied to the duration of
+unemployment spells and are often read as a leading indicator of hiring
+weakness rather than firing strength. The Richmond Fed's *Economic Brief*
+series at
+[richmondfed.org/publications/research/economic_brief](https://www.richmondfed.org/publications/research/economic_brief)
+and the Kansas City Fed's *Macro Bulletin* have repeatedly used continued
+claims in this way. During 2023–2024, continued claims rose modestly while
+initial claims stayed low, and practitioner commentary read this as
+evidence that hiring was weakening even as layoffs were not rising — again
+consistent with the composition story.
+
+# 5. The "Claims as Proxy" Skeptics
+
+Not all practitioners accept claims at face value. A parallel strand of
+commentary has argued for years that claims are an increasingly
+unrepresentative proxy for labor-market health, and this strand is the
+natural audience for the composition benchmark.
+
+## 5.1 The shrinking recipiency rate
+
+The Center on Budget and Policy Priorities has published repeatedly on
+the long-run decline in UI recipiency and the policy implications. See
+Chad Stone and William Chen, ["Introduction to Unemployment
+Insurance"](https://www.cbpp.org/research/introduction-to-unemployment-insurance),
+and CBPP's ["Key Things to Know About Unemployment
+Insurance"](https://www.cbpp.org/research/key-things-to-know-about-unemployment-insurance)
+and state-level data piece ["Unemployment Insurance Recipiency Rates by
+State,
+2022"](https://www.cbpp.org/media/unemployment-insurance-recipiency-rates-by-state-2022).
+The through-line: recipiency has fallen from roughly 50 percent in the
+1950s to near 25 percent immediately before the pandemic, which means
+claims understate labor-market distress because an increasing share of
+the unemployed are not eligible for benefits.
+
+The Urban Institute's most-cited technical reference on this is Wayne
+Vroman's ["Low Benefit Recipiency in State Unemployment Insurance
+Programs"](https://www.urban.org/research/publication/low-benefit-recipiency-state-unemployment-insurance-programs),
+a DOL-commissioned study that decomposes state-level recipiency variation
+into labor-market and program-administration components — directly the
+question the residual of this report's composition benchmark is designed
+to address. See also Urban's overview ["An Introduction to Unemployment
+and Unemployment
+Insurance"](https://www.urban.org/research/publication/introduction-unemployment-and-unemployment-insurance).
+
+The Century Foundation's work is anchored by Andrew Stettner. In addition
+to the pandemic pieces cited in §2.2, see ["Our Unemployment System
+Needs Modernizing"](https://tcf.org/content/report/our-unemployment-system-needs-modernizing-trump-is-doing-the-opposite/)
+and the ongoing ["Unemployment Insurance Data
+Dashboard"](https://tcf.org/content/report/unemployment-insurance-data-dashboard/),
+which tracks state-level recipiency in real time.
+
+The National Employment Law Project's flagship recipiency report is
+["Closing Doors on the Unemployed: Why Most Jobless Workers Are Not
+Receiving Unemployment
+Insurance"](https://www.nelp.org/insights-research/closing-doors-on-the-unemployed/).
+See also ["Ten Years After Great Recession Hit, Unemployed Workers Face
+Greater Barriers to Jobless
+Aid"](https://www.nelp.org/ten-years-after-great-recession-hit-unemployed-workers-face-greater-barriers-to-jobless-aid/)
+and NELP's ongoing ["Unemployment
+Insurance"](https://www.nelp.org/explore-the-issues/unemployment-insurance/)
+issue hub, which documents the eligibility restrictions, benefit-week
+cuts, and procedural hurdles that drive the non-composition part of the
+recipiency story.
+
+## 5.2 The composition critique in financial commentary
+
+On the financial-commentary side, Joseph Brusuelas at RSM has been the
+most consistent voice on the labor-supply-driven unemployment rise. See
+his RSM *Real Economy* pieces ["Market Minute: The declining labor
+supply, the jobless rate and Fed
+policy"](https://realeconomy.rsmus.com/market-minute-the-declining-labor-supply-the-jobless-rate-and-fed-policy/)
+and ["U.S. August jobs report: A soft landing in the
+economy"](https://realeconomy.rsmus.com/u-s-august-jobs-report-a-soft-landing-in-the-economy/),
+both of which attribute the 2024 rise in the unemployment rate to
+immigration-driven labor-force expansion against historically low
+layoffs.
+
+Mark Zandi of Moody's Analytics made the same diagnosis in 2024 —
+unemployment "ticked up despite job creation because labor force growth
+is booming" (quoted in CNBC's ["Immigration is taking pressure off the
+job market"](https://www.cnbc.com/2024/03/02/immigration-taking-pressure-off-the-job-market-us-economy-expert.html)).
+By 2026 Zandi's Vicious Cycle Index (see Axios, ["A new recession red
+flag"](https://www.axios.com/2026/04/08/jobs-recession-index-zandi))
+inverted that framing for the post-immigration-slowdown period —
+illustrating exactly why a benchmark that holds composition fixed is
+useful across both regimes.
+
+These pieces are representative rather than exhaustive; the bank, ratings,
+and consultancy research desks covered the same themes throughout
+2023–2024, often behind client paywalls but routinely quoted in Bloomberg,
+Reuters, and WSJ coverage.
+
+## 5.3 Fed commentary
+
+Fed research publications have been more circumspect but cover the same
+ground. The directly relevant specific pieces:
+
+- **San Francisco Fed.** Garimella, Jordà, and Singh, ["Tracking Labor
+  Market
+  Stress"](https://www.frbsf.org/research-and-insights/publications/economic-letter/2025/08/tracking-labor-market-stress/)
+  (August 2025) constructs a state-level claims-based stress indicator
+  and walks through the July 2024 false alarm in detail. Petrosky-Nadeau
+  and Valletta, ["Unemployment Insurance
+  Withdrawal"](https://www.frbsf.org/research-and-insights/publications/economic-letter/2022/04/unemployment-insurance-withdrawal/)
+  (April 2022), quantifies hiring effects of early withdrawal from
+  enhanced pandemic UI. See also the more recent ["Recent Slowdown in
+  Labor Supply and
+  Demand"](https://www.frbsf.org/research-and-insights/publications/economic-letter/2026/01/recent-slowdown-in-labor-supply-and-demand/)
+  (January 2026).
+- **Cleveland Fed.** ["Immigration and the Unemployment Rate in
+  2023–2024"](https://www.clevelandfed.org/publications/economic-commentary/2026/ec-202605-immigration-and-unemployment-rate-2023-2024)
+  is the most direct Fed decomposition of the supply-side story in the
+  soft-landing window.
+- **Chicago Fed.** Two pieces are directly relevant here. First, the
+  methodological antecedent: Brave, Butters, and Kelley, ["A 'Big Data'
+  View of the U.S. Economy: Introducing the Brave-Butters-Kelley
+  Indexes"](https://www.chicagofed.org/publications/chicago-fed-letter/2019/422)
+  (*Chicago Fed Letter* 422, 2019). Second — and squarely on the same
+  terrain as this report — the Chicago Fed launched the ["Chicago Fed
+  Labor Market
+  Indicators"](https://www.chicagofed.org/research/data/chicago-fed-labor-market-indicators/latest-release)
+  (CFLMI) in September 2025, documented in ["Introducing the Chicago Fed
+  Labor Market
+  Indicators"](https://www.chicagofed.org/publications/chicago-fed-insights/2025/introducing-chicago-fed-labor-market-indicators)
+  and extended in ["A Closer Look at the Low-Hire, Low-Fire Labor Market
+  with the Chicago Fed Labor Market
+  Indicators"](https://www.chicagofed.org/publications/chicago-fed-insights/2026/low-hire-low-fire-chicago-fed-labor-market-indicators).
+  CFLMI publishes a layoffs/other-separations rate, a hiring rate for the
+  unemployed, and a forecast of the monthly BLS unemployment rate, and
+  uses official UI claims as one of its real-time inputs. That makes it a
+  natural downstream consumer of the composition-adjusted claims series
+  that this report builds: substituting the composition-benchmark-implied
+  claims for the official series in CFLMI isolates the counterfactual
+  unemployment rate, separations rate, and hiring rate one would read if
+  claims tracked the compositional mix of the unemployed alone.
+- **Board of Governors** [FEDS
+  Notes](https://www.federalreserve.gov/econres/notes/feds-notes/default.htm).
+- Kansas City Fed [*Economic
+  Review*](https://www.kansascityfed.org/research/economic-review/) and
+  Richmond Fed [*Economic
+  Brief*](https://www.richmondfed.org/publications/research/economic_brief)
+  cover related topics on slack, participation, and duration.
+
+# 6. Why This Matters for the Composition Benchmark
+
+The practitioner literature above converges on a claim that the
+composition benchmark in `ui_composition_benchmark.qmd` makes precise:
+
+> **Weekly UI claims are a cleaner signal of labor-market health when the
+> unemployed population looks like the population UI was designed for — i.e.,
+> job losers with prior covered earnings — than when it is tilted toward
+> entrants, reentrants, and job leavers.**
+
+Every commentator cited above makes some version of this argument
+informally. None quantifies it in a reduced-form panel. That is the
+contribution of the present report, and the practitioner literature is
+the audience that would most directly benefit from it. Specifically:
+
+1. **Market economists** who publish weekly Thursday claims commentary
+   need a composition-adjusted benchmark to say whether a given claims
+   reading is "low" relative to the current mix of unemployment, not just
+   relative to history.
+2. **Fed research staff** modeling labor-market slack need a way to
+   reconcile claims and household-survey unemployment when they
+   diverge — composition is one of the top candidate explanations.
+3. **Policy analysts at CBPP, TCF, NELP, Urban, and the Hamilton Project**
+   arguing for UI reform need empirical evidence on how much of the
+   recipiency decline is mechanical (composition) versus policy
+   (administrative burden, tax treatment, state choices). The benchmark's
+   residual is precisely the non-compositional part they care about.
+4. **Journalists** writing the Thursday-morning claims story need a
+   framework for explaining why a 220K print in 2024 does not mean the
+   same thing as a 220K print in 2004. Composition is the simplest
+   explanation and the one that maps most cleanly onto the
+   soft-landing narrative of 2023–2024.
+
+# 7. Suggested Placement in the Main Report
+
+I would slot a condensed version of this material into
+`ui_composition_benchmark.qmd` as a new **Section 1.1 ("Why UI claims are
+watched")** immediately after the introduction, and reference specific
+practitioner pieces inline in the existing Section 2 literature review to
+give it a blog-and-news companion to its academic citations. The current
+Section 2 should remain the rigorous academic review; this new material is
+explicitly labeled as practitioner context and should not displace it.
+
+A two-paragraph compressed version that could live in Section 1.1:
+
+> *Initial and continued UI claims are the most closely watched weekly
+> labor-market indicator in U.S. financial markets and economic journalism.
+> The Thursday claims release at 8:30 a.m. Eastern moves Treasury yields,
+> generates front-page coverage in downturns, and is the standard input to
+> real-time recession calls, including the "400K line" rule of thumb
+> popularized on Calculated Risk and the Sahm Rule that triggered in July
+> 2024. During the 2023–2024 soft-landing debate, practitioners including
+> Claudia Sahm (*Stay-At-Home Macro*), Nick Bunker (Indeed Hiring Lab),
+> Guy Berger (Burning Glass Institute), Ernie Tedeschi (Yale Budget Lab),
+> and Jed Kolko repeatedly flagged a divergence: claims stayed low while
+> the unemployment rate drifted up, and the standard interpretation was
+> that the rise in unemployment was being driven by labor-force entry and
+> reentry rather than layoffs.*
+>
+> *That practitioner consensus is informally a composition story: claims
+> track the job-losing unemployed, and when unemployment is tilted toward
+> entrants, reentrants, and job leavers, claims understate distress in the
+> sense of missing non-claimant unemployment but also accurately capture
+> the smaller claimant-relevant subset. What the practitioner literature
+> has not done is quantify this mapping. This report fills that gap by
+> estimating a reduced-form composition benchmark for claims intensity in
+> an annual state panel, then characterizing the residual gap between
+> observed and benchmark-predicted intensity — the portion that
+> composition cannot explain and that institutional and administrative
+> factors must.*
+
+# 8. Annotated Link List
+
+For convenience, a consolidated list of the verified hub URLs above:
+
+**Data and official releases**
+
+- DOL weekly claims release: [oui.doleta.gov/unemploy/claims.asp](https://oui.doleta.gov/unemploy/claims.asp)
+- DOL news release PDF: [dol.gov/ui/data.pdf](https://www.dol.gov/ui/data.pdf)
+- FRED ICSA: [fred.stlouisfed.org/series/ICSA](https://fred.stlouisfed.org/series/ICSA)
+- FRED CCSA: [fred.stlouisfed.org/series/CCSA](https://fred.stlouisfed.org/series/CCSA)
+- FRED Sahm Rule: [fred.stlouisfed.org/series/SAHMREALTIME](https://fred.stlouisfed.org/series/SAHMREALTIME)
+- Census CPS technical docs: [census.gov/programs-surveys/cps/technical-documentation](https://www.census.gov/programs-surveys/cps/technical-documentation.html)
+
+**Fed research — specific pieces**
+
+- SF Fed, Garimella/Jordà/Singh, ["Tracking Labor Market Stress"](https://www.frbsf.org/research-and-insights/publications/economic-letter/2025/08/tracking-labor-market-stress/) (Aug 2025)
+- SF Fed, Petrosky-Nadeau/Valletta, ["Unemployment Insurance Withdrawal"](https://www.frbsf.org/research-and-insights/publications/economic-letter/2022/04/unemployment-insurance-withdrawal/) (Apr 2022)
+- SF Fed, ["Recent Slowdown in Labor Supply and Demand"](https://www.frbsf.org/research-and-insights/publications/economic-letter/2026/01/recent-slowdown-in-labor-supply-and-demand/) (Jan 2026)
+- Cleveland Fed, ["Immigration and the Unemployment Rate in 2023–2024"](https://www.clevelandfed.org/publications/economic-commentary/2026/ec-202605-immigration-and-unemployment-rate-2023-2024) (2026)
+- Chicago Fed, Brave/Butters/Kelley, ["A 'Big Data' View of the U.S. Economy (BBKI)"](https://www.chicagofed.org/publications/chicago-fed-letter/2019/422) (*Chicago Fed Letter* 422, 2019)
+- Chicago Fed, ["Introducing the Chicago Fed Labor Market Indicators"](https://www.chicagofed.org/publications/chicago-fed-insights/2025/introducing-chicago-fed-labor-market-indicators) (Sep 2025)
+- Chicago Fed, ["A Closer Look at the Low-Hire, Low-Fire Labor Market with CFLMI"](https://www.chicagofed.org/publications/chicago-fed-insights/2026/low-hire-low-fire-chicago-fed-labor-market-indicators) (2026)
+- CFLMI data: [chicagofed.org/research/data/chicago-fed-labor-market-indicators/latest-release](https://www.chicagofed.org/research/data/chicago-fed-labor-market-indicators/latest-release)
+- Board of Governors [FEDS Notes](https://www.federalreserve.gov/econres/notes/feds-notes/default.htm)
+
+**Think tanks and policy — specific pieces**
+
+- CBPP, Stone/Chen, ["Introduction to Unemployment Insurance"](https://www.cbpp.org/research/introduction-to-unemployment-insurance)
+- CBPP, ["Unemployment Insurance Recipiency Rates by State, 2022"](https://www.cbpp.org/media/unemployment-insurance-recipiency-rates-by-state-2022)
+- Urban Institute, Vroman, ["Low Benefit Recipiency in State Unemployment Insurance Programs"](https://www.urban.org/research/publication/low-benefit-recipiency-state-unemployment-insurance-programs)
+- TCF, Stettner, ["A Pandemic Lifeline"](https://tcf.org/content/report/a-pandemic-lifeline-nations-unemployment-system-is-inadequate-and-unprepared-for-next-downturn/) and ["Our Unemployment System Needs Modernizing"](https://tcf.org/content/report/our-unemployment-system-needs-modernizing-trump-is-doing-the-opposite/)
+- TCF, ["Unemployment Insurance Data Dashboard"](https://tcf.org/content/report/unemployment-insurance-data-dashboard/)
+- NELP, ["Closing Doors on the Unemployed"](https://www.nelp.org/insights-research/closing-doors-on-the-unemployed/)
+- EPI, Shierholz, ["Assessing the strength of the labor market"](https://www.epi.org/blog/assessing-the-strength-of-the-labor-market-preliminary-downward-revisions-do-not-necessarily-signal-a-weaker-2024-labor-market-but-there-are-warning-signs-for-2025/) (2024)
+- Burning Glass Institute, Berger, ["Labor Market Outlook August 2024"](https://www.burningglassinstitute.org/research/labor-market-outlook-august-2024)
+
+**Practitioner blogs and newsletters — specific posts**
+
+- Sahm, ["The Sahm rule: step by step"](https://stayathomemacro.substack.com/p/the-sahm-rule-step-by-step)
+- Sahm, ["The Sahm rule: I created a monster"](https://stayathomemacro.substack.com/p/the-sahm-rule-i-created-a-monster)
+- Sahm, ["A Year With No Jobs—But No Recession"](https://stayathomemacro.substack.com/p/a-year-with-no-jobsbut-no-recession)
+- Bunker, ["January 2024 JOLTS Statement"](https://www.hiringlab.org/2024/03/06/january-2024-jolts-statement/)
+- Bunker, ["July 2024 Labor Market Update"](https://www.hiringlab.org/2024/07/11/july-labor-market-update-slowdown-posted-wage-growth/)
+- Kolko, ["No, Native-Born Employment Has Not Soared"](https://jedkolko.substack.com/p/no-native-born-employment-has-not)
+- Tedeschi, ["Immigration and the U.S. Economy Since the Pandemic"](https://www.briefingbook.info/p/immigration-and-the-us-economy-since)
+- Brusuelas (RSM), ["Market Minute: The declining labor supply, the jobless rate and Fed policy"](https://realeconomy.rsmus.com/market-minute-the-declining-labor-supply-the-jobless-rate-and-fed-policy/)
+- Brusuelas (RSM), ["U.S. August jobs report: A soft landing in the economy"](https://realeconomy.rsmus.com/u-s-august-jobs-report-a-soft-landing-in-the-economy/)
+- Calculated Risk (blog home): [calculatedriskblog.com](https://www.calculatedriskblog.com/)
+
+# 9. Open Questions for the Main Report
+
+Four gaps in the practitioner literature that the composition benchmark
+could explicitly address, and that would sharpen the main report's
+positioning:
+
+1. **How much of the 2023–2024 claims-unemployment divergence is
+   composition?** Sahm, Bunker, and Tedeschi all asserted it was "a lot"
+   but none produced a decomposition. The state-panel regressions in
+   Section 7 of the main report are well positioned to answer this
+   quantitatively.
+2. **Does the composition channel operate symmetrically in downturns and
+   recoveries?** The practitioner consensus implicitly assumes it does,
+   but the residual term $\varepsilon_{st}$ in the benchmark specification
+   may behave asymmetrically — this would be a direct empirical
+   contribution.
+3. **Is the state panel's composition-adjusted residual correlated with
+   the administrative-burden measures that the CBPP/TCF/NELP literature
+   emphasizes?** This is the natural bridge between the composition story
+   (which this report quantifies) and the institutional story (which the
+   policy literature documents qualitatively). A correlation result would
+   give the main report a direct policy-literature hook.
+4. **What does a composition-only claims series imply when plugged into
+   the Chicago Fed Labor Market Indicators?** CFLMI (launched September
+   2025) forecasts the BLS unemployment rate, a layoffs/other-separations
+   rate, and a hiring rate for the unemployed using official UI claims as
+   a real-time input. Replacing the actual CC/CE series with the
+   composition-benchmark prediction isolates the counterfactual readings
+   one would see if claims tracked the compositional mix of the
+   unemployed alone — i.e., the part of the CFLMI signal that is
+   *mechanical* given who is unemployed, separated from the part driven
+   by administrative frictions, employer behavior, and state-program
+   design. No other piece in the practitioner literature does this
+   substitution, and it is the most direct way to translate the report's
+   reduced-form result into an object Fed and market watchers already
+   read.

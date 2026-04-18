@@ -110,7 +110,15 @@ takeup_cause_df <- read_final_parquet("ui_national_takeup_cause.parquet") |>
   mutate(date = as.Date(date), month_of_year = factor(month_of_year, levels = month.abb))
 nativity_shares <- read_final_parquet("unemployment_nativity_shares.parquet") |>
   mutate(date = as.Date(date))
+fourway_nativity <- read_final_parquet("unemployment_fourway_nativity.parquet") |>
+  mutate(date = as.Date(date))
 dominant_profiles <- read_final_parquet("unemployment_dominant_profiles.parquet") |>
+  mutate(
+    cause = factor(cause, levels = cause_order),
+    dimension = factor(dimension, levels = c("Age", "Education", "Sex", "Race/Ethnicity",
+                                             "Occupation", "Class", "Foreign Born", "Noncitizen"))
+  )
+dominant_profile_ratios <- read_final_parquet("unemployment_dominant_profile_ratios.parquet") |>
   mutate(
     cause = factor(cause, levels = cause_order),
     dimension = factor(dimension, levels = c("Age", "Education", "Sex", "Race/Ethnicity",
@@ -265,6 +273,49 @@ two_group_long <- fred_cause |>
   select(date, `Job Separations_rate`, `Labor Force Entry_rate`) |>
   pivot_longer(-date, names_to = "group", values_to = "rate") |>
   mutate(group = factor(str_remove(group, "_rate"), levels = group_order))
+
+nativity_group_order <- c(
+  "Foreign-Born Entrants",
+  "Native-Born Entrants",
+  "Foreign-Born Job Separators",
+  "Native-Born Job Separators"
+)
+
+nativity_group_cols <- c(
+  "Foreign-Born Entrants" = "#b8860b",
+  "Native-Born Entrants" = "#ffe680",
+  "Foreign-Born Job Separators" = "#003f7f",
+  "Native-Born Job Separators" = "#66b2ff"
+)
+
+fourway_nativity_long <- fourway_nativity |>
+  transmute(
+    date,
+    `Foreign-Born Job Separators` = `Foreign Born × Separations_rate`,
+    `Native-Born Job Separators` = `Native Born × Separations_rate`,
+    `Foreign-Born Entrants` = `Foreign Born × Entry_rate`,
+    `Native-Born Entrants` = `Native Born × Entry_rate`,
+    urate
+  ) |>
+  pivot_longer(-c(date, urate), names_to = "group", values_to = "rate") |>
+  mutate(group = factor(group, levels = nativity_group_order))
+
+fourway_nat_share_long <- nativity_shares |>
+  filter(
+    panel == "share_of_total_unemployed",
+    series %in% c("LF Entrants", "Job Separators", "LF Entrants × FB", "Job Separators × FB")
+  ) |>
+  transmute(date, series = as.character(series), share) |>
+  pivot_wider(names_from = series, values_from = share) |>
+  transmute(
+    date,
+    `Foreign-Born Entrants` = `LF Entrants × FB`,
+    `Native-Born Entrants` = `LF Entrants` - `LF Entrants × FB`,
+    `Foreign-Born Job Separators` = `Job Separators × FB`,
+    `Native-Born Job Separators` = `Job Separators` - `Job Separators × FB`
+  ) |>
+  pivot_longer(-date, names_to = "group", values_to = "share") |>
+  mutate(group = factor(group, levels = nativity_group_order))
 ```
 
 ## 4.1 Unemployment Rate by Cause
@@ -317,6 +368,33 @@ add_recessions(
 )
 ```
 
+### Two-Group x Nativity
+
+```{r fig-urate-cause-2-nativity}
+#| fig-cap: "Unemployment rate decomposed into entrants versus job separators, split by nativity."
+
+add_recessions(
+  ggplot(fourway_nativity_long, aes(date, rate, fill = group)) +
+    geom_col(alpha = 0.85, width = 28) +
+    geom_line(
+      data = fourway_nativity,
+      aes(y = urate, fill = NULL),
+      color = "black",
+      linewidth = 0.4
+    ) +
+    scale_fill_manual(values = nativity_group_cols) +
+    scale_y_continuous(labels = \(x) paste0(x, "%")) +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    labs(
+      title = "Unemployment Rate: Two-Group x Nativity",
+      subtitle = "Rate contributions from entrants and job separators, split by nativity",
+      x = NULL,
+      y = "Rate (%)",
+      caption = "Source: local derived FRED/BLS unemployment panel combined with CPS nativity shares"
+    )
+)
+```
+
 :::
 
 ## 4.2 Year-Over-Year Changes
@@ -353,6 +431,10 @@ fred_cause |>
 
 For UI claims intensity, the relevant object is not the rate contribution of each cause but its share of total unemployment. A rising share of new entrants or reentrants means a larger fraction of the unemployed pool falls outside the traditional insured population.
 
+::: {.panel-tabset}
+
+### Six-Way
+
 ```{r fig-stacked-shares}
 #| fig-cap: "Composition of unemployment by cause (shares of total unemployed). Labor force entrants comprise a large share of the unemployed pool outside recessions."
 
@@ -380,6 +462,26 @@ fred_cause |>
     caption = "Source: local derived FRED/BLS unemployment panel"
   )
 ```
+
+### Two-Group x Nativity
+
+```{r fig-stacked-shares-nativity}
+#| fig-cap: "Composition of unemployment by nativity-by-two-group cells (shares of total unemployed)."
+
+ggplot(fourway_nat_share_long, aes(date, share, fill = group)) +
+  geom_area(alpha = 0.85) +
+  scale_fill_manual(values = nativity_group_cols) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(
+    title = "Composition of Unemployment: Two-Group x Nativity",
+    subtitle = "Shares of total unemployed",
+    x = NULL,
+    y = "Share of total unemployed (%)",
+    caption = "Source: local derived CPS nativity shares"
+  )
+```
+
+:::
 
 The key pattern for UI is straightforward: outside of recessions, labor force entrants, reentrants plus new entrants, comprise a large share of the unemployed. These are predominantly individuals with weak or no UI eligibility. During recessions, job losers surge and the entrant share compresses. The level of aggregate claims intensity historically associated with a given unemployment mix should therefore be higher in recessions and lower in expansions, even if nothing changes about the institutional environment.
 
@@ -461,7 +563,7 @@ In the pandemic-exclusion sample, completed temporary jobs stand out as essentia
 
 The compositional shifts documented above raise a natural question: who are the people in each cause category, and has their demographic profile changed over time? The current build stores precomputed dominant-profile summaries, which makes it possible to recreate the archived profile comparisons without re-reading CPS microdata during render.
 
-Two versions are presented for each cause: a pooled profile and a 2025-vs-pooled delta showing how the current composition differs from the historical average. The delta charts highlight secular demographic shifts that may affect the mapping from cause category to claims intensity if within-cause claiming propensities vary by demographic group.
+Four views are presented for each cause: (i) a pooled profile showing the dominant demographic group's share along each dimension, (ii) a 2025-vs-pooled delta showing how the current composition differs from the historical average, (iii) a pooled representation ratio (cause-group share ÷ labor force share, where values above 1 indicate overrepresentation and below 1 indicate underrepresentation), and (iv) the 2025-vs-pooled change in the representation ratio. Together, these charts distinguish between groups that are large in a cause category simply because they are large in the labor force versus groups that are genuinely overrepresented relative to their labor force presence.
 
 ```{r radar-helpers}
 plot_dominant_radar_single <- function(profile_df, cause_name, subtitle) {
@@ -808,10 +910,289 @@ plot_dominant_radar_delta <- function(profile_df, cause_name, subtitle, max_abs_
     )
 }
 
+plot_dominant_radar_ratio <- function(ratio_df, cause_name, subtitle, max_ratio = 3.0) {
+  plot_df <- ratio_df |>
+    filter(cause == cause_name) |>
+    arrange(dimension) |>
+    mutate(axis_id = row_number())
+
+  n_axes <- nrow(plot_df)
+  angles <- pi / 2 - 2 * pi * (seq_len(n_axes) - 1) / n_axes
+  radial_breaks <- c(0, 0.5, 1.0, 1.5, 2.0, max_ratio)
+
+  point_df <- plot_df |>
+    mutate(
+      angle = angles,
+      radius = pmin(ratio, max_ratio) / max_ratio,
+      x = radius * cos(angle),
+      y = radius * sin(angle)
+    )
+
+  closed_df <- bind_rows(point_df, slice(point_df, 1))
+
+  spoke_df <- tibble(
+    axis_id = seq_len(n_axes),
+    angle = angles,
+    x = 0, y = 0,
+    xend = cos(angle), yend = sin(angle)
+  )
+
+  ring_df <- map_dfr(radial_breaks, \(ring) {
+    tibble(
+      ring = ring,
+      ring_radius = ring / max_ratio,
+      axis_id = c(seq_len(n_axes), 1L),
+      angle = angles[c(seq_len(n_axes), 1L)],
+      x = (ring / max_ratio) * cos(angle),
+      y = (ring / max_ratio) * sin(angle)
+    )
+  })
+
+  axis_label_df <- point_df |>
+    transmute(
+      dimension, angle,
+      label_x = 1.17 * cos(angle),
+      label_y = 1.17 * sin(angle),
+      hjust = case_when(label_x > 0.15 ~ 0, label_x < -0.15 ~ 1, TRUE ~ 0.5),
+      vjust = case_when(label_y > 0.15 ~ 0, label_y < -0.15 ~ 1, TRUE ~ 0.5)
+    )
+
+  point_label_df <- point_df |>
+    transmute(
+      axis_id, angle,
+      point_label = label,
+      label_radius = case_when(
+        radius >= 0.72 ~ pmax(radius - 0.14, 0.16),
+        TRUE ~ pmin(radius + 0.11, 0.88)
+      ),
+      tangent_shift = if_else(axis_id %% 2 == 0, 0.045, -0.045),
+      label_x = label_radius * cos(angle) + tangent_shift * (-sin(angle)),
+      label_y = label_radius * sin(angle) + tangent_shift * cos(angle),
+      hjust = case_when(label_x > 0.18 ~ 0, label_x < -0.18 ~ 1, TRUE ~ 0.5),
+      vjust = case_when(label_y > 0.18 ~ 0, label_y < -0.18 ~ 1, TRUE ~ 0.5)
+    )
+
+  radial_label_df <- tibble(
+    ring = radial_breaks,
+    x = radial_breaks / max_ratio,
+    y = 0.02,
+    label = paste0(number(radial_breaks, accuracy = 0.1), "x")
+  )
+
+  unity_radius <- 1.0 / max_ratio
+
+  ggplot() +
+    geom_path(
+      data = filter(ring_df, abs(ring - 1.0) > 0.01),
+      aes(x = x, y = y, group = ring),
+      color = "grey72", linewidth = 0.15
+    ) +
+    geom_path(
+      data = filter(ring_df, abs(ring - 1.0) <= 0.01),
+      aes(x = x, y = y, group = ring),
+      color = "grey40", linewidth = 0.6, linetype = "dashed"
+    ) +
+    geom_segment(
+      data = spoke_df,
+      aes(x = x, y = y, xend = xend, yend = yend),
+      color = "grey76", linewidth = 0.15
+    ) +
+    geom_polygon(
+      data = closed_df,
+      aes(x = x, y = y),
+      fill = scales::alpha(cause_cols[[cause_name]], 0.45),
+      color = cause_cols[[cause_name]],
+      linewidth = 0.15, linejoin = "round"
+    ) +
+    geom_point(
+      data = point_df,
+      aes(x = x, y = y),
+      color = cause_cols[[cause_name]],
+      fill = cause_cols[[cause_name]],
+      shape = 21, stroke = 0.2, size = 1.4
+    ) +
+    geom_text(
+      data = point_label_df,
+      aes(x = label_x, y = label_y, label = point_label, hjust = hjust, vjust = vjust),
+      size = 2.7, lineheight = 0.92,
+      color = cause_cols[[cause_name]]
+    ) +
+    geom_text(
+      data = axis_label_df,
+      aes(x = label_x, y = label_y, label = dimension, hjust = hjust, vjust = vjust),
+      size = 3.6, lineheight = 0.9
+    ) +
+    geom_text(
+      data = radial_label_df,
+      aes(x = x, y = y, label = label),
+      color = "grey65", size = 3.3, hjust = 0.5, vjust = 0
+    ) +
+    coord_equal(clip = "off") +
+    xlim(-1.28, 1.28) + ylim(-1.26, 1.28) +
+    labs(
+      title = cause_name,
+      subtitle = subtitle,
+      x = NULL, y = NULL
+    ) +
+    theme_report +
+    theme(
+      axis.text = element_blank(),
+      axis.ticks = element_blank(),
+      axis.line = element_blank(),
+      panel.grid = element_blank(),
+      plot.margin = margin(20, 35, 20, 35)
+    )
+}
+
+plot_dominant_radar_ratio_delta <- function(ratio_df, cause_name, subtitle, max_abs_delta = 0.50) {
+  plot_df <- ratio_df |>
+    filter(cause == cause_name) |>
+    arrange(dimension) |>
+    mutate(axis_id = row_number())
+
+  n_axes <- nrow(plot_df)
+  angles <- pi / 2 - 2 * pi * (seq_len(n_axes) - 1) / n_axes
+  radial_breaks <- c(-0.50, -0.25, 0, 0.25, 0.50)
+  radial_positions <- scales::rescale(
+    radial_breaks, to = c(0, 1), from = c(-max_abs_delta, max_abs_delta)
+  )
+
+  point_df <- plot_df |>
+    mutate(
+      angle = angles,
+      radius = scales::rescale(
+        pmax(pmin(delta, max_abs_delta), -max_abs_delta),
+        to = c(0, 1), from = c(-max_abs_delta, max_abs_delta)
+      ),
+      x = radius * cos(angle),
+      y = radius * sin(angle)
+    )
+
+  closed_df <- bind_rows(point_df, slice(point_df, 1))
+
+  spoke_df <- tibble(
+    axis_id = seq_len(n_axes),
+    angle = angles,
+    x = 0, y = 0,
+    xend = cos(angle), yend = sin(angle)
+  )
+
+  ring_df <- map_dfr(seq_along(radial_breaks), \(i) {
+    tibble(
+      ring_value = radial_breaks[[i]],
+      ring_position = radial_positions[[i]],
+      axis_id = c(seq_len(n_axes), 1L),
+      angle = angles[c(seq_len(n_axes), 1L)],
+      x = radial_positions[[i]] * cos(angle),
+      y = radial_positions[[i]] * sin(angle)
+    )
+  })
+
+  axis_label_df <- point_df |>
+    transmute(
+      dimension, angle,
+      label_x = 1.17 * cos(angle),
+      label_y = 1.17 * sin(angle),
+      hjust = case_when(label_x > 0.15 ~ 0, label_x < -0.15 ~ 1, TRUE ~ 0.5),
+      vjust = case_when(label_y > 0.15 ~ 0, label_y < -0.15 ~ 1, TRUE ~ 0.5)
+    )
+
+  point_label_df <- point_df |>
+    transmute(
+      axis_id, angle,
+      point_label = label,
+      label_radius = case_when(
+        radius >= 0.80 ~ pmax(radius - 0.16, 0.14),
+        radius <= 0.20 ~ pmin(radius + 0.16, 0.32),
+        TRUE ~ pmin(radius + 0.11, 0.90)
+      ),
+      tangent_shift = if_else(axis_id %% 2 == 0, 0.045, -0.045),
+      label_x = label_radius * cos(angle) + tangent_shift * (-sin(angle)),
+      label_y = label_radius * sin(angle) + tangent_shift * cos(angle),
+      hjust = case_when(label_x > 0.18 ~ 0, label_x < -0.18 ~ 1, TRUE ~ 0.5),
+      vjust = case_when(label_y > 0.18 ~ 0, label_y < -0.18 ~ 1, TRUE ~ 0.5)
+    )
+
+  radial_label_df <- tibble(
+    ring_value = radial_breaks,
+    x = radial_positions,
+    y = 0.02,
+    label = paste0(if_else(radial_breaks > 0, "+", ""), number(radial_breaks, accuracy = 0.01), "x")
+  )
+
+  ggplot() +
+    geom_path(
+      data = filter(ring_df, abs(ring_value) > 1e-9),
+      aes(x = x, y = y, group = ring_value),
+      color = "grey78", linewidth = 0.15
+    ) +
+    geom_path(
+      data = filter(ring_df, abs(ring_value) <= 1e-9),
+      aes(x = x, y = y, group = ring_value),
+      color = "grey40", linewidth = 0.6
+    ) +
+    geom_segment(
+      data = spoke_df,
+      aes(x = x, y = y, xend = xend, yend = yend),
+      color = "grey80", linewidth = 0.15
+    ) +
+    geom_polygon(
+      data = closed_df,
+      aes(x = x, y = y),
+      fill = scales::alpha(cause_cols[[cause_name]], 0.22),
+      color = cause_cols[[cause_name]],
+      linewidth = 0.2, linejoin = "round"
+    ) +
+    geom_point(
+      data = point_df,
+      aes(x = x, y = y),
+      color = cause_cols[[cause_name]],
+      fill = cause_cols[[cause_name]],
+      shape = 21, stroke = 0.2, size = 1.4
+    ) +
+    geom_text(
+      data = point_label_df,
+      aes(x = label_x, y = label_y, label = point_label, hjust = hjust, vjust = vjust),
+      size = 2.5, lineheight = 0.92,
+      color = cause_cols[[cause_name]]
+    ) +
+    geom_text(
+      data = axis_label_df,
+      aes(x = label_x, y = label_y, label = dimension, hjust = hjust, vjust = vjust),
+      size = 3.6, lineheight = 0.9
+    ) +
+    geom_text(
+      data = radial_label_df,
+      aes(x = x, y = y, label = label),
+      color = "grey60", size = 3.0, hjust = 0.5, vjust = 0
+    ) +
+    coord_equal(clip = "off") +
+    xlim(-1.28, 1.28) + ylim(-1.26, 1.28) +
+    labs(
+      title = cause_name,
+      subtitle = subtitle,
+      x = NULL, y = NULL
+    ) +
+    theme_report +
+    theme(
+      axis.text = element_blank(),
+      axis.ticks = element_blank(),
+      axis.line = element_blank(),
+      panel.grid = element_blank(),
+      plot.margin = margin(20, 35, 20, 35)
+    )
+}
+
+profile_causes <- c("Temporary Layoff", "Permanent Job Losers", "Reentrants", "New Entrants")
+
 pooled_profiles <- dominant_profiles |>
-  filter(variant == "pooled", cause %in% c("Temporary Layoff", "Permanent Job Losers", "New Entrants"))
+  filter(variant == "pooled", cause %in% profile_causes)
 delta_profiles <- dominant_profiles |>
-  filter(variant == "delta_2025", cause %in% c("Temporary Layoff", "Permanent Job Losers", "New Entrants"))
+  filter(variant == "delta_2025", cause %in% profile_causes)
+pooled_ratios <- dominant_profile_ratios |>
+  filter(variant == "pooled_ratio", cause %in% profile_causes)
+delta_ratios <- dominant_profile_ratios |>
+  filter(variant == "delta_2025_ratio", cause %in% profile_causes)
 ```
 
 ::: {.panel-tabset}
@@ -838,6 +1219,24 @@ plot_dominant_radar_single(pooled_profiles, "Temporary Layoff", "Pooled sample")
 plot_dominant_radar_delta(delta_profiles, "Temporary Layoff", "2025 minus pooled")
 ```
 
+#### Representation Ratio (Pooled)
+
+```{r fig-radar-temp-layoff-ratio}
+#| fig-cap: "Temporary Layoff representation ratio, pooled sample. Dashed ring = 1.0 (proportional representation)."
+#| fig-height: 6
+
+plot_dominant_radar_ratio(pooled_ratios, "Temporary Layoff", "Pooled — ratio to labor force share")
+```
+
+#### Representation Ratio (2025 vs. Pooled)
+
+```{r fig-radar-temp-layoff-ratio-delta}
+#| fig-cap: "Temporary Layoff representation ratio change, 2025 minus pooled."
+#| fig-height: 6
+
+plot_dominant_radar_ratio_delta(delta_ratios, "Temporary Layoff", "2025 minus pooled ratio")
+```
+
 :::
 
 ### Permanent Job Losers
@@ -860,6 +1259,66 @@ plot_dominant_radar_single(pooled_profiles, "Permanent Job Losers", "Pooled samp
 #| fig-height: 6
 
 plot_dominant_radar_delta(delta_profiles, "Permanent Job Losers", "2025 minus pooled")
+```
+
+#### Representation Ratio (Pooled)
+
+```{r fig-radar-perm-losers-ratio}
+#| fig-cap: "Permanent Job Losers representation ratio, pooled sample. Dashed ring = 1.0 (proportional representation)."
+#| fig-height: 6
+
+plot_dominant_radar_ratio(pooled_ratios, "Permanent Job Losers", "Pooled — ratio to labor force share")
+```
+
+#### Representation Ratio (2025 vs. Pooled)
+
+```{r fig-radar-perm-losers-ratio-delta}
+#| fig-cap: "Permanent Job Losers representation ratio change, 2025 minus pooled."
+#| fig-height: 6
+
+plot_dominant_radar_ratio_delta(delta_ratios, "Permanent Job Losers", "2025 minus pooled ratio")
+```
+
+:::
+
+### Reentrants
+
+::: {.panel-tabset}
+
+#### Pooled
+
+```{r fig-radar-reentrants-pooled}
+#| fig-cap: "Reentrants dominant-profile radar, pooled sample."
+#| fig-height: 6
+
+plot_dominant_radar_single(pooled_profiles, "Reentrants", "Pooled sample")
+```
+
+#### 2025 vs. Pooled
+
+```{r fig-radar-reentrants-delta}
+#| fig-cap: "Reentrants dominant-profile radar, 2025 minus pooled share of the same dominant group."
+#| fig-height: 6
+
+plot_dominant_radar_delta(delta_profiles, "Reentrants", "2025 minus pooled")
+```
+
+#### Representation Ratio (Pooled)
+
+```{r fig-radar-reentrants-ratio}
+#| fig-cap: "Reentrants representation ratio, pooled sample. Dashed ring = 1.0 (proportional representation)."
+#| fig-height: 6
+
+plot_dominant_radar_ratio(pooled_ratios, "Reentrants", "Pooled — ratio to labor force share")
+```
+
+#### Representation Ratio (2025 vs. Pooled)
+
+```{r fig-radar-reentrants-ratio-delta}
+#| fig-cap: "Reentrants representation ratio change, 2025 minus pooled."
+#| fig-height: 6
+
+plot_dominant_radar_ratio_delta(delta_ratios, "Reentrants", "2025 minus pooled ratio")
 ```
 
 :::
@@ -886,15 +1345,1020 @@ plot_dominant_radar_single(pooled_profiles, "New Entrants", "Pooled sample")
 plot_dominant_radar_delta(delta_profiles, "New Entrants", "2025 minus pooled")
 ```
 
+#### Representation Ratio (Pooled)
+
+```{r fig-radar-new-entrants-ratio}
+#| fig-cap: "New Entrants representation ratio, pooled sample. Dashed ring = 1.0 (proportional representation)."
+#| fig-height: 6
+
+plot_dominant_radar_ratio(pooled_ratios, "New Entrants", "Pooled — ratio to labor force share")
+```
+
+#### Representation Ratio (2025 vs. Pooled)
+
+```{r fig-radar-new-entrants-ratio-delta}
+#| fig-cap: "New Entrants representation ratio change, 2025 minus pooled."
+#| fig-height: 6
+
+plot_dominant_radar_ratio_delta(delta_ratios, "New Entrants", "2025 minus pooled ratio")
+```
+
 :::
 
 :::
 
 ### Summary of Demographic Profiles
 
-Three patterns stand out across the profile charts.
+Four patterns stand out across the profile and representation-ratio charts.
 
-Temporary layoffs remain the most clearly UI-attached category, but their dominant profile has become less singular over time. Permanent job losers have shifted toward more white-collar and more educated dominant groups, which matters if within-cause filing propensities differ across worker types. New entrants remain structurally distant from UI eligibility, but their profile also evolves over time, reinforcing the broader point that the composition of the unemployment pool changes both across causes and within causes.
+Temporary layoffs remain the most clearly UI-attached category, with blue-collar workers overrepresented at roughly 2× their labor force share. Permanent job losers have shifted toward more white-collar and more educated dominant groups, which matters if within-cause filing propensities differ across worker types. Reentrants skew heavily young (16–24) at nearly 3× their labor force share, consistent with intermittent labor force attachment. New entrants remain structurally distant from UI eligibility, but their profile also evolves over time. The representation-ratio deltas show that most of these patterns are stable — the 2025 ratios are close to their pooled values — reinforcing the point that compositional shifts across causes, not within-cause demographic change, are the primary driver of aggregate variation.
+
+## 4.5 Can Continuing Claims Predict the Unemployment Rate?
+
+The preceding sections show that the composition of the unemployment pool — especially the share made up of UI-ineligible new entrants — varies over time and differs from what claims data alone can see. This section asks a direct question: does knowing the new entrant share improve the ability of continuing claims to predict the unemployment rate?
+
+Three models are estimated on monthly national data, excluding the pandemic window (March 2020–December 2021):
+
+1. **Baseline**: $UR_t = \alpha + \beta \cdot (CC/CE)_t + \varepsilon_t$
+2. **Augmented**: $UR_t = \alpha + \beta_1 \cdot (CC/CE)_t + \beta_2 \cdot \text{NewEntShare}_t + \beta_3 \cdot (CC/CE)_t \times \text{NewEntShare}_t + \varepsilon_t$
+3. **Occupation-augmented**: $UR_t = \alpha + \beta_1 \cdot (CC/CE)_t + \beta_2 \cdot \text{EntrantShare}_t + \beta_3 \cdot \text{WhiteCollarShare}_t + \beta_4 \cdot (CC/CE)_t \times \text{EntrantShare}_t + \beta_5 \cdot (CC/CE)_t \times \text{WhiteCollarShare}_t + \varepsilon_t$
+
+```{r tbl-white-collar-definition}
+#| tbl-cap: "What the monthly white-collar share captures in the CPS-based unemployment composition data."
+
+tibble(
+  Component = c("Universe", "Included in white collar", "Excluded from white collar"),
+  Description = c(
+    "Share of unemployed workers whose last recorded occupation falls in a white-collar category. New entrants with no prior job are not counted as white collar.",
+    "Management and business, professional occupations, technicians, sales, and administrative support.",
+    "Service occupations, farm/forest/fishing, precision production and craft, operators/fabricators, transport/laborers, military, and no-prior-job or other/unclassified cases."
+  )
+) |>
+  gt() |>
+  cols_width(
+    Component ~ px(190),
+    Description ~ px(700)
+  ) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+The interaction term in the augmented model allows the slope of CC/CE on the unemployment rate to vary with the composition of the unemployment pool. New entrants are UI-ineligible and invisible to the claims system. When they make up a larger share of the unemployed, the claims system captures a smaller fraction of total unemployment, so the relationship between claims intensity and the unemployment rate shifts: the same unemployment rate is consistent with *lower* CC/CE because a larger share of the unemployed never filed. Equivalently, any given level of CC/CE corresponds to a higher unemployment rate than the baseline — which ignores composition — would predict.
+
+```{r ur-claims-models}
+ur_white_collar_monthly <- read_final_parquet("cps_ui_state_month_panel.parquet") |>
+  mutate(date = as.Date(date)) |>
+  group_by(date) |>
+  summarise(
+    white_collar_share = weighted.mean(white_collar_share, unemployed_total, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ur_df <- takeup_cause_df |>
+  left_join(ur_white_collar_monthly, by = "date") |>
+  filter(!is.na(urate), !is.na(cc_ce), !is.na(new_entrant_share), !is.na(white_collar_share)) |>
+  mutate(
+    pandemic = date >= as.Date("2020-03-01") & date <= as.Date("2021-12-01"),
+    cc_ce_pct = cc_ce * 100,
+    new_entrant_pct = new_entrant_share * 100,
+    white_collar_pct = white_collar_share * 100
+  )
+
+ur_est <- ur_df |> filter(!pandemic)
+
+ur_mod1 <- lm(urate ~ cc_ce_pct, data = ur_est)
+ur_mod2 <- lm(urate ~ cc_ce_pct * new_entrant_pct, data = ur_est)
+ur_mod3 <- lm(
+  urate ~ cc_ce_pct + new_entrant_pct + white_collar_pct +
+    cc_ce_pct:new_entrant_pct + cc_ce_pct:white_collar_pct,
+  data = ur_est
+)
+
+ur_cc_ce_points <- c(
+  low = quantile(ur_est$cc_ce_pct, 0.10, na.rm = TRUE) |> as.numeric(),
+  avg = mean(ur_est$cc_ce_pct, na.rm = TRUE),
+  high = quantile(ur_est$cc_ce_pct, 0.90, na.rm = TRUE) |> as.numeric()
+)
+ur_ne_points <- c(
+  low = quantile(ur_est$new_entrant_pct, 0.10, na.rm = TRUE) |> as.numeric(),
+  avg = mean(ur_est$new_entrant_pct, na.rm = TRUE),
+  high = quantile(ur_est$new_entrant_pct, 0.90, na.rm = TRUE) |> as.numeric()
+)
+ur_wc_points <- c(
+  low = quantile(ur_est$white_collar_pct, 0.10, na.rm = TRUE) |> as.numeric(),
+  avg = mean(ur_est$white_collar_pct, na.rm = TRUE),
+  high = quantile(ur_est$white_collar_pct, 0.90, na.rm = TRUE) |> as.numeric()
+)
+ur_mod2_coef <- coef(ur_mod2)
+ur_mod3_coef <- coef(ur_mod3)
+
+ur_me_cc <- function(new_entrant_pct) {
+  unname(ur_mod2_coef["cc_ce_pct"] +
+           ur_mod2_coef["cc_ce_pct:new_entrant_pct"] * new_entrant_pct)
+}
+
+ur_me_ne <- function(cc_ce_pct) {
+  unname(ur_mod2_coef["new_entrant_pct"] +
+           ur_mod2_coef["cc_ce_pct:new_entrant_pct"] * cc_ce_pct)
+}
+
+ur3_me_cc <- function(new_entrant_pct, white_collar_pct) {
+  unname(
+    ur_mod3_coef["cc_ce_pct"] +
+      ur_mod3_coef["cc_ce_pct:new_entrant_pct"] * new_entrant_pct +
+      ur_mod3_coef["cc_ce_pct:white_collar_pct"] * white_collar_pct
+  )
+}
+
+ur3_me_wc <- function(cc_ce_pct) {
+  unname(
+    ur_mod3_coef["white_collar_pct"] +
+      ur_mod3_coef["cc_ce_pct:white_collar_pct"] * cc_ce_pct
+  )
+}
+
+ur3_me_ne <- function(cc_ce_pct) {
+  unname(
+    ur_mod3_coef["new_entrant_pct"] +
+      ur_mod3_coef["cc_ce_pct:new_entrant_pct"] * cc_ce_pct
+  )
+}
+```
+
+### Full-Sample Regression Results
+
+::: {.panel-tabset}
+
+#### Coefficient Table
+
+```{r tbl-ur-claims-coefs}
+#| tbl-cap: "OLS regressions of the unemployment rate (%) on CC/CE (pp) and new entrant share (pp). Coefficients show the predicted change in the unemployment rate for a 1 pp increase in the regressor."
+
+extract_ur_terms <- function(model, model_label) {
+  summary(model)$coefficients |>
+    as.data.frame() |>
+    rownames_to_column("term") |>
+    as_tibble() |>
+    mutate(
+      Model = model_label,
+      term = case_when(
+        term == "(Intercept)" ~ "Intercept",
+        term == "cc_ce_pct" ~ "CC/CE (pp)",
+        term == "new_entrant_pct" ~ "New entrant share (pp)",
+        term == "white_collar_pct" ~ "White-collar share (pp)",
+        term == "cc_ce_pct:new_entrant_pct" ~ "CC/CE × New entrant share",
+        term %in% c("cc_ce_pct:white_collar_pct", "white_collar_pct:cc_ce_pct") ~
+          "CC/CE × White-collar share",
+        TRUE ~ term
+      )
+    ) |>
+    select(Model, Term = term, Estimate, `Std. Error`, `p-value` = `Pr(>|t|)`)
+}
+
+bind_rows(
+  extract_ur_terms(ur_mod1, "Baseline: UR ~ CC/CE"),
+  extract_ur_terms(ur_mod2, "Augmented: UR ~ CC/CE × New entrant share"),
+  extract_ur_terms(ur_mod3, "Occupation-augmented: + White-collar share")
+) |>
+  gt(groupname_col = "Model") |>
+  fmt_number(columns = c(Estimate, `Std. Error`), decimals = 3) |>
+  fmt_number(columns = `p-value`, decimals = 4) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+```{r tbl-ur-claims-fit}
+#| tbl-cap: "Model fit for the unemployment rate prediction regressions."
+
+tibble(
+  Model = c("Baseline", "Augmented", "Occupation-augmented"),
+  `R²` = c(summary(ur_mod1)$r.squared, summary(ur_mod2)$r.squared, summary(ur_mod3)$r.squared),
+  `Adj. R²` = c(summary(ur_mod1)$adj.r.squared, summary(ur_mod2)$adj.r.squared, summary(ur_mod3)$adj.r.squared),
+  `RMSE (pp)` = c(
+    sqrt(mean(residuals(ur_mod1)^2)),
+    sqrt(mean(residuals(ur_mod2)^2)),
+    sqrt(mean(residuals(ur_mod3)^2))
+  ),
+  `Sample Start` = format(min(ur_est$date), "%Y-%m"),
+  `Sample End` = format(max(ur_est$date), "%Y-%m"),
+  N = nrow(ur_est)
+) |>
+  gt() |>
+  fmt_number(columns = c(`R²`, `Adj. R²`, `RMSE (pp)`), decimals = 3) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  tab_footnote("Pandemic months (Mar 2020–Dec 2021) excluded from estimation.")
+```
+
+```{r tbl-ur-claims-sample-values}
+#| tbl-cap: "Regression-sample values for key regressors used to interpret the interaction and marginal effects."
+
+tibble(
+  Variable = c("UR (%)", "CC/CE (pp)", "New entrant share (pp)", "White-collar share (pp)"),
+  Mean = c(
+    mean(ur_est$urate, na.rm = TRUE),
+    ur_cc_ce_points["avg"],
+    ur_ne_points["avg"],
+    mean(ur_est$white_collar_pct, na.rm = TRUE)
+  ),
+  P10 = c(
+    quantile(ur_est$urate, 0.10, na.rm = TRUE) |> as.numeric(),
+    ur_cc_ce_points["low"],
+    ur_ne_points["low"],
+    quantile(ur_est$white_collar_pct, 0.10, na.rm = TRUE) |> as.numeric()
+  ),
+  P90 = c(
+    quantile(ur_est$urate, 0.90, na.rm = TRUE) |> as.numeric(),
+    ur_cc_ce_points["high"],
+    ur_ne_points["high"],
+    quantile(ur_est$white_collar_pct, 0.90, na.rm = TRUE) |> as.numeric()
+  )
+) |>
+  gt() |>
+  fmt_number(columns = c(Mean, P10, P90), decimals = 2) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  tab_footnote("Computed on the same non-pandemic monthly sample used for the full-sample regressions.")
+```
+
+```{r ur-claims-interpretation, results='asis'}
+fmt2 <- function(x) sprintf("%.2f", x)
+effect_text <- function(x) {
+  direction <- if (x >= 0) "higher" else "lower"
+  paste0(fmt2(abs(x)), " pp ", direction)
+}
+
+cat(
+  "**Interpretation.** Model 2 isolates how the `CC/CE` slope changes with the new entrant share alone. ",
+  "For that specification, the slope is ",
+  "$\\partial UR / \\partial (CC/CE) = \\beta_1 + \\beta_3 \\cdot \\text{New entrant share}$. ",
+  "The marginal effect of the new entrant share is ",
+  "$\\partial UR / \\partial \\text{New entrant share} = \\beta_2 + \\beta_3 \\cdot (CC/CE)$.\n\n",
+  "- **Model 2, marginal effect of CC/CE across new entrant share scenarios:** When the new entrant share is low (p10 = ",
+  fmt2(ur_ne_points["low"]), "%), a 1 pp increase in `CC/CE` is associated with an unemployment rate that is ",
+  effect_text(ur_me_cc(ur_ne_points["low"])), ". At the average new entrant share (mean = ",
+  fmt2(ur_ne_points["avg"]), "%), the same 1 pp increase in `CC/CE` is associated with an unemployment rate that is ",
+  effect_text(ur_me_cc(ur_ne_points["avg"])), ". When the new entrant share is high (p90 = ",
+  fmt2(ur_ne_points["high"]), "%), the implied effect is ",
+  effect_text(ur_me_cc(ur_ne_points["high"])), ".\n",
+  "- **Model 2, marginal effect of new entrant share across claims scenarios:** When `CC/CE` is low (p10 = ",
+  fmt2(ur_cc_ce_points["low"]), " pp), a 1 pp increase in the new entrant share is associated with an unemployment rate that is ",
+  effect_text(ur_me_ne(ur_cc_ce_points["low"])), ". At average `CC/CE` (mean = ",
+  fmt2(ur_cc_ce_points["avg"]), " pp), the same 1 pp increase in the new entrant share is associated with an unemployment rate that is ",
+  effect_text(ur_me_ne(ur_cc_ce_points["avg"])), ". When `CC/CE` is high (p90 = ",
+  fmt2(ur_cc_ce_points["high"]), " pp), the implied effect is ",
+  effect_text(ur_me_ne(ur_cc_ce_points["high"])), ".\n\n",
+  "Model 3 adds a second interaction, so the `CC/CE` slope becomes ",
+  "$\\partial UR / \\partial (CC/CE) = \\beta_1 + \\beta_4 \\cdot \\text{Entrant share} + \\beta_5 \\cdot \\text{White-collar share}$. ",
+  "The entrant share and white-collar share both have their own level effects. ",
+  "The entrant-share marginal effect is ",
+  "$\\partial UR / \\partial \\text{Entrant share} = \\beta_2 + \\beta_4 \\cdot (CC/CE)$, ",
+  "and the white-collar-share marginal effect is ",
+  "$\\partial UR / \\partial \\text{White-collar share} = \\beta_3 + \\beta_5 \\cdot (CC/CE)$. ",
+  "So both composition margins can shift the unemployment rate directly and can also change how strongly `CC/CE` maps into unemployment.\n\n",
+  "- **Model 3, `CC/CE` slope at average white-collar share:** Holding the white-collar share at its mean (",
+  fmt2(ur_wc_points["avg"]), "%), a 1 pp increase in `CC/CE` is associated with an unemployment rate that is ",
+  effect_text(ur3_me_cc(ur_ne_points["low"], ur_wc_points["avg"])), " when the entrant share is low (p10 = ",
+  fmt2(ur_ne_points["low"]), "%), ",
+  effect_text(ur3_me_cc(ur_ne_points["avg"], ur_wc_points["avg"])), " at the average entrant share (mean = ",
+  fmt2(ur_ne_points["avg"]), "%), and ",
+  effect_text(ur3_me_cc(ur_ne_points["high"], ur_wc_points["avg"])), " when the entrant share is high (p90 = ",
+  fmt2(ur_ne_points["high"]), "%).\n",
+  "- **Model 3, `CC/CE` slope at average entrant share:** Holding the entrant share at its mean (",
+  fmt2(ur_ne_points["avg"]), "%), a 1 pp increase in `CC/CE` is associated with an unemployment rate that is ",
+  effect_text(ur3_me_cc(ur_ne_points["avg"], ur_wc_points["low"])), " when the white-collar share is low (p10 = ",
+  fmt2(ur_wc_points["low"]), "%), ",
+  effect_text(ur3_me_cc(ur_ne_points["avg"], ur_wc_points["avg"])), " at the average white-collar share (mean = ",
+  fmt2(ur_wc_points["avg"]), "%), and ",
+  effect_text(ur3_me_cc(ur_ne_points["avg"], ur_wc_points["high"])), " when the white-collar share is high (p90 = ",
+  fmt2(ur_wc_points["high"]), "%).\n",
+  "- **Model 3, marginal effect of the white-collar share across claims scenarios:** When `CC/CE` is low (p10 = ",
+  fmt2(ur_cc_ce_points["low"]), " pp), a 1 pp increase in the white-collar share is associated with an unemployment rate that is ",
+  effect_text(ur3_me_wc(ur_cc_ce_points["low"])), ". At average `CC/CE` (mean = ",
+  fmt2(ur_cc_ce_points["avg"]), " pp), the implied effect is ",
+  effect_text(ur3_me_wc(ur_cc_ce_points["avg"])), ". When `CC/CE` is high (p90 = ",
+  fmt2(ur_cc_ce_points["high"]), " pp), the implied effect is ",
+  effect_text(ur3_me_wc(ur_cc_ce_points["high"])), ".\n",
+  "- **Model 3, marginal effect of the entrant share across claims scenarios:** When `CC/CE` is low (p10 = ",
+  fmt2(ur_cc_ce_points["low"]), " pp), a 1 pp increase in the entrant share is associated with an unemployment rate that is ",
+  effect_text(ur3_me_ne(ur_cc_ce_points["low"])), ". At average `CC/CE` (mean = ",
+  fmt2(ur_cc_ce_points["avg"]), " pp), the implied effect is ",
+  effect_text(ur3_me_ne(ur_cc_ce_points["avg"])), ". When `CC/CE` is high (p90 = ",
+  fmt2(ur_cc_ce_points["high"]), " pp), the implied effect is ",
+  effect_text(ur3_me_ne(ur_cc_ce_points["high"])), ".\n"
+)
+```
+
+#### Fitted vs. Actual
+
+```{r fig-ur-claims-fitted}
+#| fig-cap: "Actual unemployment rate vs. fitted values from the baseline (CC/CE only) and augmented (CC/CE × New Entrant Share) models."
+#| fig-height: 5
+
+ur_fitted <- ur_df |>
+  mutate(
+    fitted_baseline = predict(ur_mod1, newdata = ur_df),
+    fitted_augmented = predict(ur_mod2, newdata = ur_df),
+    fitted_occ_augmented = predict(ur_mod3, newdata = ur_df)
+  )
+
+ur_fitted |>
+  select(
+    date,
+    Actual = urate,
+    Baseline = fitted_baseline,
+    Augmented = fitted_augmented,
+    `Occupation-augmented` = fitted_occ_augmented
+  ) |>
+  pivot_longer(-date, names_to = "series", values_to = "value") |>
+  mutate(series = factor(series, levels = c("Actual", "Baseline", "Augmented", "Occupation-augmented"))) |>
+  ggplot(aes(date, value, color = series, linewidth = series)) +
+  annotate("rect",
+           xmin = as.Date("2020-03-01"), xmax = as.Date("2021-12-01"),
+           ymin = -Inf, ymax = Inf, fill = "grey85", alpha = 0.5) +
+  geom_line() +
+  scale_color_manual(values = c(
+    Actual = "black",
+    Baseline = "#0073C2",
+    Augmented = "#EFC000",
+    `Occupation-augmented` = "#D55E00"
+  )) +
+  scale_linewidth_manual(values = c(
+    Actual = 0.7,
+    Baseline = 0.5,
+    Augmented = 0.5,
+    `Occupation-augmented` = 0.5
+  )) +
+  scale_y_continuous(labels = \(x) paste0(x, "%")) +
+  labs(title = "Unemployment Rate: Actual vs. Claims-Based Predictions",
+       subtitle = "Models estimated excluding pandemic window (shaded)",
+       x = NULL, y = "Unemployment Rate (%)", color = NULL, linewidth = NULL) +
+  theme_report +
+  theme(legend.position = "bottom")
+```
+
+#### Residuals
+
+```{r fig-ur-claims-residuals}
+#| fig-cap: "Residuals from the baseline and augmented models. Negative values indicate the actual UR is below the claims-implied level."
+#| fig-height: 5
+
+ur_fitted |>
+  mutate(
+    resid_baseline = urate - fitted_baseline,
+    resid_augmented = urate - fitted_augmented,
+    resid_occ_augmented = urate - fitted_occ_augmented
+  ) |>
+  select(
+    date,
+    Baseline = resid_baseline,
+    Augmented = resid_augmented,
+    `Occupation-augmented` = resid_occ_augmented
+  ) |>
+  pivot_longer(-date, names_to = "model", values_to = "residual") |>
+  ggplot(aes(date, residual, color = model)) +
+  annotate("rect",
+           xmin = as.Date("2020-03-01"), xmax = as.Date("2021-12-01"),
+           ymin = -Inf, ymax = Inf, fill = "grey85", alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_line(linewidth = 0.5) +
+  scale_color_manual(values = c(
+    Baseline = "#0073C2",
+    Augmented = "#EFC000",
+    `Occupation-augmented` = "#D55E00"
+  )) +
+  scale_y_continuous(labels = \(x) paste0(x, " pp")) +
+  labs(title = "Prediction Residuals",
+       subtitle = "Pandemic window shaded",
+       x = NULL, y = "Actual − Fitted (pp)", color = NULL) +
+  theme_report +
+  theme(legend.position = "bottom")
+```
+
+:::
+
+### Pseudo-Out-of-Sample Forecasts
+
+To assess whether these relationships hold up as naive forecasting tools, I estimate an expanding-window pseudo-out-of-sample exercise. For each month $t$, the models are estimated on all non-pandemic data through month $t - 1$ and used to produce a one-step-ahead forecast for month $t$. This mimics what a forecaster would have seen in real time.
+
+```{r ur-claims-oos}
+min_window <- 60
+
+ur_nopandemic <- ur_df |> filter(!pandemic)
+all_dates <- sort(unique(ur_df$date))
+train_dates <- sort(unique(ur_nopandemic$date))
+
+oos_results <- map_dfr(seq_along(all_dates), function(i) {
+  target_date <- all_dates[i]
+  available <- ur_nopandemic |> filter(date < target_date)
+  if (nrow(available) < min_window) return(NULL)
+
+  m1 <- lm(urate ~ cc_ce_pct, data = available)
+  m2 <- lm(urate ~ cc_ce_pct * new_entrant_pct, data = available)
+  m3 <- lm(
+    urate ~ cc_ce_pct + new_entrant_pct + white_collar_pct +
+      cc_ce_pct:new_entrant_pct + cc_ce_pct:white_collar_pct,
+    data = available
+  )
+
+  target_row <- ur_df |> filter(date == target_date)
+  if (nrow(target_row) == 0) return(NULL)
+
+  tibble(
+    date = target_date,
+    actual = target_row$urate,
+    forecast_baseline = predict(m1, newdata = target_row),
+    forecast_augmented = predict(m2, newdata = target_row),
+    forecast_occ_augmented = predict(m3, newdata = target_row),
+    pandemic = target_row$pandemic
+  )
+})
+
+oos_nopandemic <- oos_results |> filter(!pandemic)
+rmse <- function(a, f) sqrt(mean((a - f)^2, na.rm = TRUE))
+mae <- function(a, f) mean(abs(a - f), na.rm = TRUE)
+
+oos_metrics <- tibble(
+  Model = c("Baseline", "Augmented", "Occupation-augmented"),
+  RMSE = c(
+    rmse(oos_nopandemic$actual, oos_nopandemic$forecast_baseline),
+    rmse(oos_nopandemic$actual, oos_nopandemic$forecast_augmented),
+    rmse(oos_nopandemic$actual, oos_nopandemic$forecast_occ_augmented)
+  ),
+  MAE = c(
+    mae(oos_nopandemic$actual, oos_nopandemic$forecast_baseline),
+    mae(oos_nopandemic$actual, oos_nopandemic$forecast_augmented),
+    mae(oos_nopandemic$actual, oos_nopandemic$forecast_occ_augmented)
+  )
+)
+```
+
+::: {.panel-tabset}
+
+#### Forecast Accuracy
+
+```{r tbl-ur-claims-oos}
+#| tbl-cap: "Pseudo-out-of-sample forecast accuracy (excluding pandemic months from evaluation)."
+
+oos_metrics |>
+  rename(`RMSE (pp)` = RMSE, `MAE (pp)` = MAE) |>
+  gt() |>
+  fmt_number(columns = c(`RMSE (pp)`, `MAE (pp)`), decimals = 2) |>
+  tab_footnote(
+    paste0("Expanding window with minimum ", min_window, " training months. ",
+           "Pandemic months excluded from training and evaluation. Units: percentage points.")
+  )
+```
+
+#### Forecasts vs. Actual
+
+```{r fig-ur-claims-oos-fit}
+#| fig-cap: "Pseudo-out-of-sample forecasts vs. actual unemployment rate."
+#| fig-height: 5
+
+oos_results |>
+  select(
+    date,
+    Actual = actual,
+    Baseline = forecast_baseline,
+    Augmented = forecast_augmented,
+    `Occupation-augmented` = forecast_occ_augmented
+  ) |>
+  pivot_longer(-date, names_to = "series", values_to = "value") |>
+  mutate(series = factor(series, levels = c("Actual", "Baseline", "Augmented", "Occupation-augmented"))) |>
+  ggplot(aes(date, value, color = series, linewidth = series)) +
+  annotate("rect",
+           xmin = as.Date("2020-03-01"), xmax = as.Date("2021-12-01"),
+           ymin = -Inf, ymax = Inf, fill = "grey85", alpha = 0.5) +
+  geom_line() +
+  scale_color_manual(values = c(
+    Actual = "black",
+    Baseline = "#0073C2",
+    Augmented = "#EFC000",
+    `Occupation-augmented` = "#D55E00"
+  )) +
+  scale_linewidth_manual(values = c(
+    Actual = 0.7,
+    Baseline = 0.5,
+    Augmented = 0.5,
+    `Occupation-augmented` = 0.5
+  )) +
+  scale_y_continuous(labels = \(x) paste0(x, "%")) +
+  labs(title = "Pseudo-Out-of-Sample Forecasts",
+       subtitle = "Expanding-window estimation; pandemic window shaded",
+       x = NULL, y = "Unemployment Rate (%)", color = NULL, linewidth = NULL) +
+  theme_report +
+  theme(legend.position = "bottom")
+```
+
+#### Forecast Errors
+
+```{r fig-ur-claims-oos-errors}
+#| fig-cap: "Pseudo-out-of-sample forecast errors (actual minus forecast). Negative values mean the model over-predicted the unemployment rate."
+#| fig-height: 5
+
+ne_threshold <- quantile(ur_df$new_entrant_pct, 0.75, na.rm = TRUE)
+
+oos_with_ne <- oos_results |>
+  left_join(ur_df |> select(date, new_entrant_pct), by = "date") |>
+  mutate(high_ne = new_entrant_pct >= ne_threshold)
+
+ne_runs <- oos_with_ne |>
+  filter(high_ne) |>
+  arrange(date) |>
+  mutate(gap = as.numeric(date - lag(date, default = first(date)), units = "days") > 45,
+         run = cumsum(gap)) |>
+  group_by(run) |>
+  summarise(xmin = min(date) - 15, xmax = max(date) + 15, .groups = "drop")
+
+oos_with_ne |>
+  mutate(
+    err_baseline = actual - forecast_baseline,
+    err_augmented = actual - forecast_augmented,
+    err_occ_augmented = actual - forecast_occ_augmented
+  ) |>
+  select(
+    date,
+    Baseline = err_baseline,
+    Augmented = err_augmented,
+    `Occupation-augmented` = err_occ_augmented
+  ) |>
+  pivot_longer(-date, names_to = "model", values_to = "error") |>
+  ggplot(aes(date, error, color = model)) +
+  geom_rect(data = ne_runs, inherit.aes = FALSE,
+            aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf),
+            fill = "#ADD8E6", alpha = 0.3) +
+  annotate("rect",
+           xmin = as.Date("2020-03-01"), xmax = as.Date("2021-12-01"),
+           ymin = -Inf, ymax = Inf, fill = "grey85", alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_line(linewidth = 0.5) +
+  scale_color_manual(values = c(
+    Baseline = "#0073C2",
+    Augmented = "#EFC000",
+    `Occupation-augmented` = "#D55E00"
+  )) +
+  scale_y_continuous(labels = \(x) paste0(x, " pp")) +
+  labs(title = "Pseudo-Out-of-Sample Forecast Errors",
+       subtitle = paste0("Light blue = new entrant share above 75th percentile (",
+                         sprintf("%.1f", ne_threshold), "%); grey = pandemic window"),
+       x = NULL, y = "Actual − Forecast (pp)", color = NULL) +
+  theme_report +
+  theme(legend.position = "bottom")
+```
+
+#### Errors by New Entrant Regime
+
+```{r tbl-ur-claims-oos-by-ne}
+#| tbl-cap: "Pseudo-out-of-sample forecast errors by new entrant share regime (excluding pandemic months)."
+
+oos_with_ne |>
+  filter(!pandemic) |>
+  mutate(
+    err_baseline = actual - forecast_baseline,
+    err_augmented = actual - forecast_augmented,
+    err_occ_augmented = actual - forecast_occ_augmented,
+    Period = if_else(high_ne, "High new entrant share", "Normal")
+  ) |>
+  group_by(Period) |>
+  summarise(
+    N = n(),
+    `Mean Error: Baseline (pp)` = mean(err_baseline),
+    `Mean Error: Augmented (pp)` = mean(err_augmented),
+    `Mean Error: Occupation-augmented (pp)` = mean(err_occ_augmented),
+    `Median Error: Baseline (pp)` = median(err_baseline),
+    `Median Error: Augmented (pp)` = median(err_augmented),
+    `Median Error: Occupation-augmented (pp)` = median(err_occ_augmented),
+    .groups = "drop"
+  ) |>
+  gt() |>
+  fmt_number(columns = where(is.numeric) & !c(N), decimals = 2) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  tab_footnote(
+    paste0("High new entrant share = above 75th percentile (",
+           sprintf("%.1f", ne_threshold), "%). ",
+           "Positive error = model under-predicted UR; negative = over-predicted.")
+  )
+```
+
+:::
+
+## 4.6 Does the Same Relationship Hold in a State-Year Panel?
+
+Section 4.5 used national monthly time-series variation. This subsection asks the same question in an annual state-year panel, where identification comes from within-state deviations after absorbing persistent cross-state level differences. The key advantage is that the design no longer relies entirely on a single aggregate time series. Relative to a specification with both state and year fixed effects, this version allows the composition variables and claims intensity to account for the aggregate annual time path.
+
+I estimate the same three specifications on the annual state-year panel, excluding 2020 and 2021 from the main estimation sample. The regressions include state fixed effects, annual state-population weights, and standard errors clustered by state:
+
+1. **Baseline**: $UR_{st} = \alpha_s + \beta \cdot (CC/CE)_{st} + \varepsilon_{st}$
+2. **Augmented**: $UR_{st} = \alpha_s + \beta_1 \cdot (CC/CE)_{st} + \beta_2 \cdot \text{EntrantShare}_{st} + \beta_3 \cdot (CC/CE)_{st} \times \text{EntrantShare}_{st} + \varepsilon_{st}$
+3. **Occupation-augmented**: $UR_{st} = \alpha_s + \beta_1 \cdot (CC/CE)_{st} + \beta_2 \cdot \text{EntrantShare}_{st} + \beta_3 \cdot \text{WhiteCollarShare}_{st} + \beta_4 \cdot (CC/CE)_{st} \times \text{EntrantShare}_{st} + \beta_5 \cdot (CC/CE)_{st} \times \text{WhiteCollarShare}_{st} + \varepsilon_{st}$
+
+The same CPS-based white-collar definition from Section 4.5 is used here.
+
+```{r ur-state-year-models}
+ur_panel_est <- panel_year |>
+  mutate(
+    ur_pct = unemployment_rate,
+    cc_ce_pct = continued_claims_per_covered_employment * 100,
+    new_entrant_pct = new_entrant_share * 100,
+    white_collar_pct = white_collar_share * 100
+  ) |>
+  filter(
+    !year %in% c(2020L, 2021L),
+    !is.na(ur_pct),
+    !is.na(cc_ce_pct),
+    !is.na(new_entrant_pct),
+    !is.na(white_collar_pct)
+  )
+
+urp_mod1 <- feols(
+  ur_pct ~ cc_ce_pct | state,
+  data = ur_panel_est,
+  weights = ~annual_population,
+  cluster = ~state
+)
+
+urp_mod2 <- feols(
+  ur_pct ~ cc_ce_pct * new_entrant_pct | state,
+  data = ur_panel_est,
+  weights = ~annual_population,
+  cluster = ~state
+)
+
+urp_mod3 <- feols(
+  ur_pct ~ cc_ce_pct + new_entrant_pct + white_collar_pct +
+    cc_ce_pct:new_entrant_pct + cc_ce_pct:white_collar_pct | state,
+  data = ur_panel_est,
+  weights = ~annual_population,
+  cluster = ~state
+)
+
+urp_cc_ce_points <- c(
+  low = quantile(ur_panel_est$cc_ce_pct, 0.10, na.rm = TRUE) |> as.numeric(),
+  avg = mean(ur_panel_est$cc_ce_pct, na.rm = TRUE),
+  high = quantile(ur_panel_est$cc_ce_pct, 0.90, na.rm = TRUE) |> as.numeric()
+)
+urp_ne_points <- c(
+  low = quantile(ur_panel_est$new_entrant_pct, 0.10, na.rm = TRUE) |> as.numeric(),
+  avg = mean(ur_panel_est$new_entrant_pct, na.rm = TRUE),
+  high = quantile(ur_panel_est$new_entrant_pct, 0.90, na.rm = TRUE) |> as.numeric()
+)
+urp_wc_points <- c(
+  low = quantile(ur_panel_est$white_collar_pct, 0.10, na.rm = TRUE) |> as.numeric(),
+  avg = mean(ur_panel_est$white_collar_pct, na.rm = TRUE),
+  high = quantile(ur_panel_est$white_collar_pct, 0.90, na.rm = TRUE) |> as.numeric()
+)
+
+urp_mod2_coef <- coef(urp_mod2)
+urp_mod3_coef <- coef(urp_mod3)
+
+urp_me_cc <- function(new_entrant_pct) {
+  unname(
+    urp_mod2_coef["cc_ce_pct"] +
+      urp_mod2_coef["cc_ce_pct:new_entrant_pct"] * new_entrant_pct
+  )
+}
+
+urp_me_ne <- function(cc_ce_pct) {
+  unname(
+    urp_mod2_coef["new_entrant_pct"] +
+      urp_mod2_coef["cc_ce_pct:new_entrant_pct"] * cc_ce_pct
+  )
+}
+
+urp3_me_cc <- function(new_entrant_pct, white_collar_pct) {
+  unname(
+    urp_mod3_coef["cc_ce_pct"] +
+      urp_mod3_coef["cc_ce_pct:new_entrant_pct"] * new_entrant_pct +
+      urp_mod3_coef["cc_ce_pct:white_collar_pct"] * white_collar_pct
+  )
+}
+
+urp3_me_wc <- function(cc_ce_pct) {
+  unname(
+    urp_mod3_coef["white_collar_pct"] +
+      urp_mod3_coef["cc_ce_pct:white_collar_pct"] * cc_ce_pct
+  )
+}
+
+urp3_me_ne <- function(cc_ce_pct) {
+  unname(
+    urp_mod3_coef["new_entrant_pct"] +
+      urp_mod3_coef["cc_ce_pct:new_entrant_pct"] * cc_ce_pct
+  )
+}
+
+panel_fit_stat <- function(model, stat) {
+  as.numeric(fitstat(model, stat))
+}
+
+ur_panel_pred <- ur_panel_est |>
+  mutate(
+    fitted_baseline = predict(urp_mod1, newdata = ur_panel_est),
+    fitted_augmented = predict(urp_mod2, newdata = ur_panel_est),
+    fitted_occ_augmented = predict(urp_mod3, newdata = ur_panel_est)
+  )
+```
+
+::: {.panel-tabset}
+
+### Coefficients
+
+```{r tbl-ur-state-year-coefs}
+#| tbl-cap: "State fixed-effects regressions of the unemployment rate (%) on CC/CE (pp), entrant share (pp), and white-collar share (pp). Estimates use annual state population weights and state-clustered standard errors; 2020 and 2021 are excluded."
+
+extract_urp_terms <- function(model, model_label) {
+  coeftable(model) |>
+    as.data.frame() |>
+    rownames_to_column("term") |>
+    as_tibble() |>
+    mutate(
+      Model = model_label,
+      term = case_when(
+        term == "cc_ce_pct" ~ "CC/CE (pp)",
+        term == "new_entrant_pct" ~ "New entrant share (pp)",
+        term == "white_collar_pct" ~ "White-collar share (pp)",
+        term == "cc_ce_pct:new_entrant_pct" ~ "CC/CE × New entrant share",
+        term %in% c("cc_ce_pct:white_collar_pct", "white_collar_pct:cc_ce_pct") ~
+          "CC/CE × White-collar share",
+        TRUE ~ term
+      )
+    ) |>
+    select(Model, Term = term, Estimate, `Std. Error`, `p-value` = `Pr(>|t|)`)
+}
+
+bind_rows(
+  extract_urp_terms(urp_mod1, "Baseline: State FE"),
+  extract_urp_terms(urp_mod2, "Augmented: State FE"),
+  extract_urp_terms(urp_mod3, "Occupation-augmented: State FE")
+) |>
+  gt(groupname_col = "Model") |>
+  fmt_number(columns = c(Estimate, `Std. Error`), decimals = 3) |>
+  fmt_number(columns = `p-value`, decimals = 4) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  )
+```
+
+### Fit And Sample
+
+```{r tbl-ur-state-year-fit}
+#| tbl-cap: "Model fit for the annual state-year unemployment-rate regressions."
+
+tibble(
+  Model = c("Baseline: State FE", "Augmented: State FE", "Occupation-augmented: State FE"),
+  `Within R²` = c(
+    panel_fit_stat(urp_mod1, "wr2"),
+    panel_fit_stat(urp_mod2, "wr2"),
+    panel_fit_stat(urp_mod3, "wr2")
+  ),
+  `RMSE (pp)` = c(
+    panel_fit_stat(urp_mod1, "rmse"),
+    panel_fit_stat(urp_mod2, "rmse"),
+    panel_fit_stat(urp_mod3, "rmse")
+  ),
+  `Sample Start` = min(ur_panel_est$year),
+  `Sample End` = max(ur_panel_est$year),
+  States = n_distinct(ur_panel_est$state),
+  Years = n_distinct(ur_panel_est$year),
+  N = nrow(ur_panel_est)
+) |>
+  gt() |>
+  fmt_number(columns = c(`Within R²`, `RMSE (pp)`), decimals = 3) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  tab_footnote("Fixed-effects regressions with state effects, annual population weights, and state-clustered standard errors.")
+```
+
+```{r tbl-ur-state-year-sample-values}
+#| tbl-cap: "Regression-sample values for the annual state-year panel used to interpret the interaction terms."
+
+tibble(
+  Variable = c("UR (%)", "CC/CE (pp)", "New entrant share (pp)", "White-collar share (pp)"),
+  Mean = c(
+    mean(ur_panel_est$ur_pct, na.rm = TRUE),
+    urp_cc_ce_points["avg"],
+    urp_ne_points["avg"],
+    urp_wc_points["avg"]
+  ),
+  P10 = c(
+    quantile(ur_panel_est$ur_pct, 0.10, na.rm = TRUE) |> as.numeric(),
+    urp_cc_ce_points["low"],
+    urp_ne_points["low"],
+    urp_wc_points["low"]
+  ),
+  P90 = c(
+    quantile(ur_panel_est$ur_pct, 0.90, na.rm = TRUE) |> as.numeric(),
+    urp_cc_ce_points["high"],
+    urp_ne_points["high"],
+    urp_wc_points["high"]
+  )
+) |>
+  gt() |>
+  fmt_number(columns = c(Mean, P10, P90), decimals = 2) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  tab_footnote("Computed over non-pandemic state-year observations in the estimation sample.")
+```
+
+### Fitted Vs. Actual
+
+```{r fig-ur-state-year-fit}
+#| fig-cap: "State-year fitted versus actual unemployment rate under state fixed effects only. Each point is a state-year observation; the 45-degree line marks perfect fit."
+#| fig-height: 4.8
+
+ur_panel_pred |>
+  select(
+    ur_pct,
+    annual_population,
+    Baseline = fitted_baseline,
+    Augmented = fitted_augmented,
+    `Occupation-augmented` = fitted_occ_augmented
+  ) |>
+  pivot_longer(c(Baseline, Augmented, `Occupation-augmented`),
+               names_to = "model", values_to = "fitted") |>
+  ggplot(aes(ur_pct, fitted)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  geom_point(aes(size = annual_population, color = model), alpha = 0.25) +
+  facet_wrap(~model, nrow = 1) +
+  scale_color_manual(values = c(
+    Baseline = "#0073C2",
+    Augmented = "#EFC000",
+    `Occupation-augmented` = "#D55E00"
+  )) +
+  scale_size_continuous(range = c(0.6, 4), guide = "none") +
+  labs(
+    title = "Annual State-Year Fit",
+    subtitle = "Non-pandemic sample with state fixed effects only",
+    x = "Actual unemployment rate (%)",
+    y = "Fitted unemployment rate (%)",
+    color = NULL
+  ) +
+  theme_report +
+  theme(legend.position = "bottom")
+```
+
+:::
+
+### Interpretation
+
+```{r ur-state-year-interpretation, results='asis'}
+fmt2 <- function(x) sprintf("%.2f", x)
+effect_text <- function(x) {
+  direction <- if (x >= 0) "higher" else "lower"
+  paste0(fmt2(abs(x)), " pp ", direction)
+}
+
+cat(
+  "These coefficients have a different interpretation from the national monthly regressions in Section 4.5. ",
+  "Because the models include state fixed effects but not year fixed effects, the variation comes from **within-state deviations around each state's own average level**, while still allowing the regressors to explain the common annual time path. ",
+  "So the estimates combine within-state changes over time with aggregate annual movement rather than comparing states only within the same year.\n\n",
+  "Relative to the national monthly exercise, the annual panel still confirms the broad entrant-share mechanism, but with weaker fit gains and smaller interaction magnitudes. ",
+  "In Section 4.5, the entrant interaction is strongly positive and the model fit rises sharply when entrant share is added. ",
+  "Here, the entrant interaction remains positive in both the augmented state-FE model and the occupation-augmented state-FE model, but it is materially smaller than in the national monthly regressions. ",
+  "The fit improvement is meaningful but not nearly as dramatic as in Section 4.5. In this subsection, the within $R^2$ rises from ",
+  fmt2(panel_fit_stat(urp_mod1, "wr2") * 100), "% in the baseline FE model to ",
+  fmt2(panel_fit_stat(urp_mod2, "wr2") * 100), "% in the entrant-augmented FE model and ",
+  fmt2(panel_fit_stat(urp_mod3, "wr2") * 100), "% in the occupation-augmented FE model. ",
+  "That is much smaller than the national monthly jump in ordinary $R^2$ from ",
+  fmt2(summary(ur_mod1)$r.squared * 100), "% to ",
+  fmt2(summary(ur_mod2)$r.squared * 100), "% and ",
+  fmt2(summary(ur_mod3)$r.squared * 100), "%.\n\n",
+  "The comparison therefore suggests that much of the predictive content in Section 4.5 reflects broad national time movement, but not all of it disappears once the analysis shifts to the annual state panel. ",
+  "With only state fixed effects, `CC/CE` remains highly predictive, and the entrant interaction continues to point in the expected direction. ",
+  "In the national monthly model, white-collar share enters with economically large and statistically precise coefficients. ",
+  "In the annual state-year model with state fixed effects only, the `CC/CE × White-collar share` interaction is also positive and statistically significant, which contrasts with the national monthly model where that interaction is negative. ",
+  "That sign reversal suggests the white-collar channel is not especially stable across levels of aggregation and identification strategies, so it should be interpreted more cautiously than the entrant interaction. ",
+  "The annual state-year results should therefore be read as a bridge between the purely national time-series exercise in Section 4.5 and the more saturated two-way fixed-effects designs later in the paper.\n\n",
+  "The state-year marginal effects summarize the size of the relationship directly. ",
+  "In the entrant-only state-FE interaction model, a 1 pp increase in `CC/CE` is associated with an unemployment rate that is ",
+  effect_text(urp_me_cc(urp_ne_points["low"])), " when the entrant share is low (p10 = ",
+  fmt2(urp_ne_points["low"]), "%), ",
+  effect_text(urp_me_cc(urp_ne_points["avg"])), " at the average entrant share (mean = ",
+  fmt2(urp_ne_points["avg"]), "%), and ",
+  effect_text(urp_me_cc(urp_ne_points["high"])), " when the entrant share is high (p90 = ",
+  fmt2(urp_ne_points["high"]), "%). ",
+  "That slope variation is directionally similar to the national model, but flatter: the entrant interaction here is about 0.12, versus about 0.26 in Section 4.5.\n\n",
+  "In the full occupation-augmented state-FE model, holding white-collar share at its mean (",
+  fmt2(urp_wc_points["avg"]), "%), a 1 pp increase in `CC/CE` is associated with an unemployment rate that is ",
+  effect_text(urp3_me_cc(urp_ne_points["low"], urp_wc_points["avg"])), " when entrant share is low, ",
+  effect_text(urp3_me_cc(urp_ne_points["avg"], urp_wc_points["avg"])), " at the average entrant share, and ",
+  effect_text(urp3_me_cc(urp_ne_points["high"], urp_wc_points["avg"])), " when entrant share is high. ",
+  "Holding entrant share fixed at its mean (", fmt2(urp_ne_points["avg"]), "%), the corresponding `CC/CE` slope moves only from ",
+  effect_text(urp3_me_cc(urp_ne_points["avg"], urp_wc_points["low"])), " at low white-collar share to ",
+  effect_text(urp3_me_cc(urp_ne_points["avg"], urp_wc_points["high"])), " at high white-collar share. ",
+  "The practical reading is that the annual state panel lands between the national monthly model and the stricter two-way FE panel: it keeps the cross-state level adjustment from state fixed effects, but it still lets composition and claims intensity explain the broad annual unemployment path. ",
+  "The entrant channel remains robust across those specifications, while the white-collar channel appears more specification-sensitive."
+)
+```
+
+### Direct Comparison Table
+
+```{r tbl-ur-monthly-vs-panel-comparison}
+#| tbl-cap: "Direct comparison of the national monthly and annual state-year unemployment-rate regressions."
+
+comparison_models <- list(
+  "Base." = ur_mod1,
+  "Aug." = ur_mod2,
+  "Occ." = ur_mod3,
+  "Base. " = urp_mod1,
+  "Aug. " = urp_mod2,
+  "Occ. " = urp_mod3
+)
+
+comparison_gof <- tribble(
+  ~raw, ~clean, ~fmt,
+  "nobs", "N", 0,
+  "r.squared", "R²", 3,
+  "within.r.squared", "Within R²", 3,
+  "rmse", "RMSE (pp)", 3
+)
+
+msummary(
+  comparison_models,
+  coef_map = c(
+    "(Intercept)" = "Intercept",
+    "cc_ce_pct" = "CC/CE (pp)",
+    "new_entrant_pct" = "New entrant share (pp)",
+    "white_collar_pct" = "White-collar share (pp)",
+    "cc_ce_pct:new_entrant_pct" = "CC/CE × New entrant share",
+    "cc_ce_pct:white_collar_pct" = "CC/CE × White-collar share"
+  ),
+  gof_map = comparison_gof,
+  stars = c("*" = 0.10, "**" = 0.05, "***" = 0.01),
+  output = "gt"
+) |>
+  tab_spanner(label = "National Monthly (Section 4.5)", columns = 2:4) |>
+  tab_spanner(label = "State-Year Panel, State FE (Section 4.6)", columns = 5:7) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(
+    style = cell_text(color = "white"),
+    locations = cells_column_labels()
+  ) |>
+  tab_source_note(
+    md("National monthly models are OLS on the non-pandemic monthly sample (March 2020 to December 2021 excluded). State-year models use annual population weights, state-clustered standard errors, state fixed effects, and exclude 2020 and 2021.")
+  )
+```
 
 # 5. Data and Measurement
 

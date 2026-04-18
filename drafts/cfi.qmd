@@ -1,0 +1,99 @@
+---
+title: "CFI Blog"
+author: "Kristin Butcher, Scott Brave, Aryan Safi"
+format: 
+  html:
+    code-fold: true
+editor: visual
+---
+
+```{r setup, include=F}
+
+library(tidyverse)
+library(arrow)
+library(here)
+library(ggsci)      # for scale_*_jco()
+library(scales)
+library(gt)
+library(lubridate)
+library(patchwork)
+rm(list=ls())
+
+theme_report <- theme_minimal(base_size = 11, base_family = "sans") +
+  theme(
+    plot.title = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(color = "grey50", size = 9),
+    plot.caption = element_text(color = "grey60", size = 7, hjust = 0),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.title = element_text(size = 9, color = "grey40"),
+    axis.text = element_text(size = 8, color = "grey50"),
+    legend.position = "top",
+    legend.text = element_text(size = 8),
+    legend.title = element_blank()
+  )
+
+theme_set(theme_report)
+
+```
+
+## Introduction
+
+The Department of Labor releases initial and continuing unemployment insurance (UI) claims data every Thursday at 8:30 a.m. Eastern, covering the week that ended the previous Saturday for initial claims and the week before that for continuing claims. Three features make claims data attractive as a real-time signal relative to the monthly Bureau of Labor Statistics (BLS) employment situation release: 
+
+1. **Frequency**. Released weekly which provides more detailed snapshots of the labor market in the periods between the monthly BLS report.   
+
+2. **Timeliness**. Published with a five-day lag, versus the three-week lag of the BLS payroll report enabling closer-to-real-time updates on the health of the labor market.    
+
+3. **Administrative grounding**. Claims are counted when people file, not estimated from a survey. 
+
+UI programs are designed to provide unemployment benefits to eligible workers who become unemployed through no fault of their own and meet other eligibility requirements.  For this reason, the majority of initial claims for unemployment insurance benefits are filed because of a separation from a job the filer did not initiate. Causes of such separations are layoffs, temporary furloughs, completed temporary contracts, among others (see [How Do I File for Unemployment Insurance](https://www.dol.gov/general/topic/unemployment-insurance)). Because of UI program design, initial claims are a **noisy, lower-bound read on separations**. Specifically, initial claims will miss **separations that do not generate claims** such as short-tenure workers, part-timers, gig/1099 workers and people who do not satisfy work-history or monetary-based eligibility requirements. 
+
+Continuing claims are the number of people currently drawing unemployment insurance benefits and can change for two reasons. The first is that the number of people who *initiate* claims changes (i.e., changes to the *inflows* to the insured-unemployment pool). The second is that people stop claiming benefits (i.e., changes to *outflows* from the insured-unemployment pool). Broadly, there are three reasons why people stop claiming: They find a job; they exhaust the UI benefits available to them; they fail to maintain eligibility.       
+
+Because of these desirable features, UI claims became the default "nowcast" input for labor-market watchers long before high-frequency alternatives existed. However, the labor market signal UI claims provide depends on *who the unemployed are*. When the unemployed pool is composed of groups UI programs were not designed to cover, the same claims release can imply something very different about the state of the labor market. In this post, we use the Current Population Survey's (CPS) unemployment-by-cause data to understand the historical and statistical relationship between the composition of the unemployed pool, UI claims, and the unemployment rate. 
+
+## Why People are Unemployed
+
+The CPS provides six mutually exclusive and exhaustive reason-for-unemployment categories: temporary layoff, permanent job loss, completed temporary job, voluntary quit, reentry to the labor force, and new entry. The definitions of those categories are provided in Table 1. 
+
+```{r table-1, fig.cap = 'Table 1: CPS WHYUNEMP Categories' }
+cause_order = c("Temporary Layoff", "Permanent Job Losers", "Completed Temp Job",
+                 "Job Leavers", "Reentrants", "New Entrants")
+tibble(
+  Category = cause_order,
+  WHYUNEMP = 1:6,
+  `BLS Definition` = c(
+    "Given a return date or expects recall within 6 months",
+    "Permanently separated; position eliminated, fired, or employer closed",
+    "Temporary job or assignment has ended",
+    "Voluntarily quit and now actively searching",
+    "Previously held a job, left the labor force, now returned to searching",
+    "Never held a job; actively looking for first one"
+  )
+) |>
+  gt() |>
+  tab_options(table.font.size = px(11), column_labels.font.weight = "bold",
+              column_labels.background.color = "#2c3e50") |>
+  tab_style(style = cell_text(color = "white"), locations = cells_column_labels()) 
+
+```
+
+Figure 1 presents rad 
+ 
+ 
+These cause-categories are useful for our exercise. Using monthly, national data, we should observe that periods with unemployment pools composed of Temporary Layoffs or Permanent Job Losers - groups with greater propensity to claim UI - should correspond with greater claiming than unemployment pools composed of other categories.  
+
+## The Flow-Consistent Rate of Unemployment 
+
+Taken together, the claims data provide powerful insights into the labor market's health. When continuing claims rise while initial claims stay steady, it is because fewer people are exiting UI — typically because they are not finding jobs. Conversely, when initial claims rise while continuing claims stay steady, it is because exits are keeping pace with inflows — newly separated workers are finding jobs quickly enough to keep the continuing claims stock from growing. That pattern is consistent with a dynamic or "high-churn" labor market. It is for these reasons that the Chicago Fed Labor Market Indicators incorporates weekly UI claims data to generate a contemporaneous forecast of the unemployment rate, distinguishes between the flows into and out of the unemployment (e.g., the Chicago Fed Hiring Rate for Unemployed Workers and the Chicago Fed Separations Rate for Employed Workers), and incorporates numerous other data series to fill in the aforementioned blind spots of the UI data.
+
+The [Chicago Fed Labor Market Indicators (LMI)](https://www.chicagofed.org/research/data/chicago-fed-labor-market-indicators/latest-release) use the method described in Shimer (2005, 2012) to compute job-finding, job-separation, and flow-consistent unemployment rates using data from the Current Population Survey (CPS). The flow-consistent rate of unemployment is defined as 
+
+$$
+FCR = \frac{s}{s+f}
+$$
+where $s$ is the separation rate into unemployment and $f$ is the job-finding rate out of unemployment. Decomposing the unemployment rate between January 2017 to December 2025 into contributions from $s$ and $f$ we find that **most of the variation in the monthly unemployment rate is driven by contributions from the hiring rate not the separations rate**. This is consistent with Shimer (2005, 2012) in which it was reported that 75% of unemployment rate was driven by contributions from the finding rate and 25% was driven by separations rate. 
+
+
+
