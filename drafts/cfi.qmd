@@ -79,8 +79,176 @@ tibble(
 
 ```
 
-Figure 1 presents rad 
+To see which reason-for-unemployment categories are most plausibly served by UI versus most plausibly missed by it, we construct a profile of each cause. For every cause category in Table 1, we identify the dominant demographic group and compute a representation ratio on a set of standard dimensions: age, education, sex, race, nativity, citizenship, and prior class of worker. The representation ratio is defined as:
+
+$$
+\text{representation ratio} = \frac{\text{group's share of this cause's unemployed pool}}{\text{group's share of the overall labor force}}
+$$
+
+A value of 1 means the group's presence among that cause's unemployed is exactly proportional to its presence in the labor force. A value above 1 means the group is overrepresented; a value below 1 means underrepresented. Values are computed on the pooled CPS sample (1994–present) so that each ratio reflects a long-run average rather than a single-year snapshot. We present each cause's ratios on a radar ("spiderweb") plot. Each spoke is one demographic dimension, labeled at the end with the dominant group on that dimension (e.g., "Age 16–24" on the age spoke, "High school or less" on the education spoke). The radius at that spoke is the group's representation ratio. The solid ring at 1 marks proportional representation. A polygon stretching far outside the 1 ring on many spokes says the cause is demographically distinct from the labor force at large. A polygon hugging the 1 ring says the cause's unemployed look roughly like the country's workers.
+
+```{r radar-representation-ratio, fig.width=15, fig.height=16}
+#| fig-cap: "Dominant-group representation ratios by reason-for-unemployment category, pooled CPS 1994–present. Each spoke shows the group with the largest share on that dimension; the radius is that group's share of the cause-specific unemployed pool divided by its share of the labor force. Solid ring = 1 (proportional representation)."
+
+dominant_profile_ratios <- arrow::read_parquet(
+  here("data", "final", "unemployment_dominant_profile_ratios.parquet")
+) |>
+  as_tibble() |>
+  mutate(
+    cause = factor(cause, levels = cause_order),
+    dimension = factor(dimension, levels = c("Age", "Education", "Sex", "Race/Ethnicity",
+                                             "Occupation", "Class", "Foreign Born", "Noncitizen"))
+  )
+
+cause_cols <- pal_jco()(6)
+names(cause_cols) <- cause_order
+
+pooled_ratios <- dominant_profile_ratios |>
+  filter(variant == "pooled_ratio", cause %in% cause_order)
+
+plot_dominant_radar_ratio <- function(ratio_df, cause_name, subtitle, max_ratio = 3.0) {
+  plot_df <- ratio_df |>
+    filter(cause == cause_name) |>
+    arrange(dimension) |>
+    mutate(axis_id = row_number())
+
+  n_axes <- nrow(plot_df)
+  angles <- pi / 2 - 2 * pi * (seq_len(n_axes) - 1) / n_axes
+  radial_breaks <- c(0, 0.5, 1.0, 1.5, 2.0, max_ratio)
+
+  point_df <- plot_df |>
+    mutate(
+      angle = angles,
+      radius = pmin(ratio, max_ratio) / max_ratio,
+      x = radius * cos(angle),
+      y = radius * sin(angle)
+    )
+
+  closed_df <- bind_rows(point_df, slice(point_df, 1))
+
+  spoke_df <- tibble(
+    axis_id = seq_len(n_axes),
+    angle = angles,
+    x = 0, y = 0,
+    xend = cos(angle), yend = sin(angle)
+  )
+
+  ring_df <- map_dfr(radial_breaks, \(ring) {
+    tibble(
+      ring = ring,
+      ring_radius = ring / max_ratio,
+      axis_id = c(seq_len(n_axes), 1L),
+      angle = angles[c(seq_len(n_axes), 1L)],
+      x = (ring / max_ratio) * cos(angle),
+      y = (ring / max_ratio) * sin(angle)
+    )
+  })
+
+  axis_label_df <- point_df |>
+    transmute(
+      dimension, angle,
+      label_x = 1.17 * cos(angle),
+      label_y = 1.17 * sin(angle),
+      hjust = case_when(label_x > 0.15 ~ 0, label_x < -0.15 ~ 1, TRUE ~ 0.5),
+      vjust = case_when(label_y > 0.15 ~ 0, label_y < -0.15 ~ 1, TRUE ~ 0.5)
+    )
+
+  point_label_df <- point_df |>
+    transmute(
+      axis_id, angle,
+      point_label = label,
+      label_radius = case_when(
+        radius >= 0.72 ~ pmax(radius - 0.14, 0.16),
+        TRUE ~ pmin(radius + 0.11, 0.88)
+      ),
+      tangent_shift = if_else(axis_id %% 2 == 0, 0.045, -0.045),
+      label_x = label_radius * cos(angle) + tangent_shift * (-sin(angle)),
+      label_y = label_radius * sin(angle) + tangent_shift * cos(angle),
+      hjust = case_when(label_x > 0.18 ~ 0, label_x < -0.18 ~ 1, TRUE ~ 0.5),
+      vjust = case_when(label_y > 0.18 ~ 0, label_y < -0.18 ~ 1, TRUE ~ 0.5)
+    )
+
+  radial_label_df <- tibble(
+    ring = radial_breaks,
+    x = radial_breaks / max_ratio,
+    y = 0.02,
+    label = paste0(scales::number(radial_breaks, accuracy = 0.1), "x")
+  )
+
+  ggplot() +
+    geom_path(
+      data = filter(ring_df, abs(ring - 1.0) > 0.01),
+      aes(x = x, y = y, group = ring),
+      color = "grey72", linewidth = 0.15
+    ) +
+    geom_path(
+      data = filter(ring_df, abs(ring - 1.0) <= 0.01),
+      aes(x = x, y = y, group = ring),
+      color = "grey40", linewidth = 0.6, linetype = "solid"
+    ) +
+    geom_segment(
+      data = spoke_df,
+      aes(x = x, y = y, xend = xend, yend = yend),
+      color = "grey76", linewidth = 0.15
+    ) +
+    geom_polygon(
+      data = closed_df,
+      aes(x = x, y = y),
+      fill = scales::alpha(cause_cols[[cause_name]], 0.45),
+      color = cause_cols[[cause_name]],
+      linewidth = 0.15, linejoin = "round"
+    ) +
+    geom_point(
+      data = point_df,
+      aes(x = x, y = y),
+      color = cause_cols[[cause_name]],
+      fill = cause_cols[[cause_name]],
+      shape = 21, stroke = 0.2, size = 1.4
+    ) +
+    geom_text(
+      data = point_label_df,
+      aes(x = label_x, y = label_y, label = point_label, hjust = hjust, vjust = vjust),
+      size = 2.7, lineheight = 0.92,
+      color = cause_cols[[cause_name]]
+    ) +
+    geom_text(
+      data = axis_label_df,
+      aes(x = label_x, y = label_y, label = dimension, hjust = hjust, vjust = vjust),
+      size = 3.6, lineheight = 0.9
+    ) +
+    geom_text(
+      data = radial_label_df,
+      aes(x = x, y = y, label = label),
+      color = "grey65", size = 3.3, hjust = 0.5, vjust = 0
+    ) +
+    coord_equal(clip = "off") +
+    xlim(-1.28, 1.28) + ylim(-1.26, 1.28) +
+    labs(title = cause_name, subtitle = subtitle, x = NULL, y = NULL) +
+    theme_report +
+    theme(
+      axis.text = element_blank(),
+      axis.ticks = element_blank(),
+      axis.line = element_blank(),
+      panel.grid = element_blank(),
+      plot.margin = margin(20, 35, 20, 35)
+    )
+}
+
+radar_plots <- map(cause_order, \(cn) {
+  plot_dominant_radar_ratio(pooled_ratios, cn, "Pooled — ratio to labor force share")
+})
+
+patchwork::wrap_plots(radar_plots, ncol = 2)
+```
+
+For five of the six categories, the polygons hug the 1-ring, deviating on at most one spoke. New Entrants are the clear outlier, sitting far outside the 1-ring on age, education, and, by construction, occupation and class, since they have no prior job. Because UI eligibility depends on recent work history and earnings thresholds, these demographic gaps map directly onto how much of a cause's unemployed actually shows up in the claims data.
+
+## New Entrants
+
+
+
  
+
  
 These cause-categories are useful for our exercise. Using monthly, national data, we should observe that periods with unemployment pools composed of Temporary Layoffs or Permanent Job Losers - groups with greater propensity to claim UI - should correspond with greater claiming than unemployment pools composed of other categories.  
 

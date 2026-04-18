@@ -143,12 +143,12 @@ window.Quarto = {
 <li><p><strong>Timeliness</strong>. Published with a five-day lag, versus the three-week lag of the BLS payroll report enabling closer-to-real-time updates on the health of the labor market.</p></li>
 <li><p><strong>Administrative grounding</strong>. Claims are counted when people file, not estimated from a survey.</p></li>
 </ol>
-<p>UI programs are designed to provide unemployment benefits to eligible workers who become unemployed through no fault of their own and meet other eligibility requirements. For this reason, the majority of initial claims for unemployment insurance benefits are filed because of a separation from a job the filer did not initiate. Causes of such separations are layoffs, temporary furloughs, completed temporary contracts, among others (see <a href="https://www.dol.gov/general/topic/unemployment-insurance%5D">How Do I File for Unemployment Insurance</a>). Because of UI program design, initial claims are a <strong>noisy, lower-bound read on separations</strong>. Specifically, initial claims will miss <strong>separations that do not generate claims</strong> such as short-tenure workers, part-timers, gig/1099 workers and people who do not satisfy work-history or monetary-based eligibility requirements.</p>
+<p>UI programs are designed to provide unemployment benefits to eligible workers who become unemployed through no fault of their own and meet other eligibility requirements. For this reason, the majority of initial claims for unemployment insurance benefits are filed because of a separation from a job the filer did not initiate. Causes of such separations are layoffs, temporary furloughs, completed temporary contracts, among others (see <a href="https://www.dol.gov/general/topic/unemployment-insurance">How Do I File for Unemployment Insurance</a>). Because of UI program design, initial claims are a <strong>noisy, lower-bound read on separations</strong>. Specifically, initial claims will miss <strong>separations that do not generate claims</strong> such as short-tenure workers, part-timers, gig/1099 workers and people who do not satisfy work-history or monetary-based eligibility requirements.</p>
 <p>Continuing claims are the number of people currently drawing unemployment insurance benefits and can change for two reasons. The first is that the number of people who <em>initiate</em> claims changes (i.e., changes to the <em>inflows</em> to the insured-unemployment pool). The second is that people stop claiming benefits (i.e., changes to <em>outflows</em> from the insured-unemployment pool). Broadly, there are three reasons why people stop claiming: They find a job; they exhaust the UI benefits available to them; they fail to maintain eligibility.</p>
-<p>Because of its desirable features, UI claims became the default “nowcast” input for labor-market watchers long before high-frequency alternatives existed. But as discussed, the labor market signal UI claims provide depends on <em>who the unemployed are</em>. When the unemployed pool is comprised of groups UI programs were not designed to cover, the same claims release can imply something very different about the state of the labor market. In this post, we use the Current Population Survey’s (CPS) unemployment-by-cause data to understand the historical and statistical relationship between the composition of the unemployed pool, UI claims, and the unemployment rate.</p>
+<p>Because of these desirable features, UI claims became the default “nowcast” input for labor-market watchers long before high-frequency alternatives existed. However, the labor market signal UI claims provide depends on <em>who the unemployed are</em>. When the unemployed pool is composed of groups UI programs were not designed to cover, the same claims release can imply something very different about the state of the labor market. In this post, we use the Current Population Survey’s (CPS) unemployment-by-cause data to understand the historical and statistical relationship between the composition of the unemployed pool, UI claims, and the unemployment rate.</p>
 </section>
-<section id="the-cause-for-unemployment-categories" class="level2">
-<h2 class="anchored" data-anchor-id="the-cause-for-unemployment-categories">The Cause for Unemployment Categories</h2>
+<section id="why-people-are-unemployed" class="level2">
+<h2 class="anchored" data-anchor-id="why-people-are-unemployed">Why People are Unemployed</h2>
 <p>The CPS provides six mutually exclusive and exhaustive reason-for-unemployment categories: temporary layoff, permanent job loss, completed temporary job, voluntary quit, reentry to the labor force, and new entry. The definitions of those categories are provided in Table 1.</p>
 <div class="cell">
 <details class="code-fold">
@@ -165,36 +165,31 @@ window.Quarto = {
 <span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Voluntarily quit and now actively searching"</span>,</span>
 <span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Previously held a job, left the labor force, now returned to searching"</span>,</span>
 <span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Never held a job; actively looking for first one"</span></span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>  ),</span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>  <span class="st">`</span><span class="at">Two-Group</span><span class="st">`</span> <span class="ot">=</span> <span class="fu">c</span>(<span class="fu">rep</span>(<span class="st">"Job Separations"</span>, <span class="dv">4</span>), <span class="fu">rep</span>(<span class="st">"Labor Force Entry"</span>, <span class="dv">2</span>))</span>
-<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
-<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">gt</span>() <span class="sc">|&gt;</span></span>
-<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tab_options</span>(<span class="at">table.font.size =</span> <span class="fu">px</span>(<span class="dv">11</span>), <span class="at">column_labels.font.weight =</span> <span class="st">"bold"</span>,</span>
-<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>              <span class="at">column_labels.background.color =</span> <span class="st">"#2c3e50"</span>) <span class="sc">|&gt;</span></span>
-<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tab_style</span>(<span class="at">style =</span> <span class="fu">cell_text</span>(<span class="at">color =</span> <span class="st">"white"</span>), <span class="at">locations =</span> <span class="fu">cells_column_labels</span>()) <span class="sc">|&gt;</span></span>
-<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tab_style</span>(<span class="at">style =</span> <span class="fu">cell_fill</span>(<span class="at">color =</span> <span class="st">"#dce8f5"</span>),</span>
-<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>            <span class="at">locations =</span> <span class="fu">cells_body</span>(<span class="at">rows =</span> <span class="st">`</span><span class="at">Two-Group</span><span class="st">`</span> <span class="sc">==</span> <span class="st">"Job Separations"</span>)) <span class="sc">|&gt;</span></span>
-<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tab_style</span>(<span class="at">style =</span> <span class="fu">cell_fill</span>(<span class="at">color =</span> <span class="st">"#fef3d0"</span>),</span>
-<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>            <span class="at">locations =</span> <span class="fu">cells_body</span>(<span class="at">rows =</span> <span class="st">`</span><span class="at">Two-Group</span><span class="st">`</span> <span class="sc">==</span> <span class="st">"Labor Force Entry"</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">gt</span>() <span class="sc">|&gt;</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tab_options</span>(<span class="at">table.font.size =</span> <span class="fu">px</span>(<span class="dv">11</span>), <span class="at">column_labels.font.weight =</span> <span class="st">"bold"</span>,</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>              <span class="at">column_labels.background.color =</span> <span class="st">"#2c3e50"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tab_style</span>(<span class="at">style =</span> <span class="fu">cell_text</span>(<span class="at">color =</span> <span class="st">"white"</span>), <span class="at">locations =</span> <span class="fu">cells_column_labels</span>()) </span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
 <div class="cell-output-display">
-<div id="flekdbqlev" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
-<style>#flekdbqlev table {
+<div id="xowlbcbfbl" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>#xowlbcbfbl table {
   font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-#flekdbqlev thead, #flekdbqlev tbody, #flekdbqlev tfoot, #flekdbqlev tr, #flekdbqlev td, #flekdbqlev th {
+#xowlbcbfbl thead, #xowlbcbfbl tbody, #xowlbcbfbl tfoot, #xowlbcbfbl tr, #xowlbcbfbl td, #xowlbcbfbl th {
   border-style: none;
 }
 
-#flekdbqlev p {
+#xowlbcbfbl p {
   margin: 0;
   padding: 0;
 }
 
-#flekdbqlev .gt_table {
+#xowlbcbfbl .gt_table {
   display: table;
   border-collapse: collapse;
   line-height: normal;
@@ -220,12 +215,12 @@ window.Quarto = {
   border-left-color: #D3D3D3;
 }
 
-#flekdbqlev .gt_caption {
+#xowlbcbfbl .gt_caption {
   padding-top: 4px;
   padding-bottom: 4px;
 }
 
-#flekdbqlev .gt_title {
+#xowlbcbfbl .gt_title {
   color: #333333;
   font-size: 125%;
   font-weight: initial;
@@ -237,7 +232,7 @@ window.Quarto = {
   border-bottom-width: 0;
 }
 
-#flekdbqlev .gt_subtitle {
+#xowlbcbfbl .gt_subtitle {
   color: #333333;
   font-size: 85%;
   font-weight: initial;
@@ -249,7 +244,7 @@ window.Quarto = {
   border-top-width: 0;
 }
 
-#flekdbqlev .gt_heading {
+#xowlbcbfbl .gt_heading {
   background-color: #FFFFFF;
   text-align: center;
   border-bottom-color: #FFFFFF;
@@ -261,13 +256,13 @@ window.Quarto = {
   border-right-color: #D3D3D3;
 }
 
-#flekdbqlev .gt_bottom_border {
+#xowlbcbfbl .gt_bottom_border {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
 }
 
-#flekdbqlev .gt_col_headings {
+#xowlbcbfbl .gt_col_headings {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -282,7 +277,7 @@ window.Quarto = {
   border-right-color: #D3D3D3;
 }
 
-#flekdbqlev .gt_col_heading {
+#xowlbcbfbl .gt_col_heading {
   color: #FFFFFF;
   background-color: #2C3E50;
   font-size: 100%;
@@ -302,7 +297,7 @@ window.Quarto = {
   overflow-x: hidden;
 }
 
-#flekdbqlev .gt_column_spanner_outer {
+#xowlbcbfbl .gt_column_spanner_outer {
   color: #FFFFFF;
   background-color: #2C3E50;
   font-size: 100%;
@@ -314,15 +309,15 @@ window.Quarto = {
   padding-right: 4px;
 }
 
-#flekdbqlev .gt_column_spanner_outer:first-child {
+#xowlbcbfbl .gt_column_spanner_outer:first-child {
   padding-left: 0;
 }
 
-#flekdbqlev .gt_column_spanner_outer:last-child {
+#xowlbcbfbl .gt_column_spanner_outer:last-child {
   padding-right: 0;
 }
 
-#flekdbqlev .gt_column_spanner {
+#xowlbcbfbl .gt_column_spanner {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
@@ -334,11 +329,11 @@ window.Quarto = {
   width: 100%;
 }
 
-#flekdbqlev .gt_spanner_row {
+#xowlbcbfbl .gt_spanner_row {
   border-bottom-style: hidden;
 }
 
-#flekdbqlev .gt_group_heading {
+#xowlbcbfbl .gt_group_heading {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -364,7 +359,7 @@ window.Quarto = {
   text-align: left;
 }
 
-#flekdbqlev .gt_empty_group_heading {
+#xowlbcbfbl .gt_empty_group_heading {
   padding: 0.5px;
   color: #333333;
   background-color: #FFFFFF;
@@ -379,15 +374,15 @@ window.Quarto = {
   vertical-align: middle;
 }
 
-#flekdbqlev .gt_from_md > :first-child {
+#xowlbcbfbl .gt_from_md > :first-child {
   margin-top: 0;
 }
 
-#flekdbqlev .gt_from_md > :last-child {
+#xowlbcbfbl .gt_from_md > :last-child {
   margin-bottom: 0;
 }
 
-#flekdbqlev .gt_row {
+#xowlbcbfbl .gt_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -406,7 +401,7 @@ window.Quarto = {
   overflow-x: hidden;
 }
 
-#flekdbqlev .gt_stub {
+#xowlbcbfbl .gt_stub {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -419,7 +414,7 @@ window.Quarto = {
   padding-right: 5px;
 }
 
-#flekdbqlev .gt_stub_row_group {
+#xowlbcbfbl .gt_stub_row_group {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -433,15 +428,15 @@ window.Quarto = {
   vertical-align: top;
 }
 
-#flekdbqlev .gt_row_group_first td {
+#xowlbcbfbl .gt_row_group_first td {
   border-top-width: 2px;
 }
 
-#flekdbqlev .gt_row_group_first th {
+#xowlbcbfbl .gt_row_group_first th {
   border-top-width: 2px;
 }
 
-#flekdbqlev .gt_summary_row {
+#xowlbcbfbl .gt_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -451,16 +446,16 @@ window.Quarto = {
   padding-right: 5px;
 }
 
-#flekdbqlev .gt_first_summary_row {
+#xowlbcbfbl .gt_first_summary_row {
   border-top-style: solid;
   border-top-color: #D3D3D3;
 }
 
-#flekdbqlev .gt_first_summary_row.thick {
+#xowlbcbfbl .gt_first_summary_row.thick {
   border-top-width: 2px;
 }
 
-#flekdbqlev .gt_last_summary_row {
+#xowlbcbfbl .gt_last_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -470,7 +465,7 @@ window.Quarto = {
   border-bottom-color: #D3D3D3;
 }
 
-#flekdbqlev .gt_grand_summary_row {
+#xowlbcbfbl .gt_grand_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -480,7 +475,7 @@ window.Quarto = {
   padding-right: 5px;
 }
 
-#flekdbqlev .gt_first_grand_summary_row {
+#xowlbcbfbl .gt_first_grand_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -490,7 +485,7 @@ window.Quarto = {
   border-top-color: #D3D3D3;
 }
 
-#flekdbqlev .gt_last_grand_summary_row_top {
+#xowlbcbfbl .gt_last_grand_summary_row_top {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -500,11 +495,11 @@ window.Quarto = {
   border-bottom-color: #D3D3D3;
 }
 
-#flekdbqlev .gt_striped {
+#xowlbcbfbl .gt_striped {
   background-color: rgba(128, 128, 128, 0.05);
 }
 
-#flekdbqlev .gt_table_body {
+#xowlbcbfbl .gt_table_body {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -513,7 +508,7 @@ window.Quarto = {
   border-bottom-color: #D3D3D3;
 }
 
-#flekdbqlev .gt_footnotes {
+#xowlbcbfbl .gt_footnotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -527,7 +522,7 @@ window.Quarto = {
   border-right-color: #D3D3D3;
 }
 
-#flekdbqlev .gt_footnote {
+#xowlbcbfbl .gt_footnote {
   margin: 0px;
   font-size: 90%;
   padding-top: 4px;
@@ -536,7 +531,7 @@ window.Quarto = {
   padding-right: 5px;
 }
 
-#flekdbqlev .gt_sourcenotes {
+#xowlbcbfbl .gt_sourcenotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -550,7 +545,7 @@ window.Quarto = {
   border-right-color: #D3D3D3;
 }
 
-#flekdbqlev .gt_sourcenote {
+#xowlbcbfbl .gt_sourcenote {
   font-size: 90%;
   padding-top: 4px;
   padding-bottom: 4px;
@@ -558,72 +553,72 @@ window.Quarto = {
   padding-right: 5px;
 }
 
-#flekdbqlev .gt_left {
+#xowlbcbfbl .gt_left {
   text-align: left;
 }
 
-#flekdbqlev .gt_center {
+#xowlbcbfbl .gt_center {
   text-align: center;
 }
 
-#flekdbqlev .gt_right {
+#xowlbcbfbl .gt_right {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-#flekdbqlev .gt_font_normal {
+#xowlbcbfbl .gt_font_normal {
   font-weight: normal;
 }
 
-#flekdbqlev .gt_font_bold {
+#xowlbcbfbl .gt_font_bold {
   font-weight: bold;
 }
 
-#flekdbqlev .gt_font_italic {
+#xowlbcbfbl .gt_font_italic {
   font-style: italic;
 }
 
-#flekdbqlev .gt_super {
+#xowlbcbfbl .gt_super {
   font-size: 65%;
 }
 
-#flekdbqlev .gt_footnote_marks {
+#xowlbcbfbl .gt_footnote_marks {
   font-size: 75%;
   vertical-align: 0.4em;
   position: initial;
 }
 
-#flekdbqlev .gt_asterisk {
+#xowlbcbfbl .gt_asterisk {
   font-size: 100%;
   vertical-align: 0;
 }
 
-#flekdbqlev .gt_indent_1 {
+#xowlbcbfbl .gt_indent_1 {
   text-indent: 5px;
 }
 
-#flekdbqlev .gt_indent_2 {
+#xowlbcbfbl .gt_indent_2 {
   text-indent: 10px;
 }
 
-#flekdbqlev .gt_indent_3 {
+#xowlbcbfbl .gt_indent_3 {
   text-indent: 15px;
 }
 
-#flekdbqlev .gt_indent_4 {
+#xowlbcbfbl .gt_indent_4 {
   text-indent: 20px;
 }
 
-#flekdbqlev .gt_indent_5 {
+#xowlbcbfbl .gt_indent_5 {
   text-indent: 25px;
 }
 
-#flekdbqlev .katex-display {
+#xowlbcbfbl .katex-display {
   display: inline-flex !important;
   margin-bottom: 0.75em !important;
 }
 
-#flekdbqlev div.Reactable > div.rt-table > div.rt-thead > div.rt-tr.rt-tr-group-header > div.rt-th-group:after {
+#xowlbcbfbl div.Reactable > div.rt-table > div.rt-thead > div.rt-tr.rt-tr-group-header > div.rt-th-group:after {
   height: 0px !important;
 }
 </style>
@@ -634,52 +629,218 @@ window.Quarto = {
 <th id="Category" class="gt_col_heading gt_columns_bottom_border gt_left" data-quarto-table-cell-role="th" style="color: #FFFFFF" scope="col">Category</th>
 <th id="WHYUNEMP" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" style="color: #FFFFFF" scope="col">WHYUNEMP</th>
 <th id="BLS-Definition" class="gt_col_heading gt_columns_bottom_border gt_left" data-quarto-table-cell-role="th" style="color: #FFFFFF" scope="col">BLS Definition</th>
-<th id="Two-Group" class="gt_col_heading gt_columns_bottom_border gt_left" data-quarto-table-cell-role="th" style="color: #FFFFFF" scope="col">Two-Group</th>
 </tr>
 </thead>
 <tbody class="gt_table_body">
 <tr class="odd">
-<td class="gt_row gt_left" headers="Category" style="background-color: #DCE8F5">Temporary Layoff</td>
-<td class="gt_row gt_right" headers="WHYUNEMP" style="background-color: #DCE8F5">1</td>
-<td class="gt_row gt_left" headers="BLS Definition" style="background-color: #DCE8F5">Given a return date or expects recall within 6 months</td>
-<td class="gt_row gt_left" headers="Two-Group" style="background-color: #DCE8F5">Job Separations</td>
+<td class="gt_row gt_left" headers="Category">Temporary Layoff</td>
+<td class="gt_row gt_right" headers="WHYUNEMP">1</td>
+<td class="gt_row gt_left" headers="BLS Definition">Given a return date or expects recall within 6 months</td>
 </tr>
 <tr class="even">
-<td class="gt_row gt_left" headers="Category" style="background-color: #DCE8F5">Permanent Job Losers</td>
-<td class="gt_row gt_right" headers="WHYUNEMP" style="background-color: #DCE8F5">2</td>
-<td class="gt_row gt_left" headers="BLS Definition" style="background-color: #DCE8F5">Permanently separated; position eliminated, fired, or employer closed</td>
-<td class="gt_row gt_left" headers="Two-Group" style="background-color: #DCE8F5">Job Separations</td>
+<td class="gt_row gt_left" headers="Category">Permanent Job Losers</td>
+<td class="gt_row gt_right" headers="WHYUNEMP">2</td>
+<td class="gt_row gt_left" headers="BLS Definition">Permanently separated; position eliminated, fired, or employer closed</td>
 </tr>
 <tr class="odd">
-<td class="gt_row gt_left" headers="Category" style="background-color: #DCE8F5">Completed Temp Job</td>
-<td class="gt_row gt_right" headers="WHYUNEMP" style="background-color: #DCE8F5">3</td>
-<td class="gt_row gt_left" headers="BLS Definition" style="background-color: #DCE8F5">Temporary job or assignment has ended</td>
-<td class="gt_row gt_left" headers="Two-Group" style="background-color: #DCE8F5">Job Separations</td>
+<td class="gt_row gt_left" headers="Category">Completed Temp Job</td>
+<td class="gt_row gt_right" headers="WHYUNEMP">3</td>
+<td class="gt_row gt_left" headers="BLS Definition">Temporary job or assignment has ended</td>
 </tr>
 <tr class="even">
-<td class="gt_row gt_left" headers="Category" style="background-color: #DCE8F5">Job Leavers</td>
-<td class="gt_row gt_right" headers="WHYUNEMP" style="background-color: #DCE8F5">4</td>
-<td class="gt_row gt_left" headers="BLS Definition" style="background-color: #DCE8F5">Voluntarily quit and now actively searching</td>
-<td class="gt_row gt_left" headers="Two-Group" style="background-color: #DCE8F5">Job Separations</td>
+<td class="gt_row gt_left" headers="Category">Job Leavers</td>
+<td class="gt_row gt_right" headers="WHYUNEMP">4</td>
+<td class="gt_row gt_left" headers="BLS Definition">Voluntarily quit and now actively searching</td>
 </tr>
 <tr class="odd">
-<td class="gt_row gt_left" headers="Category" style="background-color: #FEF3D0">Reentrants</td>
-<td class="gt_row gt_right" headers="WHYUNEMP" style="background-color: #FEF3D0">5</td>
-<td class="gt_row gt_left" headers="BLS Definition" style="background-color: #FEF3D0">Previously held a job, left the labor force, now returned to searching</td>
-<td class="gt_row gt_left" headers="Two-Group" style="background-color: #FEF3D0">Labor Force Entry</td>
+<td class="gt_row gt_left" headers="Category">Reentrants</td>
+<td class="gt_row gt_right" headers="WHYUNEMP">5</td>
+<td class="gt_row gt_left" headers="BLS Definition">Previously held a job, left the labor force, now returned to searching</td>
 </tr>
 <tr class="even">
-<td class="gt_row gt_left" headers="Category" style="background-color: #FEF3D0">New Entrants</td>
-<td class="gt_row gt_right" headers="WHYUNEMP" style="background-color: #FEF3D0">6</td>
-<td class="gt_row gt_left" headers="BLS Definition" style="background-color: #FEF3D0">Never held a job; actively looking for first one</td>
-<td class="gt_row gt_left" headers="Two-Group" style="background-color: #FEF3D0">Labor Force Entry</td>
+<td class="gt_row gt_left" headers="Category">New Entrants</td>
+<td class="gt_row gt_right" headers="WHYUNEMP">6</td>
+<td class="gt_row gt_left" headers="BLS Definition">Never held a job; actively looking for first one</td>
 </tr>
 </tbody>
 </table>
 
 </div>
+<p>Table 1: CPS WHYUNEMP Categories</p>
 </div>
 </div>
+<p>To see which reason-for-unemployment categories are most plausibly served by UI versus most plausibly missed by it, we construct a profile of each cause. For every cause category in Table 1, we identify the dominant demographic group and compute a representation ratio on a set of standard dimensions: age, education, sex, race, nativity, citizenship, and prior class of worker. The representation ratio is defined as:</p>
+<p><span class="math display">\[
+\text{representation ratio} = \frac{\text{group's share of this cause's unemployed pool}}{\text{group's share of the overall labor force}}
+\]</span></p>
+<p>A value of 1 means the group’s presence among that cause’s unemployed is exactly proportional to its presence in the labor force. A value above 1 means the group is overrepresented; a value below 1 means underrepresented. Values are computed on the pooled CPS sample (1994–present) so that each ratio reflects a long-run average rather than a single-year snapshot. We present each cause’s ratios on a radar (“spiderweb”) plot. Each spoke is one demographic dimension, labeled at the end with the dominant group on that dimension (e.g., “Age 16–24” on the age spoke, “High school or less” on the education spoke). The radius at that spoke is the group’s representation ratio. The solid ring at 1 marks proportional representation. A polygon stretching far outside the 1 ring on many spokes says the cause is demographically distinct from the labor force at large. A polygon hugging the 1 ring says the cause’s unemployed look roughly like the country’s workers.</p>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>dominant_profile_ratios <span class="ot">&lt;-</span> arrow<span class="sc">::</span><span class="fu">read_parquet</span>(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">here</span>(<span class="st">"data"</span>, <span class="st">"final"</span>, <span class="st">"unemployment_dominant_profile_ratios.parquet"</span>)</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as_tibble</span>() <span class="sc">|&gt;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">cause =</span> <span class="fu">factor</span>(cause, <span class="at">levels =</span> cause_order),</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">dimension =</span> <span class="fu">factor</span>(dimension, <span class="at">levels =</span> <span class="fu">c</span>(<span class="st">"Age"</span>, <span class="st">"Education"</span>, <span class="st">"Sex"</span>, <span class="st">"Race/Ethnicity"</span>,</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>                                             <span class="st">"Occupation"</span>, <span class="st">"Class"</span>, <span class="st">"Foreign Born"</span>, <span class="st">"Noncitizen"</span>))</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>cause_cols <span class="ot">&lt;-</span> <span class="fu">pal_jco</span>()(<span class="dv">6</span>)</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="fu">names</span>(cause_cols) <span class="ot">&lt;-</span> cause_order</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>pooled_ratios <span class="ot">&lt;-</span> dominant_profile_ratios <span class="sc">|&gt;</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(variant <span class="sc">==</span> <span class="st">"pooled_ratio"</span>, cause <span class="sc">%in%</span> cause_order)</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>plot_dominant_radar_ratio <span class="ot">&lt;-</span> <span class="cf">function</span>(ratio_df, cause_name, subtitle, <span class="at">max_ratio =</span> <span class="fl">3.0</span>) {</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>  plot_df <span class="ot">&lt;-</span> ratio_df <span class="sc">|&gt;</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>    <span class="fu">filter</span>(cause <span class="sc">==</span> cause_name) <span class="sc">|&gt;</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>    <span class="fu">arrange</span>(dimension) <span class="sc">|&gt;</span></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">axis_id =</span> <span class="fu">row_number</span>())</span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>  n_axes <span class="ot">&lt;-</span> <span class="fu">nrow</span>(plot_df)</span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>  angles <span class="ot">&lt;-</span> pi <span class="sc">/</span> <span class="dv">2</span> <span class="sc">-</span> <span class="dv">2</span> <span class="sc">*</span> pi <span class="sc">*</span> (<span class="fu">seq_len</span>(n_axes) <span class="sc">-</span> <span class="dv">1</span>) <span class="sc">/</span> n_axes</span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>  radial_breaks <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="fl">0.5</span>, <span class="fl">1.0</span>, <span class="fl">1.5</span>, <span class="fl">2.0</span>, max_ratio)</span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>  point_df <span class="ot">&lt;-</span> plot_df <span class="sc">|&gt;</span></span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(</span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>      <span class="at">angle =</span> angles,</span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>      <span class="at">radius =</span> <span class="fu">pmin</span>(ratio, max_ratio) <span class="sc">/</span> max_ratio,</span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>      <span class="at">x =</span> radius <span class="sc">*</span> <span class="fu">cos</span>(angle),</span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a>      <span class="at">y =</span> radius <span class="sc">*</span> <span class="fu">sin</span>(angle)</span>
+<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a>  closed_df <span class="ot">&lt;-</span> <span class="fu">bind_rows</span>(point_df, <span class="fu">slice</span>(point_df, <span class="dv">1</span>))</span>
+<span id="cb2-36"><a href="#cb2-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-37"><a href="#cb2-37" aria-hidden="true" tabindex="-1"></a>  spoke_df <span class="ot">&lt;-</span> <span class="fu">tibble</span>(</span>
+<span id="cb2-38"><a href="#cb2-38" aria-hidden="true" tabindex="-1"></a>    <span class="at">axis_id =</span> <span class="fu">seq_len</span>(n_axes),</span>
+<span id="cb2-39"><a href="#cb2-39" aria-hidden="true" tabindex="-1"></a>    <span class="at">angle =</span> angles,</span>
+<span id="cb2-40"><a href="#cb2-40" aria-hidden="true" tabindex="-1"></a>    <span class="at">x =</span> <span class="dv">0</span>, <span class="at">y =</span> <span class="dv">0</span>,</span>
+<span id="cb2-41"><a href="#cb2-41" aria-hidden="true" tabindex="-1"></a>    <span class="at">xend =</span> <span class="fu">cos</span>(angle), <span class="at">yend =</span> <span class="fu">sin</span>(angle)</span>
+<span id="cb2-42"><a href="#cb2-42" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb2-43"><a href="#cb2-43" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-44"><a href="#cb2-44" aria-hidden="true" tabindex="-1"></a>  ring_df <span class="ot">&lt;-</span> <span class="fu">map_dfr</span>(radial_breaks, \(ring) {</span>
+<span id="cb2-45"><a href="#cb2-45" aria-hidden="true" tabindex="-1"></a>    <span class="fu">tibble</span>(</span>
+<span id="cb2-46"><a href="#cb2-46" aria-hidden="true" tabindex="-1"></a>      <span class="at">ring =</span> ring,</span>
+<span id="cb2-47"><a href="#cb2-47" aria-hidden="true" tabindex="-1"></a>      <span class="at">ring_radius =</span> ring <span class="sc">/</span> max_ratio,</span>
+<span id="cb2-48"><a href="#cb2-48" aria-hidden="true" tabindex="-1"></a>      <span class="at">axis_id =</span> <span class="fu">c</span>(<span class="fu">seq_len</span>(n_axes), <span class="dv">1</span>L),</span>
+<span id="cb2-49"><a href="#cb2-49" aria-hidden="true" tabindex="-1"></a>      <span class="at">angle =</span> angles[<span class="fu">c</span>(<span class="fu">seq_len</span>(n_axes), <span class="dv">1</span>L)],</span>
+<span id="cb2-50"><a href="#cb2-50" aria-hidden="true" tabindex="-1"></a>      <span class="at">x =</span> (ring <span class="sc">/</span> max_ratio) <span class="sc">*</span> <span class="fu">cos</span>(angle),</span>
+<span id="cb2-51"><a href="#cb2-51" aria-hidden="true" tabindex="-1"></a>      <span class="at">y =</span> (ring <span class="sc">/</span> max_ratio) <span class="sc">*</span> <span class="fu">sin</span>(angle)</span>
+<span id="cb2-52"><a href="#cb2-52" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb2-53"><a href="#cb2-53" aria-hidden="true" tabindex="-1"></a>  })</span>
+<span id="cb2-54"><a href="#cb2-54" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-55"><a href="#cb2-55" aria-hidden="true" tabindex="-1"></a>  axis_label_df <span class="ot">&lt;-</span> point_df <span class="sc">|&gt;</span></span>
+<span id="cb2-56"><a href="#cb2-56" aria-hidden="true" tabindex="-1"></a>    <span class="fu">transmute</span>(</span>
+<span id="cb2-57"><a href="#cb2-57" aria-hidden="true" tabindex="-1"></a>      dimension, angle,</span>
+<span id="cb2-58"><a href="#cb2-58" aria-hidden="true" tabindex="-1"></a>      <span class="at">label_x =</span> <span class="fl">1.17</span> <span class="sc">*</span> <span class="fu">cos</span>(angle),</span>
+<span id="cb2-59"><a href="#cb2-59" aria-hidden="true" tabindex="-1"></a>      <span class="at">label_y =</span> <span class="fl">1.17</span> <span class="sc">*</span> <span class="fu">sin</span>(angle),</span>
+<span id="cb2-60"><a href="#cb2-60" aria-hidden="true" tabindex="-1"></a>      <span class="at">hjust =</span> <span class="fu">case_when</span>(label_x <span class="sc">&gt;</span> <span class="fl">0.15</span> <span class="sc">~</span> <span class="dv">0</span>, label_x <span class="sc">&lt;</span> <span class="sc">-</span><span class="fl">0.15</span> <span class="sc">~</span> <span class="dv">1</span>, <span class="cn">TRUE</span> <span class="sc">~</span> <span class="fl">0.5</span>),</span>
+<span id="cb2-61"><a href="#cb2-61" aria-hidden="true" tabindex="-1"></a>      <span class="at">vjust =</span> <span class="fu">case_when</span>(label_y <span class="sc">&gt;</span> <span class="fl">0.15</span> <span class="sc">~</span> <span class="dv">0</span>, label_y <span class="sc">&lt;</span> <span class="sc">-</span><span class="fl">0.15</span> <span class="sc">~</span> <span class="dv">1</span>, <span class="cn">TRUE</span> <span class="sc">~</span> <span class="fl">0.5</span>)</span>
+<span id="cb2-62"><a href="#cb2-62" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb2-63"><a href="#cb2-63" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-64"><a href="#cb2-64" aria-hidden="true" tabindex="-1"></a>  point_label_df <span class="ot">&lt;-</span> point_df <span class="sc">|&gt;</span></span>
+<span id="cb2-65"><a href="#cb2-65" aria-hidden="true" tabindex="-1"></a>    <span class="fu">transmute</span>(</span>
+<span id="cb2-66"><a href="#cb2-66" aria-hidden="true" tabindex="-1"></a>      axis_id, angle,</span>
+<span id="cb2-67"><a href="#cb2-67" aria-hidden="true" tabindex="-1"></a>      <span class="at">point_label =</span> label,</span>
+<span id="cb2-68"><a href="#cb2-68" aria-hidden="true" tabindex="-1"></a>      <span class="at">label_radius =</span> <span class="fu">case_when</span>(</span>
+<span id="cb2-69"><a href="#cb2-69" aria-hidden="true" tabindex="-1"></a>        radius <span class="sc">&gt;=</span> <span class="fl">0.72</span> <span class="sc">~</span> <span class="fu">pmax</span>(radius <span class="sc">-</span> <span class="fl">0.14</span>, <span class="fl">0.16</span>),</span>
+<span id="cb2-70"><a href="#cb2-70" aria-hidden="true" tabindex="-1"></a>        <span class="cn">TRUE</span> <span class="sc">~</span> <span class="fu">pmin</span>(radius <span class="sc">+</span> <span class="fl">0.11</span>, <span class="fl">0.88</span>)</span>
+<span id="cb2-71"><a href="#cb2-71" aria-hidden="true" tabindex="-1"></a>      ),</span>
+<span id="cb2-72"><a href="#cb2-72" aria-hidden="true" tabindex="-1"></a>      <span class="at">tangent_shift =</span> <span class="fu">if_else</span>(axis_id <span class="sc">%%</span> <span class="dv">2</span> <span class="sc">==</span> <span class="dv">0</span>, <span class="fl">0.045</span>, <span class="sc">-</span><span class="fl">0.045</span>),</span>
+<span id="cb2-73"><a href="#cb2-73" aria-hidden="true" tabindex="-1"></a>      <span class="at">label_x =</span> label_radius <span class="sc">*</span> <span class="fu">cos</span>(angle) <span class="sc">+</span> tangent_shift <span class="sc">*</span> (<span class="sc">-</span><span class="fu">sin</span>(angle)),</span>
+<span id="cb2-74"><a href="#cb2-74" aria-hidden="true" tabindex="-1"></a>      <span class="at">label_y =</span> label_radius <span class="sc">*</span> <span class="fu">sin</span>(angle) <span class="sc">+</span> tangent_shift <span class="sc">*</span> <span class="fu">cos</span>(angle),</span>
+<span id="cb2-75"><a href="#cb2-75" aria-hidden="true" tabindex="-1"></a>      <span class="at">hjust =</span> <span class="fu">case_when</span>(label_x <span class="sc">&gt;</span> <span class="fl">0.18</span> <span class="sc">~</span> <span class="dv">0</span>, label_x <span class="sc">&lt;</span> <span class="sc">-</span><span class="fl">0.18</span> <span class="sc">~</span> <span class="dv">1</span>, <span class="cn">TRUE</span> <span class="sc">~</span> <span class="fl">0.5</span>),</span>
+<span id="cb2-76"><a href="#cb2-76" aria-hidden="true" tabindex="-1"></a>      <span class="at">vjust =</span> <span class="fu">case_when</span>(label_y <span class="sc">&gt;</span> <span class="fl">0.18</span> <span class="sc">~</span> <span class="dv">0</span>, label_y <span class="sc">&lt;</span> <span class="sc">-</span><span class="fl">0.18</span> <span class="sc">~</span> <span class="dv">1</span>, <span class="cn">TRUE</span> <span class="sc">~</span> <span class="fl">0.5</span>)</span>
+<span id="cb2-77"><a href="#cb2-77" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb2-78"><a href="#cb2-78" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-79"><a href="#cb2-79" aria-hidden="true" tabindex="-1"></a>  radial_label_df <span class="ot">&lt;-</span> <span class="fu">tibble</span>(</span>
+<span id="cb2-80"><a href="#cb2-80" aria-hidden="true" tabindex="-1"></a>    <span class="at">ring =</span> radial_breaks,</span>
+<span id="cb2-81"><a href="#cb2-81" aria-hidden="true" tabindex="-1"></a>    <span class="at">x =</span> radial_breaks <span class="sc">/</span> max_ratio,</span>
+<span id="cb2-82"><a href="#cb2-82" aria-hidden="true" tabindex="-1"></a>    <span class="at">y =</span> <span class="fl">0.02</span>,</span>
+<span id="cb2-83"><a href="#cb2-83" aria-hidden="true" tabindex="-1"></a>    <span class="at">label =</span> <span class="fu">paste0</span>(scales<span class="sc">::</span><span class="fu">number</span>(radial_breaks, <span class="at">accuracy =</span> <span class="fl">0.1</span>), <span class="st">"x"</span>)</span>
+<span id="cb2-84"><a href="#cb2-84" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb2-85"><a href="#cb2-85" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-86"><a href="#cb2-86" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>() <span class="sc">+</span></span>
+<span id="cb2-87"><a href="#cb2-87" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_path</span>(</span>
+<span id="cb2-88"><a href="#cb2-88" aria-hidden="true" tabindex="-1"></a>      <span class="at">data =</span> <span class="fu">filter</span>(ring_df, <span class="fu">abs</span>(ring <span class="sc">-</span> <span class="fl">1.0</span>) <span class="sc">&gt;</span> <span class="fl">0.01</span>),</span>
+<span id="cb2-89"><a href="#cb2-89" aria-hidden="true" tabindex="-1"></a>      <span class="fu">aes</span>(<span class="at">x =</span> x, <span class="at">y =</span> y, <span class="at">group =</span> ring),</span>
+<span id="cb2-90"><a href="#cb2-90" aria-hidden="true" tabindex="-1"></a>      <span class="at">color =</span> <span class="st">"grey72"</span>, <span class="at">linewidth =</span> <span class="fl">0.15</span></span>
+<span id="cb2-91"><a href="#cb2-91" aria-hidden="true" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb2-92"><a href="#cb2-92" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_path</span>(</span>
+<span id="cb2-93"><a href="#cb2-93" aria-hidden="true" tabindex="-1"></a>      <span class="at">data =</span> <span class="fu">filter</span>(ring_df, <span class="fu">abs</span>(ring <span class="sc">-</span> <span class="fl">1.0</span>) <span class="sc">&lt;=</span> <span class="fl">0.01</span>),</span>
+<span id="cb2-94"><a href="#cb2-94" aria-hidden="true" tabindex="-1"></a>      <span class="fu">aes</span>(<span class="at">x =</span> x, <span class="at">y =</span> y, <span class="at">group =</span> ring),</span>
+<span id="cb2-95"><a href="#cb2-95" aria-hidden="true" tabindex="-1"></a>      <span class="at">color =</span> <span class="st">"grey40"</span>, <span class="at">linewidth =</span> <span class="fl">0.6</span>, <span class="at">linetype =</span> <span class="st">"solid"</span></span>
+<span id="cb2-96"><a href="#cb2-96" aria-hidden="true" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb2-97"><a href="#cb2-97" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_segment</span>(</span>
+<span id="cb2-98"><a href="#cb2-98" aria-hidden="true" tabindex="-1"></a>      <span class="at">data =</span> spoke_df,</span>
+<span id="cb2-99"><a href="#cb2-99" aria-hidden="true" tabindex="-1"></a>      <span class="fu">aes</span>(<span class="at">x =</span> x, <span class="at">y =</span> y, <span class="at">xend =</span> xend, <span class="at">yend =</span> yend),</span>
+<span id="cb2-100"><a href="#cb2-100" aria-hidden="true" tabindex="-1"></a>      <span class="at">color =</span> <span class="st">"grey76"</span>, <span class="at">linewidth =</span> <span class="fl">0.15</span></span>
+<span id="cb2-101"><a href="#cb2-101" aria-hidden="true" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb2-102"><a href="#cb2-102" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_polygon</span>(</span>
+<span id="cb2-103"><a href="#cb2-103" aria-hidden="true" tabindex="-1"></a>      <span class="at">data =</span> closed_df,</span>
+<span id="cb2-104"><a href="#cb2-104" aria-hidden="true" tabindex="-1"></a>      <span class="fu">aes</span>(<span class="at">x =</span> x, <span class="at">y =</span> y),</span>
+<span id="cb2-105"><a href="#cb2-105" aria-hidden="true" tabindex="-1"></a>      <span class="at">fill =</span> scales<span class="sc">::</span><span class="fu">alpha</span>(cause_cols[[cause_name]], <span class="fl">0.45</span>),</span>
+<span id="cb2-106"><a href="#cb2-106" aria-hidden="true" tabindex="-1"></a>      <span class="at">color =</span> cause_cols[[cause_name]],</span>
+<span id="cb2-107"><a href="#cb2-107" aria-hidden="true" tabindex="-1"></a>      <span class="at">linewidth =</span> <span class="fl">0.15</span>, <span class="at">linejoin =</span> <span class="st">"round"</span></span>
+<span id="cb2-108"><a href="#cb2-108" aria-hidden="true" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb2-109"><a href="#cb2-109" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_point</span>(</span>
+<span id="cb2-110"><a href="#cb2-110" aria-hidden="true" tabindex="-1"></a>      <span class="at">data =</span> point_df,</span>
+<span id="cb2-111"><a href="#cb2-111" aria-hidden="true" tabindex="-1"></a>      <span class="fu">aes</span>(<span class="at">x =</span> x, <span class="at">y =</span> y),</span>
+<span id="cb2-112"><a href="#cb2-112" aria-hidden="true" tabindex="-1"></a>      <span class="at">color =</span> cause_cols[[cause_name]],</span>
+<span id="cb2-113"><a href="#cb2-113" aria-hidden="true" tabindex="-1"></a>      <span class="at">fill =</span> cause_cols[[cause_name]],</span>
+<span id="cb2-114"><a href="#cb2-114" aria-hidden="true" tabindex="-1"></a>      <span class="at">shape =</span> <span class="dv">21</span>, <span class="at">stroke =</span> <span class="fl">0.2</span>, <span class="at">size =</span> <span class="fl">1.4</span></span>
+<span id="cb2-115"><a href="#cb2-115" aria-hidden="true" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb2-116"><a href="#cb2-116" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_text</span>(</span>
+<span id="cb2-117"><a href="#cb2-117" aria-hidden="true" tabindex="-1"></a>      <span class="at">data =</span> point_label_df,</span>
+<span id="cb2-118"><a href="#cb2-118" aria-hidden="true" tabindex="-1"></a>      <span class="fu">aes</span>(<span class="at">x =</span> label_x, <span class="at">y =</span> label_y, <span class="at">label =</span> point_label, <span class="at">hjust =</span> hjust, <span class="at">vjust =</span> vjust),</span>
+<span id="cb2-119"><a href="#cb2-119" aria-hidden="true" tabindex="-1"></a>      <span class="at">size =</span> <span class="fl">2.7</span>, <span class="at">lineheight =</span> <span class="fl">0.92</span>,</span>
+<span id="cb2-120"><a href="#cb2-120" aria-hidden="true" tabindex="-1"></a>      <span class="at">color =</span> cause_cols[[cause_name]]</span>
+<span id="cb2-121"><a href="#cb2-121" aria-hidden="true" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb2-122"><a href="#cb2-122" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_text</span>(</span>
+<span id="cb2-123"><a href="#cb2-123" aria-hidden="true" tabindex="-1"></a>      <span class="at">data =</span> axis_label_df,</span>
+<span id="cb2-124"><a href="#cb2-124" aria-hidden="true" tabindex="-1"></a>      <span class="fu">aes</span>(<span class="at">x =</span> label_x, <span class="at">y =</span> label_y, <span class="at">label =</span> dimension, <span class="at">hjust =</span> hjust, <span class="at">vjust =</span> vjust),</span>
+<span id="cb2-125"><a href="#cb2-125" aria-hidden="true" tabindex="-1"></a>      <span class="at">size =</span> <span class="fl">3.6</span>, <span class="at">lineheight =</span> <span class="fl">0.9</span></span>
+<span id="cb2-126"><a href="#cb2-126" aria-hidden="true" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb2-127"><a href="#cb2-127" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_text</span>(</span>
+<span id="cb2-128"><a href="#cb2-128" aria-hidden="true" tabindex="-1"></a>      <span class="at">data =</span> radial_label_df,</span>
+<span id="cb2-129"><a href="#cb2-129" aria-hidden="true" tabindex="-1"></a>      <span class="fu">aes</span>(<span class="at">x =</span> x, <span class="at">y =</span> y, <span class="at">label =</span> label),</span>
+<span id="cb2-130"><a href="#cb2-130" aria-hidden="true" tabindex="-1"></a>      <span class="at">color =</span> <span class="st">"grey65"</span>, <span class="at">size =</span> <span class="fl">3.3</span>, <span class="at">hjust =</span> <span class="fl">0.5</span>, <span class="at">vjust =</span> <span class="dv">0</span></span>
+<span id="cb2-131"><a href="#cb2-131" aria-hidden="true" tabindex="-1"></a>    ) <span class="sc">+</span></span>
+<span id="cb2-132"><a href="#cb2-132" aria-hidden="true" tabindex="-1"></a>    <span class="fu">coord_equal</span>(<span class="at">clip =</span> <span class="st">"off"</span>) <span class="sc">+</span></span>
+<span id="cb2-133"><a href="#cb2-133" aria-hidden="true" tabindex="-1"></a>    <span class="fu">xlim</span>(<span class="sc">-</span><span class="fl">1.28</span>, <span class="fl">1.28</span>) <span class="sc">+</span> <span class="fu">ylim</span>(<span class="sc">-</span><span class="fl">1.26</span>, <span class="fl">1.28</span>) <span class="sc">+</span></span>
+<span id="cb2-134"><a href="#cb2-134" aria-hidden="true" tabindex="-1"></a>    <span class="fu">labs</span>(<span class="at">title =</span> cause_name, <span class="at">subtitle =</span> subtitle, <span class="at">x =</span> <span class="cn">NULL</span>, <span class="at">y =</span> <span class="cn">NULL</span>) <span class="sc">+</span></span>
+<span id="cb2-135"><a href="#cb2-135" aria-hidden="true" tabindex="-1"></a>    theme_report <span class="sc">+</span></span>
+<span id="cb2-136"><a href="#cb2-136" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme</span>(</span>
+<span id="cb2-137"><a href="#cb2-137" aria-hidden="true" tabindex="-1"></a>      <span class="at">axis.text =</span> <span class="fu">element_blank</span>(),</span>
+<span id="cb2-138"><a href="#cb2-138" aria-hidden="true" tabindex="-1"></a>      <span class="at">axis.ticks =</span> <span class="fu">element_blank</span>(),</span>
+<span id="cb2-139"><a href="#cb2-139" aria-hidden="true" tabindex="-1"></a>      <span class="at">axis.line =</span> <span class="fu">element_blank</span>(),</span>
+<span id="cb2-140"><a href="#cb2-140" aria-hidden="true" tabindex="-1"></a>      <span class="at">panel.grid =</span> <span class="fu">element_blank</span>(),</span>
+<span id="cb2-141"><a href="#cb2-141" aria-hidden="true" tabindex="-1"></a>      <span class="at">plot.margin =</span> <span class="fu">margin</span>(<span class="dv">20</span>, <span class="dv">35</span>, <span class="dv">20</span>, <span class="dv">35</span>)</span>
+<span id="cb2-142"><a href="#cb2-142" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb2-143"><a href="#cb2-143" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb2-144"><a href="#cb2-144" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-145"><a href="#cb2-145" aria-hidden="true" tabindex="-1"></a>radar_plots <span class="ot">&lt;-</span> <span class="fu">map</span>(cause_order, \(cn) {</span>
+<span id="cb2-146"><a href="#cb2-146" aria-hidden="true" tabindex="-1"></a>  <span class="fu">plot_dominant_radar_ratio</span>(pooled_ratios, cn, <span class="st">"Pooled — ratio to labor force share"</span>)</span>
+<span id="cb2-147"><a href="#cb2-147" aria-hidden="true" tabindex="-1"></a>})</span>
+<span id="cb2-148"><a href="#cb2-148" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-149"><a href="#cb2-149" aria-hidden="true" tabindex="-1"></a>patchwork<span class="sc">::</span><span class="fu">wrap_plots</span>(radar_plots, <span class="at">ncol =</span> <span class="dv">2</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="cfi_files/figure-html/radar-representation-ratio-1.png" class="img-fluid figure-img" width="1440"></p>
+<figcaption>Dominant-group representation ratios by reason-for-unemployment category, pooled CPS 1994–present. Each spoke shows the group with the largest share on that dimension; the radius is that group’s share of the cause-specific unemployed pool divided by its share of the labor force. Solid ring = 1 (proportional representation).</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p>For five of the six categories, the polygons hug the 1-ring, deviating on at most one spoke. New Entrants are the clear outlier, sitting far outside the 1-ring on age, education, and, by construction, occupation and class, since they have no prior job. Because UI eligibility depends on recent work history and earnings thresholds, these demographic gaps map directly onto how much of a cause’s unemployed actually shows up in the claims data.</p>
+</section>
+<section id="new-entrants" class="level2">
+<h2 class="anchored" data-anchor-id="new-entrants">New Entrants</h2>
+<p>These cause-categories are useful for our exercise. Using monthly, national data, we should observe that periods with unemployment pools composed of Temporary Layoffs or Permanent Job Losers - groups with greater propensity to claim UI - should correspond with greater claiming than unemployment pools composed of other categories.</p>
 </section>
 <section id="the-flow-consistent-rate-of-unemployment" class="level2">
 <h2 class="anchored" data-anchor-id="the-flow-consistent-rate-of-unemployment">The Flow-Consistent Rate of Unemployment</h2>
