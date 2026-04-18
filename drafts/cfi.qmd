@@ -418,14 +418,25 @@ The second reason paints a less rosy picture. The New Entrant share could also r
 
 ## The Flow-Consistent Rate of Unemployment 
 
-This is where it helps to bring in the flow-consistent framework used in the Chicago Fed Labor Market Indicators.  Following Shimer (2005, 2012) the flow-consistent rate of unemployment is defined as 
+The flow-consistent framework used in the Chicago Fed Labor Market Indicators helps here. Following Shimer (2005, 2012), the flow-consistent unemployment rate is
 
 $$
-FCR = \frac{s}{s+f}
+\text{FCR} = \frac{s}{s + f}
 $$
 
-where $s$ is the separation rate into unemployment and $f$ is the job-finding rate out of unemployment. Decomposing the unemployment rate between January 2017 to December 2025 into contributions from $s$ and $f$ we find that **most of the variation in the monthly unemployment rate is driven by contributions from the hiring rate not the separations rate**. This is consistent with Shimer (2005, 2012) in which it was reported that 75% of unemployment rate was driven by contributions from the finding rate and 25% was driven by separations rate. 
+where $s$ is the rate at which people flow into unemployment and $f$ is the rate at which they flow out. When monthly movement in the unemployment rate is decomposed into contributions from $s$ and $f$, most of it comes from $f$, not $s$. Shimer reported roughly a 75/25 split, and the pattern still holds on modern data.
 
+Claims mainly measure the separation side. Initial claims are a flow into unemployment; continuing claims are a stock of people who haven't found a job yet but were eligible when they separated. Neither is a direct read on hiring. So any labor-market read built on claims leans on the channel that explains the smaller share of variation in the unemployment rate, and away from the one that explains most of it.
+
+Put the two pieces together. Weak hiring concentrated in UI-ineligible groups is invisible to claims twice over: claims don't cover those groups, and even for the groups they do cover, claims don't track hiring well. A labor market weakening through $f$, in groups where entrants dominate, is precisely the case claims are worst at catching.
+
+The composition regression gives us a way to check which story — cyclical or structural — fits today. Its fitted values are the claims intensity the historical composition–claims relationship predicts for any given mix of the unemployed. Run a CFLMI replication twice, once with actual claims and once with these fitted claims, and compare the flow-consistent rate and the finding rate from each.
+
+If the two versions agree, today's elevated New Entrants share is likely the familiar cyclical pattern: claims are behaving as composition predicts, and swapping one series for the other doesn't change the read. If they diverge — especially if the composition-predicted version shows a noticeably weaker finding rate — the elevated share is doing more than reflecting a hot market. It's telling us something claims alone cannot.
+
+## Conclusion
+
+UI claims remain a reliable signal for one thing: separations-driven weakening. When unemployment rises because firms are laying people off, claims catch it early, cleanly, and nearly in full. When unemployment rises because hiring is slowing — especially in groups UI was never designed to cover — claims can stay quiet while the picture deteriorates underneath. A high New Entrants share used to be reassuring. With the share sitting persistently above its long-run level through a period of slowing hiring, the same statistic is now ambiguous, and the claims release no longer carries the all-clear it once did.
 
 
 
