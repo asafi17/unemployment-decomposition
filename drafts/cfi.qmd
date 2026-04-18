@@ -366,7 +366,9 @@ bind_rows(
 ```
 
 
-The coefficients align with our expectations. Temporary Layoff and Permanent Job Losers - the two causes closest to UI's target population - enter with positive signs. Months when these categories make up a larger share of the unemployed see higher continuing claims intensity. New Entrants and Job Leavers enter negatively, consistent with the belief that these groups are likely to be less eligible for UI programs. However, these estimates are not causal. Composition shares are jointly determined with claims by the same underlying labor-market trends. 
+The coefficients align with our expectations. Temporary Layoff and Permanent Job Losers - the two causes closest to UI's target population - enter with positive signs. Months when these categories make up a larger share of the unemployed see higher continuing claims intensity. New Entrants and Job Leavers enter negatively, consistent with the belief that these groups are likely to be less eligible for UI programs. However, these estimates are not causal. Composition shares are jointly determined with claims by the same underlying labor-market trends.
+
+The IC/CE coefficients are about ten times smaller than the CC/CE coefficients. Part of the difference is mechanical. IC/CE is a much smaller ratio than CC/CE to begin with, so the same composition shift shows up as a smaller number. Part of it is substantive. Initial claims are a weekly flow of new filers. Continuing claims are a stock of everyone currently claiming. A composition shift that tilts the unemployed toward UI-eligible groups does two things. It raises the filing rate, and because eligible filers tend to have longer unemployment spells, it also raises the time those filers stay in the stock. CC/CE picks up both effects. IC/CE picks up only the first. 
 
 To illustrate this point, the figure below plots the share of the unemployed pool that are New Entrants from 1994 to present, with a 12-month moving average and NBER recessions shaded.
 
