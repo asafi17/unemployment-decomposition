@@ -139,17 +139,17 @@ window.Quarto = {
 <h2 class="anchored" data-anchor-id="introduction">Introduction</h2>
 <p>The Department of Labor releases initial and continuing unemployment insurance (UI) claims data every Thursday at 8:30 a.m. Eastern, covering the week that ended the previous Saturday for initial claims and the week before that for continuing claims. Three features make claims data attractive as a real-time signal relative to the monthly Bureau of Labor Statistics (BLS) employment situation release:</p>
 <ol type="1">
-<li><p><strong>Frequency</strong>. Released weekly which provides more detailed snapshots of the labor market in the periods between the monthly BLS report.</p></li>
-<li><p><strong>Timeliness</strong>. Published with a five-day lag, versus the three-week lag of the BLS payroll report enabling closer-to-real-time updates on the health of the labor market.</p></li>
+<li><p><strong>Frequency</strong>. Released weekly, which provides more detailed snapshots of the labor market in the periods between the monthly BLS report.</p></li>
+<li><p><strong>Timeliness</strong>. Published with a five-day lag, versus the three-week lag of the BLS payroll report, enabling closer-to-real-time updates on the health of the labor market.</p></li>
 <li><p><strong>Administrative grounding</strong>. Claims are counted when people file, not estimated from a survey.</p></li>
 </ol>
 <p>UI programs are designed to provide unemployment benefits to eligible workers who become unemployed through no fault of their own and meet other eligibility requirements. For this reason, the majority of initial claims for unemployment insurance benefits are filed because of a separation from a job the filer did not initiate. Causes of such separations are layoffs, temporary furloughs, completed temporary contracts, among others (see <a href="https://www.dol.gov/general/topic/unemployment-insurance">How Do I File for Unemployment Insurance</a>). Because of UI program design, initial claims are a <strong>noisy, lower-bound read on separations</strong>. Specifically, initial claims will miss <strong>separations that do not generate claims</strong> such as short-tenure workers, part-timers, gig/1099 workers and people who do not satisfy work-history or monetary-based eligibility requirements.</p>
-<p>Continuing claims are the number of people currently drawing unemployment insurance benefits and can change for two reasons. The first is that the number of people who <em>initiate</em> claims changes (i.e., changes to the <em>inflows</em> to the insured-unemployment pool). The second is that people stop claiming benefits (i.e., changes to <em>outflows</em> from the insured-unemployment pool). Broadly, there are three reasons why people stop claiming: They find a job; they exhaust the UI benefits available to them; they fail to maintain eligibility.</p>
+<p>Continuing claims are the number of people currently drawing unemployment insurance benefits and can change for two reasons. The first is that the number of people who <em>initiate</em> claims changes (i.e., changes to the <em>inflows</em> to the insured-unemployment pool). The second is that people stop claiming benefits (i.e., changes to <em>outflows</em> from the insured-unemployment pool). Broadly, there are three reasons why people stop claiming: they find a job; they exhaust the UI benefits available to them; they fail to maintain eligibility.</p>
 <p>Because of these desirable features, UI claims became the default “nowcast” input for labor-market watchers long before high-frequency alternatives existed. However, the labor market signal UI claims provide depends on <em>who the unemployed are</em>. When the unemployed pool is composed of groups UI programs were not designed to cover, the same claims release can imply something very different about the state of the labor market. In this post, we use the Current Population Survey’s (CPS) unemployment-by-cause data to understand the historical and statistical relationship between the composition of the unemployed pool, UI claims, and the unemployment rate.</p>
 </section>
 <section id="why-people-are-unemployed" class="level2">
 <h2 class="anchored" data-anchor-id="why-people-are-unemployed">Why People are Unemployed</h2>
-<p>The CPS provides six mutually exclusive and exhaustive reason-for-unemployment categories: temporary layoff, permanent job loss, completed temporary job, voluntary quit, reentry to the labor force, and new entry. The definitions of those categories are provided in Table 1.</p>
+<p>The CPS provides six mutually exclusive and exhaustive reason-for-unemployment categories: Temporary Layoff, Permanent Job Losers, Completed Temp Job, Job Leavers, Reentrants, and New Entrants. The definitions of those categories are provided in Table 1.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -173,23 +173,23 @@ window.Quarto = {
 <span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tab_style</span>(<span class="at">style =</span> <span class="fu">cell_text</span>(<span class="at">color =</span> <span class="st">"white"</span>), <span class="at">locations =</span> <span class="fu">cells_column_labels</span>()) </span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
 <div class="cell-output-display">
-<div id="vwvcgkfoxv" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
-<style>#vwvcgkfoxv table {
+<div id="lxhwyiwymn" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>#lxhwyiwymn table {
   font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-#vwvcgkfoxv thead, #vwvcgkfoxv tbody, #vwvcgkfoxv tfoot, #vwvcgkfoxv tr, #vwvcgkfoxv td, #vwvcgkfoxv th {
+#lxhwyiwymn thead, #lxhwyiwymn tbody, #lxhwyiwymn tfoot, #lxhwyiwymn tr, #lxhwyiwymn td, #lxhwyiwymn th {
   border-style: none;
 }
 
-#vwvcgkfoxv p {
+#lxhwyiwymn p {
   margin: 0;
   padding: 0;
 }
 
-#vwvcgkfoxv .gt_table {
+#lxhwyiwymn .gt_table {
   display: table;
   border-collapse: collapse;
   line-height: normal;
@@ -215,12 +215,12 @@ window.Quarto = {
   border-left-color: #D3D3D3;
 }
 
-#vwvcgkfoxv .gt_caption {
+#lxhwyiwymn .gt_caption {
   padding-top: 4px;
   padding-bottom: 4px;
 }
 
-#vwvcgkfoxv .gt_title {
+#lxhwyiwymn .gt_title {
   color: #333333;
   font-size: 125%;
   font-weight: initial;
@@ -232,7 +232,7 @@ window.Quarto = {
   border-bottom-width: 0;
 }
 
-#vwvcgkfoxv .gt_subtitle {
+#lxhwyiwymn .gt_subtitle {
   color: #333333;
   font-size: 85%;
   font-weight: initial;
@@ -244,7 +244,7 @@ window.Quarto = {
   border-top-width: 0;
 }
 
-#vwvcgkfoxv .gt_heading {
+#lxhwyiwymn .gt_heading {
   background-color: #FFFFFF;
   text-align: center;
   border-bottom-color: #FFFFFF;
@@ -256,13 +256,13 @@ window.Quarto = {
   border-right-color: #D3D3D3;
 }
 
-#vwvcgkfoxv .gt_bottom_border {
+#lxhwyiwymn .gt_bottom_border {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
 }
 
-#vwvcgkfoxv .gt_col_headings {
+#lxhwyiwymn .gt_col_headings {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -277,7 +277,7 @@ window.Quarto = {
   border-right-color: #D3D3D3;
 }
 
-#vwvcgkfoxv .gt_col_heading {
+#lxhwyiwymn .gt_col_heading {
   color: #FFFFFF;
   background-color: #2C3E50;
   font-size: 100%;
@@ -297,7 +297,7 @@ window.Quarto = {
   overflow-x: hidden;
 }
 
-#vwvcgkfoxv .gt_column_spanner_outer {
+#lxhwyiwymn .gt_column_spanner_outer {
   color: #FFFFFF;
   background-color: #2C3E50;
   font-size: 100%;
@@ -309,15 +309,15 @@ window.Quarto = {
   padding-right: 4px;
 }
 
-#vwvcgkfoxv .gt_column_spanner_outer:first-child {
+#lxhwyiwymn .gt_column_spanner_outer:first-child {
   padding-left: 0;
 }
 
-#vwvcgkfoxv .gt_column_spanner_outer:last-child {
+#lxhwyiwymn .gt_column_spanner_outer:last-child {
   padding-right: 0;
 }
 
-#vwvcgkfoxv .gt_column_spanner {
+#lxhwyiwymn .gt_column_spanner {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
@@ -329,11 +329,11 @@ window.Quarto = {
   width: 100%;
 }
 
-#vwvcgkfoxv .gt_spanner_row {
+#lxhwyiwymn .gt_spanner_row {
   border-bottom-style: hidden;
 }
 
-#vwvcgkfoxv .gt_group_heading {
+#lxhwyiwymn .gt_group_heading {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -359,7 +359,7 @@ window.Quarto = {
   text-align: left;
 }
 
-#vwvcgkfoxv .gt_empty_group_heading {
+#lxhwyiwymn .gt_empty_group_heading {
   padding: 0.5px;
   color: #333333;
   background-color: #FFFFFF;
@@ -374,15 +374,15 @@ window.Quarto = {
   vertical-align: middle;
 }
 
-#vwvcgkfoxv .gt_from_md > :first-child {
+#lxhwyiwymn .gt_from_md > :first-child {
   margin-top: 0;
 }
 
-#vwvcgkfoxv .gt_from_md > :last-child {
+#lxhwyiwymn .gt_from_md > :last-child {
   margin-bottom: 0;
 }
 
-#vwvcgkfoxv .gt_row {
+#lxhwyiwymn .gt_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -401,7 +401,7 @@ window.Quarto = {
   overflow-x: hidden;
 }
 
-#vwvcgkfoxv .gt_stub {
+#lxhwyiwymn .gt_stub {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -414,7 +414,7 @@ window.Quarto = {
   padding-right: 5px;
 }
 
-#vwvcgkfoxv .gt_stub_row_group {
+#lxhwyiwymn .gt_stub_row_group {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -428,15 +428,15 @@ window.Quarto = {
   vertical-align: top;
 }
 
-#vwvcgkfoxv .gt_row_group_first td {
+#lxhwyiwymn .gt_row_group_first td {
   border-top-width: 2px;
 }
 
-#vwvcgkfoxv .gt_row_group_first th {
+#lxhwyiwymn .gt_row_group_first th {
   border-top-width: 2px;
 }
 
-#vwvcgkfoxv .gt_summary_row {
+#lxhwyiwymn .gt_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -446,16 +446,16 @@ window.Quarto = {
   padding-right: 5px;
 }
 
-#vwvcgkfoxv .gt_first_summary_row {
+#lxhwyiwymn .gt_first_summary_row {
   border-top-style: solid;
   border-top-color: #D3D3D3;
 }
 
-#vwvcgkfoxv .gt_first_summary_row.thick {
+#lxhwyiwymn .gt_first_summary_row.thick {
   border-top-width: 2px;
 }
 
-#vwvcgkfoxv .gt_last_summary_row {
+#lxhwyiwymn .gt_last_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -465,7 +465,7 @@ window.Quarto = {
   border-bottom-color: #D3D3D3;
 }
 
-#vwvcgkfoxv .gt_grand_summary_row {
+#lxhwyiwymn .gt_grand_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -475,7 +475,7 @@ window.Quarto = {
   padding-right: 5px;
 }
 
-#vwvcgkfoxv .gt_first_grand_summary_row {
+#lxhwyiwymn .gt_first_grand_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -485,7 +485,7 @@ window.Quarto = {
   border-top-color: #D3D3D3;
 }
 
-#vwvcgkfoxv .gt_last_grand_summary_row_top {
+#lxhwyiwymn .gt_last_grand_summary_row_top {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -495,11 +495,11 @@ window.Quarto = {
   border-bottom-color: #D3D3D3;
 }
 
-#vwvcgkfoxv .gt_striped {
+#lxhwyiwymn .gt_striped {
   background-color: rgba(128, 128, 128, 0.05);
 }
 
-#vwvcgkfoxv .gt_table_body {
+#lxhwyiwymn .gt_table_body {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -508,7 +508,7 @@ window.Quarto = {
   border-bottom-color: #D3D3D3;
 }
 
-#vwvcgkfoxv .gt_footnotes {
+#lxhwyiwymn .gt_footnotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -522,7 +522,7 @@ window.Quarto = {
   border-right-color: #D3D3D3;
 }
 
-#vwvcgkfoxv .gt_footnote {
+#lxhwyiwymn .gt_footnote {
   margin: 0px;
   font-size: 90%;
   padding-top: 4px;
@@ -531,7 +531,7 @@ window.Quarto = {
   padding-right: 5px;
 }
 
-#vwvcgkfoxv .gt_sourcenotes {
+#lxhwyiwymn .gt_sourcenotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -545,7 +545,7 @@ window.Quarto = {
   border-right-color: #D3D3D3;
 }
 
-#vwvcgkfoxv .gt_sourcenote {
+#lxhwyiwymn .gt_sourcenote {
   font-size: 90%;
   padding-top: 4px;
   padding-bottom: 4px;
@@ -553,72 +553,72 @@ window.Quarto = {
   padding-right: 5px;
 }
 
-#vwvcgkfoxv .gt_left {
+#lxhwyiwymn .gt_left {
   text-align: left;
 }
 
-#vwvcgkfoxv .gt_center {
+#lxhwyiwymn .gt_center {
   text-align: center;
 }
 
-#vwvcgkfoxv .gt_right {
+#lxhwyiwymn .gt_right {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-#vwvcgkfoxv .gt_font_normal {
+#lxhwyiwymn .gt_font_normal {
   font-weight: normal;
 }
 
-#vwvcgkfoxv .gt_font_bold {
+#lxhwyiwymn .gt_font_bold {
   font-weight: bold;
 }
 
-#vwvcgkfoxv .gt_font_italic {
+#lxhwyiwymn .gt_font_italic {
   font-style: italic;
 }
 
-#vwvcgkfoxv .gt_super {
+#lxhwyiwymn .gt_super {
   font-size: 65%;
 }
 
-#vwvcgkfoxv .gt_footnote_marks {
+#lxhwyiwymn .gt_footnote_marks {
   font-size: 75%;
   vertical-align: 0.4em;
   position: initial;
 }
 
-#vwvcgkfoxv .gt_asterisk {
+#lxhwyiwymn .gt_asterisk {
   font-size: 100%;
   vertical-align: 0;
 }
 
-#vwvcgkfoxv .gt_indent_1 {
+#lxhwyiwymn .gt_indent_1 {
   text-indent: 5px;
 }
 
-#vwvcgkfoxv .gt_indent_2 {
+#lxhwyiwymn .gt_indent_2 {
   text-indent: 10px;
 }
 
-#vwvcgkfoxv .gt_indent_3 {
+#lxhwyiwymn .gt_indent_3 {
   text-indent: 15px;
 }
 
-#vwvcgkfoxv .gt_indent_4 {
+#lxhwyiwymn .gt_indent_4 {
   text-indent: 20px;
 }
 
-#vwvcgkfoxv .gt_indent_5 {
+#lxhwyiwymn .gt_indent_5 {
   text-indent: 25px;
 }
 
-#vwvcgkfoxv .katex-display {
+#lxhwyiwymn .katex-display {
   display: inline-flex !important;
   margin-bottom: 0.75em !important;
 }
 
-#vwvcgkfoxv div.Reactable > div.rt-table > div.rt-thead > div.rt-tr.rt-tr-group-header > div.rt-th-group:after {
+#lxhwyiwymn div.Reactable > div.rt-table > div.rt-thead > div.rt-tr.rt-tr-group-header > div.rt-th-group:after {
   height: 0px !important;
 }
 </style>
@@ -669,7 +669,7 @@ window.Quarto = {
 <p>Table 1: CPS WHYUNEMP Categories</p>
 </div>
 </div>
-<p>These categories map onto UI eligibility in very different ways. Temporary layoffs and permanent job losers are the program’s target group: people who have separated from their job for no fault of their own, with filers who typically have the work history and earnings needed to qualify. The remaining four groups are variously outside the program’s design. Completed temp jobs can go either way depending on state rules. Voluntary quits usually don’t qualify except in narrow circumstances. Reentrants often fail work-history tests because their last job was too long ago. New entrants have no prior job at all, so they cannot meet the eligibility criteria by construction.</p>
+<p>These categories map onto UI eligibility in very different ways. Temporary Layoffs and Permanent Job Losers are the program’s target group: people who have separated from their job through no fault of their own, and who typically have the work history and earnings needed to qualify. The remaining four groups are variously outside the program’s design. Completed Temp Jobs can go either way depending on state rules. Job Leavers usually don’t qualify except in narrow circumstances. Reentrants often fail work-history tests because their last job was too long ago. New Entrants have no prior job at all, so they cannot meet the eligibility criteria by construction.</p>
 <p>To see which reason-for-unemployment categories are most plausibly served by UI versus most plausibly missed by it, we construct a profile of each cause. For every cause category in Table 1, we identify the dominant demographic group and compute a representation ratio on a set of standard dimensions: age, education, sex, race, nativity, citizenship, and prior class of worker. The representation ratio is defined as:</p>
 <p><span class="math display">\[
 \text{representation ratio} = \frac{\text{group's share of this cause's unemployed pool}}{\text{group's share of the overall labor force}}
@@ -841,11 +841,11 @@ window.Quarto = {
 </section>
 <section id="composition-and-ui-takeup" class="level2">
 <h2 class="anchored" data-anchor-id="composition-and-ui-takeup">Composition and UI Takeup</h2>
-<p>The CPS cause-categories appear to be useful proxies for UI eligibility in the unemployed pool. To test whether that distinction shows up in the UI claims data, we estimate a simple national monthly regression of initial and continuing claims intensity on the composition of the unemployed:</p>
+<p>The CPS cause categories appear to be useful proxies for UI eligibility in the unemployed pool. To test whether that distinction shows up in the UI claims data, we estimate a simple national monthly regression of initial and continuing claims intensity on the composition of the unemployed:</p>
 <p><span class="math display">\[
 \text{Claims}_t = \alpha + \sum_{j \neq \text{Completed Temp Job}} \beta_j C_j + \gamma_m + \varepsilon_t
 \]</span></p>
-<p>The outcome is continuing claims scaled by covered employment; the regressors are the five cause shares, with Completed Temp Job omitted as the reference category. Month-of-year fixed effects <span class="math inline">\(\gamma_m\)</span> absorb seasonality. The sample is monthly national data from 1994 to present, excluding the pandemic window (March 2020 - December 2021) where both compositions and claiming broke from their historical relationships.</p>
+<p>The outcome is continuing claims scaled by covered employment; the regressors are the five cause shares, with Completed Temp Job omitted as the reference category. Month-of-year fixed effects <span class="math inline">\(\gamma_m\)</span> absorb seasonality. The sample is monthly national data from 1994 to the present, excluding the pandemic window (March 2020–December 2021) during which both compositions and claiming broke from their historical relationships.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -908,7 +908,7 @@ window.Quarto = {
 <span id="cb3-57"><a href="#cb3-57" aria-hidden="true" tabindex="-1"></a>ic_mod <span class="ot">&lt;-</span> <span class="fu">lm</span>(<span class="fu">as.formula</span>(<span class="fu">paste</span>(<span class="st">"ic_ce ~"</span>, comp_rhs)), <span class="at">data =</span> reg_df)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
 </div>
-<div class="cell" data-tbl-cap="National monthly regressions of claims intensity on by-cause unemployment shares, 1994–present excluding March 2020–December 2021. Completed temporary jobs is the omitted reference category; month-of-year fixed effects absorb seasonality. Coefficients are scaled to a 10 percentage-point shift in share.">
+<div class="cell" data-tbl-cap="National monthly regressions of claims intensity on by-cause unemployment shares, 1994–present excluding March 2020–December 2021. Completed Temp Job is the omitted reference category; month-of-year fixed effects absorb seasonality. Coefficients are scaled to a 10 percentage-point shift in share.">
 <details class="code-fold">
 <summary>Code</summary>
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>cause_labels <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
@@ -953,23 +953,23 @@ window.Quarto = {
 <span id="cb4-40"><a href="#cb4-40" aria-hidden="true" tabindex="-1"></a>  ))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
 <div class="cell-output-display">
-<div id="pufzikthgm" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
-<style>#pufzikthgm table {
+<div id="bedsaluoap" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>#bedsaluoap table {
   font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-#pufzikthgm thead, #pufzikthgm tbody, #pufzikthgm tfoot, #pufzikthgm tr, #pufzikthgm td, #pufzikthgm th {
+#bedsaluoap thead, #bedsaluoap tbody, #bedsaluoap tfoot, #bedsaluoap tr, #bedsaluoap td, #bedsaluoap th {
   border-style: none;
 }
 
-#pufzikthgm p {
+#bedsaluoap p {
   margin: 0;
   padding: 0;
 }
 
-#pufzikthgm .gt_table {
+#bedsaluoap .gt_table {
   display: table;
   border-collapse: collapse;
   line-height: normal;
@@ -995,12 +995,12 @@ window.Quarto = {
   border-left-color: #D3D3D3;
 }
 
-#pufzikthgm .gt_caption {
+#bedsaluoap .gt_caption {
   padding-top: 4px;
   padding-bottom: 4px;
 }
 
-#pufzikthgm .gt_title {
+#bedsaluoap .gt_title {
   color: #333333;
   font-size: 125%;
   font-weight: initial;
@@ -1012,7 +1012,7 @@ window.Quarto = {
   border-bottom-width: 0;
 }
 
-#pufzikthgm .gt_subtitle {
+#bedsaluoap .gt_subtitle {
   color: #333333;
   font-size: 85%;
   font-weight: initial;
@@ -1024,7 +1024,7 @@ window.Quarto = {
   border-top-width: 0;
 }
 
-#pufzikthgm .gt_heading {
+#bedsaluoap .gt_heading {
   background-color: #FFFFFF;
   text-align: center;
   border-bottom-color: #FFFFFF;
@@ -1036,13 +1036,13 @@ window.Quarto = {
   border-right-color: #D3D3D3;
 }
 
-#pufzikthgm .gt_bottom_border {
+#bedsaluoap .gt_bottom_border {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
 }
 
-#pufzikthgm .gt_col_headings {
+#bedsaluoap .gt_col_headings {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -1057,7 +1057,7 @@ window.Quarto = {
   border-right-color: #D3D3D3;
 }
 
-#pufzikthgm .gt_col_heading {
+#bedsaluoap .gt_col_heading {
   color: #FFFFFF;
   background-color: #2C3E50;
   font-size: 100%;
@@ -1077,7 +1077,7 @@ window.Quarto = {
   overflow-x: hidden;
 }
 
-#pufzikthgm .gt_column_spanner_outer {
+#bedsaluoap .gt_column_spanner_outer {
   color: #FFFFFF;
   background-color: #2C3E50;
   font-size: 100%;
@@ -1089,15 +1089,15 @@ window.Quarto = {
   padding-right: 4px;
 }
 
-#pufzikthgm .gt_column_spanner_outer:first-child {
+#bedsaluoap .gt_column_spanner_outer:first-child {
   padding-left: 0;
 }
 
-#pufzikthgm .gt_column_spanner_outer:last-child {
+#bedsaluoap .gt_column_spanner_outer:last-child {
   padding-right: 0;
 }
 
-#pufzikthgm .gt_column_spanner {
+#bedsaluoap .gt_column_spanner {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
@@ -1109,11 +1109,11 @@ window.Quarto = {
   width: 100%;
 }
 
-#pufzikthgm .gt_spanner_row {
+#bedsaluoap .gt_spanner_row {
   border-bottom-style: hidden;
 }
 
-#pufzikthgm .gt_group_heading {
+#bedsaluoap .gt_group_heading {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -1139,7 +1139,7 @@ window.Quarto = {
   text-align: left;
 }
 
-#pufzikthgm .gt_empty_group_heading {
+#bedsaluoap .gt_empty_group_heading {
   padding: 0.5px;
   color: #333333;
   background-color: #FFFFFF;
@@ -1154,15 +1154,15 @@ window.Quarto = {
   vertical-align: middle;
 }
 
-#pufzikthgm .gt_from_md > :first-child {
+#bedsaluoap .gt_from_md > :first-child {
   margin-top: 0;
 }
 
-#pufzikthgm .gt_from_md > :last-child {
+#bedsaluoap .gt_from_md > :last-child {
   margin-bottom: 0;
 }
 
-#pufzikthgm .gt_row {
+#bedsaluoap .gt_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -1181,7 +1181,7 @@ window.Quarto = {
   overflow-x: hidden;
 }
 
-#pufzikthgm .gt_stub {
+#bedsaluoap .gt_stub {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -1194,7 +1194,7 @@ window.Quarto = {
   padding-right: 5px;
 }
 
-#pufzikthgm .gt_stub_row_group {
+#bedsaluoap .gt_stub_row_group {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -1208,15 +1208,15 @@ window.Quarto = {
   vertical-align: top;
 }
 
-#pufzikthgm .gt_row_group_first td {
+#bedsaluoap .gt_row_group_first td {
   border-top-width: 2px;
 }
 
-#pufzikthgm .gt_row_group_first th {
+#bedsaluoap .gt_row_group_first th {
   border-top-width: 2px;
 }
 
-#pufzikthgm .gt_summary_row {
+#bedsaluoap .gt_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -1226,16 +1226,16 @@ window.Quarto = {
   padding-right: 5px;
 }
 
-#pufzikthgm .gt_first_summary_row {
+#bedsaluoap .gt_first_summary_row {
   border-top-style: solid;
   border-top-color: #D3D3D3;
 }
 
-#pufzikthgm .gt_first_summary_row.thick {
+#bedsaluoap .gt_first_summary_row.thick {
   border-top-width: 2px;
 }
 
-#pufzikthgm .gt_last_summary_row {
+#bedsaluoap .gt_last_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -1245,7 +1245,7 @@ window.Quarto = {
   border-bottom-color: #D3D3D3;
 }
 
-#pufzikthgm .gt_grand_summary_row {
+#bedsaluoap .gt_grand_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -1255,7 +1255,7 @@ window.Quarto = {
   padding-right: 5px;
 }
 
-#pufzikthgm .gt_first_grand_summary_row {
+#bedsaluoap .gt_first_grand_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -1265,7 +1265,7 @@ window.Quarto = {
   border-top-color: #D3D3D3;
 }
 
-#pufzikthgm .gt_last_grand_summary_row_top {
+#bedsaluoap .gt_last_grand_summary_row_top {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -1275,11 +1275,11 @@ window.Quarto = {
   border-bottom-color: #D3D3D3;
 }
 
-#pufzikthgm .gt_striped {
+#bedsaluoap .gt_striped {
   background-color: rgba(128, 128, 128, 0.05);
 }
 
-#pufzikthgm .gt_table_body {
+#bedsaluoap .gt_table_body {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -1288,7 +1288,7 @@ window.Quarto = {
   border-bottom-color: #D3D3D3;
 }
 
-#pufzikthgm .gt_footnotes {
+#bedsaluoap .gt_footnotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -1302,7 +1302,7 @@ window.Quarto = {
   border-right-color: #D3D3D3;
 }
 
-#pufzikthgm .gt_footnote {
+#bedsaluoap .gt_footnote {
   margin: 0px;
   font-size: 90%;
   padding-top: 4px;
@@ -1311,7 +1311,7 @@ window.Quarto = {
   padding-right: 5px;
 }
 
-#pufzikthgm .gt_sourcenotes {
+#bedsaluoap .gt_sourcenotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -1325,7 +1325,7 @@ window.Quarto = {
   border-right-color: #D3D3D3;
 }
 
-#pufzikthgm .gt_sourcenote {
+#bedsaluoap .gt_sourcenote {
   font-size: 90%;
   padding-top: 4px;
   padding-bottom: 4px;
@@ -1333,78 +1333,78 @@ window.Quarto = {
   padding-right: 5px;
 }
 
-#pufzikthgm .gt_left {
+#bedsaluoap .gt_left {
   text-align: left;
 }
 
-#pufzikthgm .gt_center {
+#bedsaluoap .gt_center {
   text-align: center;
 }
 
-#pufzikthgm .gt_right {
+#bedsaluoap .gt_right {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-#pufzikthgm .gt_font_normal {
+#bedsaluoap .gt_font_normal {
   font-weight: normal;
 }
 
-#pufzikthgm .gt_font_bold {
+#bedsaluoap .gt_font_bold {
   font-weight: bold;
 }
 
-#pufzikthgm .gt_font_italic {
+#bedsaluoap .gt_font_italic {
   font-style: italic;
 }
 
-#pufzikthgm .gt_super {
+#bedsaluoap .gt_super {
   font-size: 65%;
 }
 
-#pufzikthgm .gt_footnote_marks {
+#bedsaluoap .gt_footnote_marks {
   font-size: 75%;
   vertical-align: 0.4em;
   position: initial;
 }
 
-#pufzikthgm .gt_asterisk {
+#bedsaluoap .gt_asterisk {
   font-size: 100%;
   vertical-align: 0;
 }
 
-#pufzikthgm .gt_indent_1 {
+#bedsaluoap .gt_indent_1 {
   text-indent: 5px;
 }
 
-#pufzikthgm .gt_indent_2 {
+#bedsaluoap .gt_indent_2 {
   text-indent: 10px;
 }
 
-#pufzikthgm .gt_indent_3 {
+#bedsaluoap .gt_indent_3 {
   text-indent: 15px;
 }
 
-#pufzikthgm .gt_indent_4 {
+#bedsaluoap .gt_indent_4 {
   text-indent: 20px;
 }
 
-#pufzikthgm .gt_indent_5 {
+#bedsaluoap .gt_indent_5 {
   text-indent: 25px;
 }
 
-#pufzikthgm .katex-display {
+#bedsaluoap .katex-display {
   display: inline-flex !important;
   margin-bottom: 0.75em !important;
 }
 
-#pufzikthgm div.Reactable > div.rt-table > div.rt-thead > div.rt-tr.rt-tr-group-header > div.rt-th-group:after {
+#bedsaluoap div.Reactable > div.rt-table > div.rt-thead > div.rt-tr.rt-tr-group-header > div.rt-th-group:after {
   height: 0px !important;
 }
 </style>
 
 <table class="gt_table caption-top table table-sm table-striped small" data-quarto-bootstrap="false">
-<caption>National monthly regressions of claims intensity on by-cause unemployment shares, 1994–present excluding March 2020–December 2021. Completed temporary jobs is the omitted reference category; month-of-year fixed effects absorb seasonality. Coefficients are scaled to a 10 percentage-point shift in share.</caption>
+<caption>National monthly regressions of claims intensity on by-cause unemployment shares, 1994–present excluding March 2020–December 2021. Completed Temp Job is the omitted reference category; month-of-year fixed effects absorb seasonality. Coefficients are scaled to a 10 percentage-point shift in share.</caption>
 <thead>
 <tr class="gt_col_headings header">
 <th id="Term" class="gt_col_heading gt_columns_bottom_border gt_center" data-quarto-table-cell-role="th" style="color: #FFFFFF" scope="col">Term</th>
@@ -1491,7 +1491,7 @@ window.Quarto = {
 </div>
 </div>
 </div>
-<p>The coefficients align with our expectations. Temporary Layoff and Permanent Job Losers - the two causes closest to UI’s target population - enter with positive signs. Months when these categories make up a larger share of the unemployed see higher continuing claims intensity. New Entrants and Job Leavers enter negatively, consistent with the belief that these groups are likely to be less eligible for UI programs. However, these estimates are not causal. Composition shares are jointly determined with claims by the same underlying labor-market trends.</p>
+<p>The coefficients align with our expectations. Temporary Layoffs and Permanent Job Losers, the two causes closest to UI’s target population, enter with positive signs. Months when these categories make up a larger share of the unemployed see higher continuing claims intensity. New Entrants and Job Leavers enter negatively, consistent with the belief that these groups are likely to be less eligible for UI programs. However, these estimates are not causal. Composition shares are jointly determined with claims by the same underlying labor-market trends.</p>
 <p>The IC/CE coefficients are about ten times smaller than the CC/CE coefficients. Part of the difference is mechanical. IC/CE is a much smaller ratio than CC/CE to begin with, so the same composition shift shows up as a smaller number. Part of it is substantive. Initial claims are a weekly flow of new filers. Continuing claims are a stock of everyone currently claiming. A composition shift that tilts the unemployed toward UI-eligible groups does two things. It raises the filing rate, and because eligible filers tend to have longer unemployment spells, it also raises the time those filers stay in the stock. CC/CE picks up both effects. IC/CE picks up only the first.</p>
 <p>To illustrate this point, the figure below plots the share of the unemployed pool that are New Entrants from 1994 to present, with a 12-month moving average and NBER recessions shaded.</p>
 <div class="cell">
@@ -1543,8 +1543,9 @@ window.Quarto = {
 </div>
 </div>
 </div>
-<p>Two things stand out. First, the New Entrant share is <em>counter-cyclical</em>: it falls in recessions, because permanent job losers and temporary layoffs spike and dilute the entrant share, and drifts back up in expansions. Second, the 12-month average has sat above its long-run mean (~8.6%) since 2022, and averaged ~10.7% over the last twelve months which is notably higher than the pre-pandemic norm (~8.8%). This counter-cyclicality of New Entrants (e.g., UI-ineligible persons) among the unemployed is what makes today’s read of claims data complicated. The fraction of the unemployed that UI claims data miss is widest exactly when the labor market is strong. But a high New Entrants share of the unemployed can arise for two very different reasons, and they imply very different things about the value of the claims signal. The first is the familiar cyclical pattern. In a healthy expansion, separations fall, the unemployed pool shrinks, and new entrants make up a bigger share of what is left. In this world, claims are low because separations are low, and claims are blind to a bigger fraction of the unemployed because more of them are ineligible. An onlooker examining this labor market could reasonably conclude that it is healthy.</p>
-<p>The second reason paints a less rosy picture. The New Entrant share could also rise because <em>finding a job has gotten harder</em> for reasons due to weaker hiring, business uncertainty, automation eating entry-level roles or some combination. In that world, new entrants comprise the unemployed pool not because separations have fallen, but because employers aren’t hiring them. Separations stay low, so claims stay low. Composition reports “lots of entrants”, which under the historical patterns would read as a signal of a strong market. But the real story is that the labor market is weakening on the hiring side, and the weakening is concentrated in groups claims cannot see. When that happens, the claims signal could be misleading.</p>
+<p>Two things stand out. First, the New Entrants share is <em>counter-cyclical</em>: it falls in recessions, because Permanent Job Losers and Temporary Layoffs spike and dilute the entrant share, and drifts back up in expansions. Second, the 12-month average has sat above its long-run mean (~8.6%) since 2022, and averaged ~10.7% over the last twelve months, which is notably higher than the pre-pandemic norm (~8.8%). This counter-cyclicality of New Entrants (i.e., UI-ineligible persons) among the unemployed is what makes today’s read of claims data complicated. The fraction of the unemployed that UI claims data miss is widest exactly when the labor market is strong.</p>
+<p>But a high New Entrants share of the unemployed can arise for two very different reasons, and they imply very different things about the value of the claims signal. The first is the familiar cyclical pattern. In a healthy expansion, separations fall, the unemployed pool shrinks, and New Entrants make up a bigger share of what is left. In this world, claims are low because separations are low, and claims are blind to a bigger fraction of the unemployed because more of them are ineligible. An observer examining this labor market could reasonably conclude that it is healthy.</p>
+<p>The second reason paints a less rosy picture. The New Entrants share could also rise because <em>finding a job has gotten harder</em>, for reasons such as weaker hiring, business uncertainty, or automation eating entry-level roles. In that world, New Entrants comprise the unemployed pool not because separations have fallen, but because employers aren’t hiring them. Separations stay low, so claims stay low. Composition reports “lots of entrants”, which under the historical patterns would read as a signal of a strong market. But the real story is that the labor market is weakening on the hiring side, and the weakening is concentrated in groups claims cannot see. When that happens, the claims signal could be misleading.</p>
 </section>
 <section id="the-flow-consistent-rate-of-unemployment" class="level2">
 <h2 class="anchored" data-anchor-id="the-flow-consistent-rate-of-unemployment">The Flow-Consistent Rate of Unemployment</h2>
@@ -1555,12 +1556,12 @@ window.Quarto = {
 <p>where <span class="math inline">\(s\)</span> is the rate at which people flow into unemployment and <span class="math inline">\(f\)</span> is the rate at which they flow out. When monthly movement in the unemployment rate is decomposed into contributions from <span class="math inline">\(s\)</span> and <span class="math inline">\(f\)</span>, most of it comes from <span class="math inline">\(f\)</span>, not <span class="math inline">\(s\)</span>. Shimer reported roughly a 75/25 split, and the pattern still holds on modern data.</p>
 <p>Claims mainly measure the separation side. Initial claims are a flow into unemployment; continuing claims are a stock of people who haven’t found a job yet but were eligible when they separated. Neither is a direct read on hiring. So any labor-market read built on claims leans on the channel that explains the smaller share of variation in the unemployment rate, and away from the one that explains most of it.</p>
 <p>Put the two pieces together. Weak hiring concentrated in UI-ineligible groups is invisible to claims twice over: claims don’t cover those groups, and even for the groups they do cover, claims don’t track hiring well. A labor market weakening through <span class="math inline">\(f\)</span>, in groups where entrants dominate, is precisely the case claims are worst at catching.</p>
-<p>The composition regression gives us a way to check which story — cyclical or structural — fits today. Its fitted values are the claims intensity the historical composition–claims relationship predicts for any given mix of the unemployed. Run a CFLMI replication twice, once with actual claims and once with these fitted claims, and compare the flow-consistent rate and the finding rate from each.</p>
-<p>If the two versions agree, today’s elevated New Entrants share is likely the familiar cyclical pattern: claims are behaving as composition predicts, and swapping one series for the other doesn’t change the read. If they diverge — especially if the composition-predicted version shows a noticeably weaker finding rate — the elevated share is doing more than reflecting a hot market. It’s telling us something claims alone cannot.</p>
+<p>The composition regression gives us a way to check which story, cyclical or structural, fits today. Its fitted values are the claims intensity the historical composition–claims relationship predicts for any given mix of the unemployed. Run a CFLMI replication twice, once with actual claims and once with these fitted claims, and compare the flow-consistent rate and the finding rate from each.</p>
+<p>If the two versions agree, today’s elevated New Entrants share is likely the familiar cyclical pattern: claims are behaving as composition predicts, and swapping one series for the other doesn’t change the read. If they diverge, especially if the composition-predicted version shows a noticeably weaker finding rate, the elevated share is doing more than reflecting a hot market. It’s telling us something claims alone cannot.</p>
 </section>
 <section id="conclusion" class="level2">
 <h2 class="anchored" data-anchor-id="conclusion">Conclusion</h2>
-<p>UI claims remain a reliable signal for one thing: separations-driven weakening. When unemployment rises because firms are laying people off, claims catch it early, cleanly, and nearly in full. When unemployment rises because hiring is slowing — especially in groups UI was never designed to cover — claims can stay quiet while the picture deteriorates underneath. A high New Entrants share used to be reassuring. With the share sitting persistently above its long-run level through a period of slowing hiring, the same statistic is now ambiguous, and the claims release no longer carries the all-clear it once did.</p>
+<p>UI claims remain a reliable signal for one thing: separations-driven weakening. When unemployment rises because firms are laying people off, claims catch it early, cleanly, and nearly in full. When unemployment rises because hiring is slowing, especially in groups UI was never designed to cover, claims can stay quiet while the picture deteriorates underneath. A high New Entrants share used to be reassuring. With the share sitting persistently above its long-run level through a period of slowing hiring, the same statistic is now ambiguous, and the claims release no longer carries the all-clear it once did.</p>
 </section>
 
 </main>
