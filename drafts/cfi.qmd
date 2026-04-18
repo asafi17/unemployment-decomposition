@@ -260,10 +260,113 @@ $$
 The outcome is continuing claims scaled by covered employment; the regressors are the five cause shares, with Completed Temp Job omitted as the reference category. Month-of-year fixed effects $\gamma_m$ absorb seasonality. The sample is monthly national data from 1994 to present, excluding the pandemic window (March 2020 - December 2021) where both compositions and claiming broke from their historical relationships. 
 
 
-[insert code to run regressions]
+```{r composition-regression-data, warning=F, message=F}
+cause_series <- c(
+  "Temporary Layoff"     = "LNS13023653",
+  "Permanent Job Losers" = "LNS13026638",
+  "Completed Temp Job"   = "LNS13026637",
+  "Job Leavers"          = "LNS13023705",
+  "Reentrants"           = "LNS13023557",
+  "New Entrants"         = "LNS13023569"
+)
+
+cause_monthly <- map_dfr(names(cause_series), \(nm) {
+  fredr(series_id = cause_series[[nm]], observation_start = as.Date("1994-01-01")) |>
+    transmute(date, cause = nm, value)
+}) |>
+  pivot_wider(names_from = cause, values_from = value)
+
+total_unemp <- fredr(series_id = "UNEMPLOY", observation_start = as.Date("1994-01-01")) |>
+  transmute(date, total = value)
+
+claims_weekly <- bind_rows(
+  fredr(series_id = "CCSA",   observation_start = as.Date("1994-01-01")) |>
+    transmute(date, series = "CCSA",   value),
+  fredr(series_id = "ICSA",   observation_start = as.Date("1994-01-01")) |>
+    transmute(date, series = "ICSA",   value),
+  fredr(series_id = "COVEMP", observation_start = as.Date("1994-01-01")) |>
+    transmute(date, series = "COVEMP", value)
+) |>
+  mutate(month = floor_date(date, "month")) |>
+  group_by(month, series) |>
+  summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+  pivot_wider(names_from = series, values_from = value) |>
+  transmute(
+    date  = month,
+    cc_ce = CCSA / COVEMP,
+    ic_ce = ICSA / COVEMP
+  )
+
+reg_df <- cause_monthly |>
+  inner_join(total_unemp, by = "date") |>
+  mutate(
+    temp_layoff_share    = `Temporary Layoff`     / total,
+    perm_job_loser_share = `Permanent Job Losers` / total,
+    completed_temp_share = `Completed Temp Job`   / total,
+    job_leaver_share     = `Job Leavers`          / total,
+    reentrant_share      = `Reentrants`           / total,
+    new_entrant_share    = `New Entrants`         / total,
+    month_of_year        = factor(month.abb[month(date)], levels = month.abb),
+    pandemic             = date >= as.Date("2020-03-01") & date <= as.Date("2021-12-01")
+  ) |>
+  inner_join(claims_weekly, by = "date") |>
+  filter(!pandemic) |>
+  drop_na(cc_ce, ic_ce, temp_layoff_share, perm_job_loser_share,
+          job_leaver_share, reentrant_share, new_entrant_share)
+
+comp_rhs <- "temp_layoff_share + perm_job_loser_share + job_leaver_share + reentrant_share + new_entrant_share + month_of_year"
+
+cc_mod <- lm(as.formula(paste("cc_ce ~", comp_rhs)), data = reg_df)
+ic_mod <- lm(as.formula(paste("ic_ce ~", comp_rhs)), data = reg_df)
+```
+
+```{r composition-regression-table}
+#| tbl-cap: "National monthly regressions of claims intensity on by-cause unemployment shares, 1994–present excluding March 2020–December 2021. Completed temporary jobs is the omitted reference category; month-of-year fixed effects absorb seasonality. Coefficients are scaled to a 10 percentage-point shift in share."
+
+cause_labels <- c(
+  temp_layoff_share    = "Temporary layoff share",
+  perm_job_loser_share = "Permanent job-loser share",
+  job_leaver_share     = "Job leaver share",
+  reentrant_share      = "Reentrant share",
+  new_entrant_share    = "New entrant share"
+)
+
+extract_share_terms <- function(model, outcome_label) {
+  summary(model)$coefficients |>
+    as.data.frame() |>
+    rownames_to_column("term") |>
+    as_tibble() |>
+    filter(term %in% names(cause_labels)) |>
+    mutate(
+      Outcome = outcome_label,
+      Term = factor(cause_labels[term], levels = cause_labels),
+      `Coef (10 pp shift)` = Estimate * 0.10,
+      `Std. Error` = `Std. Error` * 0.10
+    ) |>
+    arrange(Term) |>
+    select(Outcome, Term, `Coef (10 pp shift)`, `Std. Error`, `p-value` = `Pr(>|t|)`)
+}
+
+bind_rows(
+  extract_share_terms(cc_mod, "CC / CE"),
+  extract_share_terms(ic_mod, "IC / CE")
+) |>
+  gt(groupname_col = "Outcome") |>
+  fmt_number(columns = c(`Coef (10 pp shift)`, `Std. Error`, `p-value`), decimals = 3) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(style = cell_text(color = "white"), locations = cells_column_labels()) |>
+  tab_source_note(sprintf(
+    "R-squared: CC/CE = %.3f, IC/CE = %.3f. N = %d months.",
+    summary(cc_mod)$r.squared, summary(ic_mod)$r.squared, nrow(reg_df)
+  ))
+```
 
 
-The coefficients align with our expectations. Temporary Layoff and Permanent Job Losers - the two causes closest to UI's target population - enter with positive signs. Months when these categories make up a larger share of the unemployed see higher continuing claims intensity. New Entrants and Reentrants enter negatively, consistent with the belief that these groups are likely to be less eligible for UI programs. However, these estimates are not causal. Composition shares are jointly determined with claims by the same underlying labor-market trends. 
+The coefficients align with our expectations. Temporary Layoff and Permanent Job Losers - the two causes closest to UI's target population - enter with positive signs. Months when these categories make up a larger share of the unemployed see higher continuing claims intensity. New Entrants and Job Leavers enter negatively, consistent with the belief that these groups are likely to be less eligible for UI programs. However, these estimates are not causal. Composition shares are jointly determined with claims by the same underlying labor-market trends. 
 
 To illustrate this point, the figure below plots the share of the unemployed pool that are New Entrants from 1994 to present, with a 12-month moving average and NBER recessions shaded.
 
