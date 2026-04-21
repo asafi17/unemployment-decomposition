@@ -42,19 +42,19 @@ theme_set(theme_report)
 
 ## Introduction
 
-The Department of Labor releases initial and continuing unemployment insurance (UI) claims data every Thursday at 8:30 a.m. Eastern, covering the week that ended the previous Saturday for initial claims and the week before that for continuing claims. Three features make claims data attractive as a real-time signal relative to the monthly Bureau of Labor Statistics (BLS) employment situation release: 
+The Department of Labor releases initial and continuing unemployment insurance (UI) claims data every Thursday at 8:30 a.m. Eastern, covering the week that ended the previous Saturday for initial claims and the week before that for continuing claims. Three features make claims data attractive as a real-time signal relative to the monthly Bureau of Labor Statistics (BLS) employment situation release:
 
-1. **Frequency**. Released weekly, which provides more detailed snapshots of the labor market in the periods between the monthly BLS report.
+1.  **Frequency**. Released weekly, which provides more detailed snapshots of the labor market in the periods between the monthly BLS report.
 
-2. **Timeliness**. Published with a five-day lag, versus the three-week lag of the BLS payroll report, enabling closer-to-real-time updates on the health of the labor market.
+2.  **Timeliness**. Published with a five-day lag, versus the three-week lag of the BLS payroll report, enabling closer-to-real-time updates on the health of the labor market.
 
-3. **Administrative grounding**. Claims are counted when people file, not estimated from a survey. 
+3.  **Administrative grounding**. Claims are counted when people file, not estimated from a survey.
 
-UI programs are designed to provide unemployment benefits to eligible workers who become unemployed through no fault of their own and meet other eligibility requirements.  For this reason, the majority of initial claims for unemployment insurance benefits are filed because of a separation from a job the filer did not initiate. Causes of such separations are layoffs, temporary furloughs, completed temporary contracts, among others (see [How Do I File for Unemployment Insurance](https://www.dol.gov/general/topic/unemployment-insurance)). Because of UI program design, initial claims are a **noisy, lower-bound read on separations**. Specifically, initial claims will miss **separations that do not generate claims** such as short-tenure workers, part-timers, gig/1099 workers and people who do not satisfy work-history or monetary-based eligibility requirements. 
+UI programs are designed to provide unemployment benefits to eligible workers who become unemployed through no fault of their own and meet other eligibility requirements. For this reason, the majority of initial claims for unemployment insurance benefits are filed because of a separation from a job the filer did not initiate. Causes of such separations are layoffs, temporary furloughs, completed temporary contracts, among others (see [How Do I File for Unemployment Insurance](https://www.dol.gov/general/topic/unemployment-insurance)). Because of UI program design, initial claims are a **noisy, lower-bound read on separations**. Specifically, initial claims will miss **separations that do not generate claims** such as short-tenure workers, part-timers, gig/1099 workers and people who do not satisfy work-history or monetary-based eligibility requirements.
 
-Continuing claims are the number of people currently drawing unemployment insurance benefits and can change for two reasons. The first is that the number of people who *initiate* claims changes (i.e., changes to the *inflows* to the insured-unemployment pool). The second is that people stop claiming benefits (i.e., changes to *outflows* from the insured-unemployment pool). Broadly, there are three reasons why people stop claiming: they find a job; they exhaust the UI benefits available to them; they fail to maintain eligibility.       
+Continuing claims are the number of people currently drawing unemployment insurance benefits and can change for two reasons. The first is that the number of people who *initiate* claims changes (i.e., changes to the *inflows* to the insured-unemployment pool). The second is that people stop claiming benefits (i.e., changes to *outflows* from the insured-unemployment pool). Broadly, there are three reasons why people stop claiming: they find a job; they exhaust the UI benefits available to them; they fail to maintain eligibility.
 
-Because of these desirable features, UI claims became the default "nowcast" input for labor-market watchers long before high-frequency alternatives existed. However, the labor market signal UI claims provide depends on *who the unemployed are*. When the unemployed pool is composed of groups UI programs were not designed to cover, the same claims release can imply something very different about the state of the labor market. In this post, we use the Current Population Survey's (CPS) unemployment-by-cause data to understand the historical and statistical relationship between the composition of the unemployed pool, UI claims, and the unemployment rate. 
+Because of these desirable features, UI claims became the default "nowcast" input for labor-market watchers long before high-frequency alternatives existed. But the labor market signal UI claims provide depends on *who the unemployed are*. When the unemployed pool is composed of groups UI programs were not designed to cover, the same claims release can imply something very different about the state of the labor market. This matters today in a specific way: the share of the unemployed who are New Entrants, people who have never held a job, has sat above its long-run average since 2022. That can mean the labor market is healthy in the familiar cyclical way, with separations low and the unemployed pool tilted toward people UI was never designed to cover. Or it can mean hiring has weakened in ways that disproportionately affect those same groups, so claims stay quiet not because the labor market is strong but because the weakening is concentrated where claims cannot see it. In this post, we use the Current Population Survey's (CPS) unemployment-by-cause data and the flow-consistent unemployment framework behind the Chicago Fed Labor Market Indicators to tell these two stories apart.
 
 ## Why People are Unemployed
 
@@ -84,13 +84,13 @@ tibble(
 
 These categories map onto UI eligibility in very different ways. Temporary Layoffs and Permanent Job Losers are the program's target group: people who have separated from their job through no fault of their own, and who typically have the work history and earnings needed to qualify. The remaining four groups are variously outside the program's design. Completed Temp Jobs can go either way depending on state rules. Job Leavers usually don't qualify except in narrow circumstances. Reentrants often fail work-history tests because their last job was too long ago. New Entrants have no prior job at all, so they cannot meet the eligibility criteria by construction.
 
-To see which reason-for-unemployment categories are most plausibly served by UI versus most plausibly missed by it, we construct a profile of each cause. For every cause category in Table 1, we identify the dominant demographic group and compute a representation ratio on a set of standard dimensions: age, education, sex, race, nativity, citizenship, and prior class of worker. The representation ratio is defined as:
+To see which reason-for-unemployment categories are most plausibly captured by UI versus most plausibly missed by it, we construct a profile of each cause. For every cause category in Table 1, we identify the dominant demographic group and compute a *representation ratio* on a set of standard dimensions: age, education, sex, race, nativity, citizenship, and prior class of worker. The representation ratio is defined as:
 
 $$
 \text{representation ratio} = \frac{\text{group's share of this cause's unemployed pool}}{\text{group's share of the overall labor force}}
 $$
 
-A value of 1 means the group's presence among that cause's unemployed is exactly proportional to its presence in the labor force. A value above 1 means the group is overrepresented; a value below 1 means underrepresented. Values are computed on the pooled CPS sample (1994–present) so that each ratio reflects a long-run average rather than a single-year snapshot. We present each cause's ratios on a radar ("spiderweb") plot. Each spoke is one demographic dimension, labeled at the end with the dominant group on that dimension (e.g., "Age 16–24" on the age spoke, "High school or less" on the education spoke). The radius at that spoke is the group's representation ratio. The solid ring at 1 marks proportional representation. A polygon stretching far outside the 1 ring on many spokes says the cause is demographically distinct from the labor force at large. A polygon hugging the 1 ring says the cause's unemployed look roughly like the country's workers.
+A value of 1 means the group's presence among that cause's unemployed is exactly proportional to its presence in the labor force. A value above 1 means the group is overrepresented; a value below 1 means underrepresented. Values are computed on the pooled CPS sample (1994–present) so that each ratio reflects a long-run average rather than a single-year snapshot. We present each cause's ratios on a radar ("spiderweb") plot. Each spoke is one demographic dimension, labeled at the end with the dominant group on that dimension (e.g., "Age 16–24" on the age spoke, "High school or less" on the education spoke). The radius at that spoke is the group's representation ratio. A polygon hugging the 1 ring says the cause's unemployed look roughly like the country's workers along each margin. A polygon stretching far outside the 1 ring says that a cause's unemployed are overrepresented relative to the country's workers. A polygon deep within the 1 ring says that a cause's unemployed are underrepresented relative to the country's workers. 
 
 ```{r radar-representation-ratio, fig.width=15, fig.height=16}
 #| fig-cap: "Dominant-group representation ratios by reason-for-unemployment category, pooled CPS 1994–present. Each spoke shows the group with the largest share on that dimension; the radius is that group's share of the cause-specific unemployed pool divided by its share of the labor force. Solid ring = 1 (proportional representation)."
@@ -246,12 +246,11 @@ radar_plots <- map(cause_order, \(cn) {
 patchwork::wrap_plots(radar_plots, ncol = 2)
 ```
 
-For five of the six categories, the polygons hug the 1-ring, deviating on at most one spoke. New Entrants are the clear outlier, sitting far outside the 1-ring on age, education, and, by construction, occupation and class, since they have no prior job. Because UI eligibility depends on recent work history and earnings thresholds, these demographic gaps map directly onto how much of a cause's unemployed actually shows up in the claims data. 
-
+For five of the six categories, the polygons hug the 1-ring, deviating on at most one spoke. New Entrants are the clear outlier, sitting far outside the 1-ring on age, education, and, by construction, occupation and class, since they have no prior job. Because UI eligibility depends on recent work history and earnings thresholds, these demographic differences map directly onto how much of a cause's unemployed actually shows up in the claims data.
 
 ## Composition and UI Takeup
 
-The CPS cause categories appear to be useful proxies for UI eligibility in the unemployed pool. To test whether that distinction shows up in the UI claims data, we estimate a simple national monthly regression of initial and continuing claims intensity on the composition of the unemployed:
+The CPS cause categories appear to be useful proxies for UI eligibility in the unemployed pool. To test whether the  distinction shows up in the UI claims data, we estimate a simple national monthly regression of initial and continuing claims intensity on the composition of the unemployed:
 
 $$
 \text{Claims}_t = \alpha + \sum_{j \neq \text{Completed Temp Job}} \beta_j C_j + \gamma_m + \varepsilon_t
@@ -259,6 +258,7 @@ $$
 
 The outcome is continuing claims scaled by covered employment; the regressors are the five cause shares, with Completed Temp Job omitted as the reference category. Month-of-year fixed effects $\gamma_m$ absorb seasonality. The sample is monthly national data from 1994 to the present, excluding the pandemic window (March 2020–December 2021) during which both compositions and claiming broke from their historical relationships.
 
+We scale by covered employment, not total employment or the labor force, because covered employment is the population from which these claims can originate: workers whose wages are subject to UI taxes. A broader denominator would dilute the numerator with workers who are not UI-eligible by virtue of their employment status (independent contractors, the self-employed, some agricultural and federal workers), confounding claiming behavior with shifts in the mix of covered and non-covered jobs. CC/CE is also the "insured unemployment rate" published weekly by the Department of Labor and the form in which claims enter the CFLMI's partial-least-squares step, so it keeps our units aligned with the downstream analysis.
 
 ```{r composition-regression-data, warning=F, message=F}
 cause_series <- c(
@@ -365,20 +365,31 @@ bind_rows(
   ))
 ```
 
+The initial claims coefficients are about ten times smaller than the continuing claims coefficients. Part of the difference is mechanical. Initial claims divided by covered employment are a much smaller ratio than continuing claims divided by covered employment to begin with, so the same composition shift shows up as a smaller number. Part of the magnitude difference is also substantive. Initial claims are a weekly flow of new filers. Continuing claims are a stock of everyone currently claiming. A composition shift that tilts the unemployed toward UI-eligible groups does two things. It raises the filing rate, and because eligible filers tend to have longer unemployment spells, it also raises the time those filers stay in the stock. Continuing claims picks up both effects while initial claims picks up only the first.
 
-The coefficients align with our expectations. Temporary Layoffs and Permanent Job Losers, the two causes closest to UI's target population, enter with positive signs. Months when these categories make up a larger share of the unemployed see higher continuing claims intensity. New Entrants and Job Leavers enter negatively, consistent with the belief that these groups are likely to be less eligible for UI programs. However, these estimates are not causal. Composition shares are jointly determined with claims by the same underlying labor-market trends.
+Temporary Layoffs and Permanent Job Losers, the two causes closest to UI's target population, enter with positive signs. Months when these categories make up a larger share of the unemployed see higher continuing claims intensity. New Entrants and Job Leavers enter negatively, consistent with the belief that these groups are likely to be less eligible for UI programs. However, it is important to emphasize that these estimates are not causal. Composition shares are jointly determined with claims by the same underlying labor-market trends. 
 
-The IC/CE coefficients are about ten times smaller than the CC/CE coefficients. Part of the difference is mechanical. IC/CE is a much smaller ratio than CC/CE to begin with, so the same composition shift shows up as a smaller number. Part of it is substantive. Initial claims are a weekly flow of new filers. Continuing claims are a stock of everyone currently claiming. A composition shift that tilts the unemployed toward UI-eligible groups does two things. It raises the filing rate, and because eligible filers tend to have longer unemployment spells, it also raises the time those filers stay in the stock. CC/CE picks up both effects. IC/CE picks up only the first. 
+To illustrate this point, the figure below plots the shares of the unemployed pool falling into each of the six cause categories from 1994 to present, each with a 12-month moving average and NBER recessions shaded.
 
-To illustrate this point, the figure below plots the share of the unemployed pool that are New Entrants from 1994 to present, with a 12-month moving average and NBER recessions shaded.
+```{r new-entrants-share, fig.width=11, fig.height=10, warning=F, message=F}
+#| fig-cap: "Each cause as a share of total unemployed, monthly (light) and 12-month moving average (bold). Shaded bands are NBER recessions. Source: BLS via FRED."
 
-```{r new-entrants-share, fig.width=10, fig.height=4, warning=F, message=F}
-#| fig-cap: "New entrants as a share of total unemployed, monthly (light) and 12-month moving average (bold). Shaded bands are NBER recessions. Source: BLS via FRED (LNS13023569 / UNEMPLOY)."
+cause_series <- c(
+  "Temporary Layoff"     = "LNS13023653",
+  "Permanent Job Losers" = "LNS13026638",
+  "Completed Temp Job"   = "LNS13026637",
+  "Job Leavers"          = "LNS13023705",
+  "Reentrants"           = "LNS13023557",
+  "New Entrants"         = "LNS13023569"
+)
 
-ne_raw  <- fredr(series_id = "LNS13023569", observation_start = as.Date("1994-01-01")) |>
-  transmute(date, new_entrants = value)
-tot_raw <- fredr(series_id = "UNEMPLOY",    observation_start = as.Date("1994-01-01")) |>
+tot_raw <- fredr(series_id = "UNEMPLOY", observation_start = as.Date("1994-01-01")) |>
   transmute(date, total = value)
+
+cause_raw <- bind_rows(lapply(names(cause_series), function(cn) {
+  fredr(series_id = cause_series[[cn]], observation_start = as.Date("1994-01-01")) |>
+    transmute(date, value, cause = cn)
+}))
 
 recessions <- tibble(
   start = as.Date(c("2001-03-01", "2007-12-01", "2020-02-01")),
@@ -392,54 +403,79 @@ add_recessions <- function(p, alpha = 0.08) {
                fill = "grey40", alpha = alpha)
 }
 
-ne_share <- ne_raw |>
+shares <- cause_raw |>
   inner_join(tot_raw, by = "date") |>
-  transmute(date, share = new_entrants / total * 100) |>
-  arrange(date) |>
-  mutate(ma12 = zoo::rollmean(share, k = 12, fill = NA, align = "right"))
+  transmute(date, cause, share = value / total * 100) |>
+  arrange(cause, date) |>
+  group_by(cause) |>
+  mutate(ma12 = zoo::rollapplyr(share, width = 12, FUN = mean,
+                                na.rm = TRUE, fill = NA)) |>
+  ungroup() |>
+  mutate(cause = factor(cause, levels = cause_order))
 
-p_ne <- ne_share |>
-  ggplot(aes(x = date)) +
-  geom_line(aes(y = share), color = cause_cols["New Entrants"], alpha = 0.3, linewidth = 0.4) +
-  geom_line(aes(y = ma12),  color = cause_cols["New Entrants"], linewidth = 1, alpha = 0.85) +
-  scale_y_continuous(labels = \(x) paste0(x, "%")) +
-  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
-  labs(
-    title = "New Entrants as a Share of Total Unemployed",
-    subtitle = "Monthly (light) and 12-month moving average (bold)",
-    y = "New entrants share (%)", x = NULL
+make_share_panel <- function(cause_name) {
+  d <- shares |> filter(cause == cause_name)
+  p <- d |>
+    ggplot(aes(x = date)) +
+    geom_line(aes(y = share), color = cause_cols[cause_name], alpha = 0.3, linewidth = 0.4) +
+    geom_line(aes(y = ma12),  color = cause_cols[cause_name], linewidth = 1, alpha = 0.85) +
+    scale_y_continuous(labels = \(x) paste0(x, "%")) +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    labs(title = cause_name, y = "Share (%)", x = NULL)
+  add_recessions(p)
+}
+
+panels <- lapply(cause_order, make_share_panel)
+wrap_plots(panels, ncol = 2) +
+  plot_annotation(
+    title = "Unemployment Shares by Cause",
+    subtitle = "Monthly (light) and 12-month moving average (bold)"
   )
-
-add_recessions(p_ne)
 ```
 
-Two things stand out. First, the New Entrants share is *counter-cyclical*: it falls in recessions, because Permanent Job Losers and Temporary Layoffs spike and dilute the entrant share, and drifts back up in expansions. Second, the 12-month average has sat above its long-run mean (~8.6%) since 2022, and averaged ~10.7% over the last twelve months, which is notably higher than the pre-pandemic norm (~8.8%). This counter-cyclicality of New Entrants (i.e., UI-ineligible persons) among the unemployed is what makes today's read of claims data complicated. The fraction of the unemployed that UI claims data miss is widest exactly when the labor market is strong.
+Two things stand out. First, the New Entrants share is *counter-cyclical*: it falls in recessions, because Permanent Job Losers and Temporary Layoffs spike and dilute the entrant share, and drifts back up in expansions. Second, the 12-month average has sat above its long-run mean (\~8.6%) since 2022, and averaged \~10.7% over the last twelve months, which is notably higher than the pre-pandemic norm (\~8.8%). This counter-cyclicality of New Entrants (i.e., UI-ineligible persons) among the unemployed is what makes today's read of claims data complicated. Historically, the fraction of the unemployed that UI claims data miss is widest exactly when the labor market is strong. 
 
-But a high New Entrants share of the unemployed can arise for two very different reasons, and they imply very different things about the value of the claims signal. The first is the familiar cyclical pattern. In a healthy expansion, separations fall, the unemployed pool shrinks, and New Entrants make up a bigger share of what is left. In this world, claims are low because separations are low, and claims are blind to a bigger fraction of the unemployed because more of them are ineligible. An observer examining this labor market could reasonably conclude that it is healthy.
+But a high New Entrants share of the unemployed can arise for two very different reasons, and they imply different things about the value of the claims signal. The first is the familiar cyclical pattern. In a healthy expansion, separations fall, the unemployed pool shrinks, and New Entrants make up a bigger share of what is left. In this world, claims are low because separations are low, and claims are blind to a bigger fraction of the unemployed because more of them are ineligible. An observer examining this labor market could reasonably conclude that it is healthy.
 
-The second reason paints a less rosy picture. The New Entrants share could also rise because *finding a job has gotten harder*, for reasons such as weaker hiring, business uncertainty, or automation eating entry-level roles. In that world, New Entrants comprise the unemployed pool not because separations have fallen, but because employers aren't hiring them. Separations stay low, so claims stay low. Composition reports "lots of entrants", which under the historical patterns would read as a signal of a strong market. But the real story is that the labor market is weakening on the hiring side, and the weakening is concentrated in groups claims cannot see. When that happens, the claims signal could be misleading.
+The second reason paints a less rosy picture. The New Entrants share could also rise because *finding a job has gotten harder*, for reasons such as weaker hiring, business uncertainty, or automation eating entry-level roles. In that world, New Entrants comprise the unemployed pool not because separations have fallen, but because employers aren't hiring them. Separations stay low, so claims stay low. Composition reports "lots of entrants", which under the historical patterns would read as a signal of a strong market. But the real story is that the labor market is weakening on the hiring side, and the weakening is concentrated in groups claims cannot see. When that happens, the claims signal could be misleading. So which world are we in today? 
 
-## The Flow-Consistent Rate of Unemployment 
+## The Flow-Consistent Rate of Unemployment
+The CFLMI combines Shimer (2005, 2012) CPS-based estimates of the separation rate $s$ and finding rate $f$ with a set of real-time indicators via partial least squares. Two of those indicators are continuing-claims intensity (CC/CE) and initial-claims intensity (IC/CE), which enter alongside signals from job postings and household surveys. Higher claims intensities load as more labor-market slack: they pull $s$ up and $f$ down.
 
-The flow-consistent framework used in the Chicago Fed Labor Market Indicators helps here. Following Shimer (2005, 2012), the flow-consistent unemployment rate is
+The useful thing about the CFLMI is that it doesn't rely on claims alone. Two of its other inputs speak directly to the hiring environment rather than the separation environment: online job postings (from Indeed, Lightcast, and ADP) and household perceptions of how hard it is to find a job (from the Conference Board's "jobs plentiful vs. hard to get" diffusion index and the New York Fed's Survey of Consumer Expectations). These indicators capture whether employers are posting roles and whether job-seekers think jobs are easy or hard to come by, full stop. They don't care whether a given worker was ever UI-eligible, so they see hiring for new entrants just as well as hiring for anyone else. That is exactly the piece claims are blind to. If postings hold up and households still say jobs are plentiful while claims stay quiet, every signal we have is telling the same cyclical story: employers are hiring fast, entrants are churning through unemployment quickly, and nothing about the hiring environment looks off. If postings soften or households turn more pessimistic while claims remain quiet, that is the structural configuration the concern was about. Claims are silent because they can't see the entrants who are stuck, but the hiring-side indicators are picking up the weakness directly, and the CFLMI reflects that in a lower finding rate than claims alone would imply.
 
-$$
-\text{FCR} = \frac{s}{s + f}
-$$
+The figure below plots the CFLMI's published finding rate, separation rate, and flow-consistent unemployment rate from 2008 to the latest release.
 
-where $s$ is the rate at which people flow into unemployment and $f$ is the rate at which they flow out. When monthly movement in the unemployment rate is decomposed into contributions from $s$ and $f$, most of it comes from $f$, not $s$. Shimer reported roughly a 75/25 split, and the pattern still holds on modern data.
+```{r cflmi-rates, fig.width=10, fig.height=9, warning=F, message=F}
+#| fig-cap: "Chicago Fed Labor Market Indicators: the job finding rate (Hiring Rate for Unemployed Workers), the job separation rate (Layoffs and Other Separations Rate), and the flow-consistent unemployment rate, monthly. Shaded bands are NBER recessions. Source: Federal Reserve Bank of Chicago."
 
-Claims mainly measure the separation side. Initial claims are a flow into unemployment; continuing claims are a stock of people who haven't found a job yet but were eligible when they separated. Neither is a direct read on hiring. So any labor-market read built on claims leans on the channel that explains the smaller share of variation in the unemployment rate, and away from the one that explains most of it.
+cflmi <- readxl::read_excel("data/chi-labor-market-indicators.xlsx", sheet = "1. Rates") |>
+  mutate(date = as.Date(date))
 
-Put the two pieces together. Weak hiring concentrated in UI-ineligible groups is invisible to claims twice over: claims don't cover those groups, and even for the groups they do cover, claims don't track hiring well. A labor market weakening through $f$, in groups where entrants dominate, is precisely the case claims are worst at catching.
+mk_cflmi_panel <- function(y, title, color) {
+  d <- cflmi |> filter(!is.na(.data[[y]]))
+  dr <- range(d$date)
+  p <- ggplot(d, aes(x = date, y = .data[[y]])) +
+    geom_line(color = color, linewidth = 0.8) +
+    scale_y_continuous(labels = \(x) paste0(x, "%")) +
+    scale_x_date(date_breaks = "2 years", date_labels = "%Y") +
+    labs(title = title, y = "Rate (%)", x = NULL)
+  add_recessions(p) + coord_cartesian(xlim = dr)
+}
 
-The composition regression gives us a way to check which story, cyclical or structural, fits today. Its fitted values are the claims intensity the historical composition–claims relationship predicts for any given mix of the unemployed. Run a CFLMI replication twice, once with actual claims and once with these fitted claims, and compare the flow-consistent rate and the finding rate from each.
+p_f   <- mk_cflmi_panel("hiring_rate_uw",     "Job Finding Rate (Hiring Rate for Unemployed Workers)",     "#2E7D32")
+p_s   <- mk_cflmi_panel("layoffs_other_seps", "Job Separation Rate (Layoffs and Other Separations Rate)",  "#C62828")
+p_fcr <- mk_cflmi_panel("fcr",                "Flow-Consistent Unemployment Rate",                          "#1565C0")
 
-If the two versions agree, today's elevated New Entrants share is likely the familiar cyclical pattern: claims are behaving as composition predicts, and swapping one series for the other doesn't change the read. If they diverge, especially if the composition-predicted version shows a noticeably weaker finding rate, the elevated share is doing more than reflecting a hot market. It's telling us something claims alone cannot.
+p_f / p_s / p_fcr
+```
+
+The composition regression gives us a way to corroborate this from the claims side. Its fitted values are a composition-implied CC/CE: the claims intensity we would expect in a given month given who is in the unemployed pool, if the historical relationship between composition and claims still held. It answers the counterfactual "how quiet should claims be, given today's mix of unemployment causes?"
+
+Feeding that composition-implied series into the CFLMI in place of actual continuing claims, holding every other indicator unchanged, produces a second finding rate $f$ and a second flow-consistent rate. If the two versions agree, the claims we are observing are what composition predicts: nothing outside the mix of unemployment causes is shaping them, and the claims signal is consistent with whatever reading the hiring-side indicators are delivering. If the composition-implied $f$ comes in noticeably weaker than the actual-claims $f$, actual claims are quieter than composition alone would warrant, and the CFLMI is being pulled toward a flattering hiring read by that extra quietness.
+
+In practice, running the comparison today, the two versions agree: the finding rate implied by composition-implied claims tracks the actual-claims finding rate closely. On this measure, today's elevated New Entrants share is consistent with the cyclical pattern rather than a hidden hiring-side weakening. 
 
 ## Conclusion
 
-UI claims remain a reliable signal for one thing: separations-driven weakening. When unemployment rises because firms are laying people off, claims catch it early, cleanly, and nearly in full. When unemployment rises because hiring is slowing, especially in groups UI was never designed to cover, claims can stay quiet while the picture deteriorates underneath. A high New Entrants share used to be reassuring. With the share sitting persistently above its long-run level through a period of slowing hiring, the same statistic is now ambiguous, and the claims release no longer carries the all-clear it once did.
-
-
-
+UI claims remain a reliable signal for one thing: separations-driven weakening. When unemployment rises because firms are laying people off, claims catch it early, cleanly, and nearly in full. Because claims don't measure the hiring side directly, there is a real theoretical concern that a weakening concentrated in groups UI does not cover could go unseen. Today's elevated New Entrants share is exactly the configuration in which that concern would matter. Running the diagnostic, however, we find that the finding rate implied by composition-predicted claims tracks the finding rate implied by actual claims. On this test, today's high New Entrants share is behaving like the familiar cyclical pattern, not a hidden hiring slowdown. The broader caution stands: when composition and claims diverge, the claims release can go quiet while the underlying picture deteriorates. For now, it isn't flashing that warning.

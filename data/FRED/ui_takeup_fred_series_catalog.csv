@@ -1,0 +1,351 @@
+state,state_abbr,measure,series_id,frequency,series_url
+Alabama,AL,Annual Population,ALPOP,Annual,https://fred.stlouisfed.org/series/ALPOP
+Alabama,AL,Unemployed Persons,LASST010000000000004,Monthly,https://fred.stlouisfed.org/series/LASST010000000000004
+Alabama,AL,Unemployment Rate,ALUR,Monthly,https://fred.stlouisfed.org/series/ALUR
+Alabama,AL,Continued Claims,ALCCLAIMS,Weekly,https://fred.stlouisfed.org/series/ALCCLAIMS
+Alabama,AL,Covered Employment,ALCEMPLOY,Weekly,https://fred.stlouisfed.org/series/ALCEMPLOY
+Alabama,AL,Initial Claims,ALICLAIMS,Weekly,https://fred.stlouisfed.org/series/ALICLAIMS
+Alabama,AL,Insured Unemployment Rate,ALINSUREDUR,Weekly,https://fred.stlouisfed.org/series/ALINSUREDUR
+Alaska,AK,Annual Population,AKPOP,Annual,https://fred.stlouisfed.org/series/AKPOP
+Alaska,AK,Unemployed Persons,LASST020000000000004,Monthly,https://fred.stlouisfed.org/series/LASST020000000000004
+Alaska,AK,Unemployment Rate,AKUR,Monthly,https://fred.stlouisfed.org/series/AKUR
+Alaska,AK,Continued Claims,AKCCLAIMS,Weekly,https://fred.stlouisfed.org/series/AKCCLAIMS
+Alaska,AK,Covered Employment,AKCEMPLOY,Weekly,https://fred.stlouisfed.org/series/AKCEMPLOY
+Alaska,AK,Initial Claims,AKICLAIMS,Weekly,https://fred.stlouisfed.org/series/AKICLAIMS
+Alaska,AK,Insured Unemployment Rate,AKINSUREDUR,Weekly,https://fred.stlouisfed.org/series/AKINSUREDUR
+Arizona,AZ,Annual Population,AZPOP,Annual,https://fred.stlouisfed.org/series/AZPOP
+Arizona,AZ,Unemployed Persons,LASST040000000000004,Monthly,https://fred.stlouisfed.org/series/LASST040000000000004
+Arizona,AZ,Unemployment Rate,AZUR,Monthly,https://fred.stlouisfed.org/series/AZUR
+Arizona,AZ,Continued Claims,AZCCLAIMS,Weekly,https://fred.stlouisfed.org/series/AZCCLAIMS
+Arizona,AZ,Covered Employment,AZCEMPLOY,Weekly,https://fred.stlouisfed.org/series/AZCEMPLOY
+Arizona,AZ,Initial Claims,AZICLAIMS,Weekly,https://fred.stlouisfed.org/series/AZICLAIMS
+Arizona,AZ,Insured Unemployment Rate,AZINSUREDUR,Weekly,https://fred.stlouisfed.org/series/AZINSUREDUR
+Arkansas,AR,Annual Population,ARPOP,Annual,https://fred.stlouisfed.org/series/ARPOP
+Arkansas,AR,Unemployed Persons,LASST050000000000004,Monthly,https://fred.stlouisfed.org/series/LASST050000000000004
+Arkansas,AR,Unemployment Rate,ARUR,Monthly,https://fred.stlouisfed.org/series/ARUR
+Arkansas,AR,Continued Claims,ARCCLAIMS,Weekly,https://fred.stlouisfed.org/series/ARCCLAIMS
+Arkansas,AR,Covered Employment,ARCEMPLOY,Weekly,https://fred.stlouisfed.org/series/ARCEMPLOY
+Arkansas,AR,Initial Claims,ARICLAIMS,Weekly,https://fred.stlouisfed.org/series/ARICLAIMS
+Arkansas,AR,Insured Unemployment Rate,ARINSUREDUR,Weekly,https://fred.stlouisfed.org/series/ARINSUREDUR
+California,CA,Annual Population,CAPOP,Annual,https://fred.stlouisfed.org/series/CAPOP
+California,CA,Unemployed Persons,LASST060000000000004,Monthly,https://fred.stlouisfed.org/series/LASST060000000000004
+California,CA,Unemployment Rate,CAUR,Monthly,https://fred.stlouisfed.org/series/CAUR
+California,CA,Continued Claims,CACCLAIMS,Weekly,https://fred.stlouisfed.org/series/CACCLAIMS
+California,CA,Covered Employment,CACEMPLOY,Weekly,https://fred.stlouisfed.org/series/CACEMPLOY
+California,CA,Initial Claims,CAICLAIMS,Weekly,https://fred.stlouisfed.org/series/CAICLAIMS
+California,CA,Insured Unemployment Rate,CAINSUREDUR,Weekly,https://fred.stlouisfed.org/series/CAINSUREDUR
+Colorado,CO,Annual Population,COPOP,Annual,https://fred.stlouisfed.org/series/COPOP
+Colorado,CO,Unemployed Persons,LASST080000000000004,Monthly,https://fred.stlouisfed.org/series/LASST080000000000004
+Colorado,CO,Unemployment Rate,COUR,Monthly,https://fred.stlouisfed.org/series/COUR
+Colorado,CO,Continued Claims,COCCLAIMS,Weekly,https://fred.stlouisfed.org/series/COCCLAIMS
+Colorado,CO,Covered Employment,COCEMPLOY,Weekly,https://fred.stlouisfed.org/series/COCEMPLOY
+Colorado,CO,Initial Claims,COICLAIMS,Weekly,https://fred.stlouisfed.org/series/COICLAIMS
+Colorado,CO,Insured Unemployment Rate,COINSUREDUR,Weekly,https://fred.stlouisfed.org/series/COINSUREDUR
+Connecticut,CT,Annual Population,CTPOP,Annual,https://fred.stlouisfed.org/series/CTPOP
+Connecticut,CT,Unemployed Persons,LASST090000000000004,Monthly,https://fred.stlouisfed.org/series/LASST090000000000004
+Connecticut,CT,Unemployment Rate,CTUR,Monthly,https://fred.stlouisfed.org/series/CTUR
+Connecticut,CT,Continued Claims,CTCCLAIMS,Weekly,https://fred.stlouisfed.org/series/CTCCLAIMS
+Connecticut,CT,Covered Employment,CTCEMPLOY,Weekly,https://fred.stlouisfed.org/series/CTCEMPLOY
+Connecticut,CT,Initial Claims,CTICLAIMS,Weekly,https://fred.stlouisfed.org/series/CTICLAIMS
+Connecticut,CT,Insured Unemployment Rate,CTINSUREDUR,Weekly,https://fred.stlouisfed.org/series/CTINSUREDUR
+Delaware,DE,Annual Population,DEPOP,Annual,https://fred.stlouisfed.org/series/DEPOP
+Delaware,DE,Unemployed Persons,LASST100000000000004,Monthly,https://fred.stlouisfed.org/series/LASST100000000000004
+Delaware,DE,Unemployment Rate,DEUR,Monthly,https://fred.stlouisfed.org/series/DEUR
+Delaware,DE,Continued Claims,DECCLAIMS,Weekly,https://fred.stlouisfed.org/series/DECCLAIMS
+Delaware,DE,Covered Employment,DECEMPLOY,Weekly,https://fred.stlouisfed.org/series/DECEMPLOY
+Delaware,DE,Initial Claims,DEICLAIMS,Weekly,https://fred.stlouisfed.org/series/DEICLAIMS
+Delaware,DE,Insured Unemployment Rate,DEINSUREDUR,Weekly,https://fred.stlouisfed.org/series/DEINSUREDUR
+Florida,FL,Annual Population,FLPOP,Annual,https://fred.stlouisfed.org/series/FLPOP
+Florida,FL,Unemployed Persons,LASST120000000000004,Monthly,https://fred.stlouisfed.org/series/LASST120000000000004
+Florida,FL,Unemployment Rate,FLUR,Monthly,https://fred.stlouisfed.org/series/FLUR
+Florida,FL,Continued Claims,FLCCLAIMS,Weekly,https://fred.stlouisfed.org/series/FLCCLAIMS
+Florida,FL,Covered Employment,FLCEMPLOY,Weekly,https://fred.stlouisfed.org/series/FLCEMPLOY
+Florida,FL,Initial Claims,FLICLAIMS,Weekly,https://fred.stlouisfed.org/series/FLICLAIMS
+Florida,FL,Insured Unemployment Rate,FLINSUREDUR,Weekly,https://fred.stlouisfed.org/series/FLINSUREDUR
+Georgia,GA,Annual Population,GAPOP,Annual,https://fred.stlouisfed.org/series/GAPOP
+Georgia,GA,Unemployed Persons,LASST130000000000004,Monthly,https://fred.stlouisfed.org/series/LASST130000000000004
+Georgia,GA,Unemployment Rate,GAUR,Monthly,https://fred.stlouisfed.org/series/GAUR
+Georgia,GA,Continued Claims,GACCLAIMS,Weekly,https://fred.stlouisfed.org/series/GACCLAIMS
+Georgia,GA,Covered Employment,GACEMPLOY,Weekly,https://fred.stlouisfed.org/series/GACEMPLOY
+Georgia,GA,Initial Claims,GAICLAIMS,Weekly,https://fred.stlouisfed.org/series/GAICLAIMS
+Georgia,GA,Insured Unemployment Rate,GAINSUREDUR,Weekly,https://fred.stlouisfed.org/series/GAINSUREDUR
+Hawaii,HI,Annual Population,HIPOP,Annual,https://fred.stlouisfed.org/series/HIPOP
+Hawaii,HI,Unemployed Persons,LASST150000000000004,Monthly,https://fred.stlouisfed.org/series/LASST150000000000004
+Hawaii,HI,Unemployment Rate,HIUR,Monthly,https://fred.stlouisfed.org/series/HIUR
+Hawaii,HI,Continued Claims,HICCLAIMS,Weekly,https://fred.stlouisfed.org/series/HICCLAIMS
+Hawaii,HI,Covered Employment,HICEMPLOY,Weekly,https://fred.stlouisfed.org/series/HICEMPLOY
+Hawaii,HI,Initial Claims,HIICLAIMS,Weekly,https://fred.stlouisfed.org/series/HIICLAIMS
+Hawaii,HI,Insured Unemployment Rate,HIINSUREDUR,Weekly,https://fred.stlouisfed.org/series/HIINSUREDUR
+Idaho,ID,Annual Population,IDPOP,Annual,https://fred.stlouisfed.org/series/IDPOP
+Idaho,ID,Unemployed Persons,LASST160000000000004,Monthly,https://fred.stlouisfed.org/series/LASST160000000000004
+Idaho,ID,Unemployment Rate,IDUR,Monthly,https://fred.stlouisfed.org/series/IDUR
+Idaho,ID,Continued Claims,IDCCLAIMS,Weekly,https://fred.stlouisfed.org/series/IDCCLAIMS
+Idaho,ID,Covered Employment,IDCEMPLOY,Weekly,https://fred.stlouisfed.org/series/IDCEMPLOY
+Idaho,ID,Initial Claims,IDICLAIMS,Weekly,https://fred.stlouisfed.org/series/IDICLAIMS
+Idaho,ID,Insured Unemployment Rate,IDINSUREDUR,Weekly,https://fred.stlouisfed.org/series/IDINSUREDUR
+Illinois,IL,Annual Population,ILPOP,Annual,https://fred.stlouisfed.org/series/ILPOP
+Illinois,IL,Unemployed Persons,LASST170000000000004,Monthly,https://fred.stlouisfed.org/series/LASST170000000000004
+Illinois,IL,Unemployment Rate,ILUR,Monthly,https://fred.stlouisfed.org/series/ILUR
+Illinois,IL,Continued Claims,ILCCLAIMS,Weekly,https://fred.stlouisfed.org/series/ILCCLAIMS
+Illinois,IL,Covered Employment,ILCEMPLOY,Weekly,https://fred.stlouisfed.org/series/ILCEMPLOY
+Illinois,IL,Initial Claims,ILICLAIMS,Weekly,https://fred.stlouisfed.org/series/ILICLAIMS
+Illinois,IL,Insured Unemployment Rate,ILINSUREDUR,Weekly,https://fred.stlouisfed.org/series/ILINSUREDUR
+Indiana,IN,Annual Population,INPOP,Annual,https://fred.stlouisfed.org/series/INPOP
+Indiana,IN,Unemployed Persons,LASST180000000000004,Monthly,https://fred.stlouisfed.org/series/LASST180000000000004
+Indiana,IN,Unemployment Rate,INUR,Monthly,https://fred.stlouisfed.org/series/INUR
+Indiana,IN,Continued Claims,INCCLAIMS,Weekly,https://fred.stlouisfed.org/series/INCCLAIMS
+Indiana,IN,Covered Employment,INCEMPLOY,Weekly,https://fred.stlouisfed.org/series/INCEMPLOY
+Indiana,IN,Initial Claims,INICLAIMS,Weekly,https://fred.stlouisfed.org/series/INICLAIMS
+Indiana,IN,Insured Unemployment Rate,ININSUREDUR,Weekly,https://fred.stlouisfed.org/series/ININSUREDUR
+Iowa,IA,Annual Population,IAPOP,Annual,https://fred.stlouisfed.org/series/IAPOP
+Iowa,IA,Unemployed Persons,LASST190000000000004,Monthly,https://fred.stlouisfed.org/series/LASST190000000000004
+Iowa,IA,Unemployment Rate,IAUR,Monthly,https://fred.stlouisfed.org/series/IAUR
+Iowa,IA,Continued Claims,IACCLAIMS,Weekly,https://fred.stlouisfed.org/series/IACCLAIMS
+Iowa,IA,Covered Employment,IACEMPLOY,Weekly,https://fred.stlouisfed.org/series/IACEMPLOY
+Iowa,IA,Initial Claims,IAICLAIMS,Weekly,https://fred.stlouisfed.org/series/IAICLAIMS
+Iowa,IA,Insured Unemployment Rate,IAINSUREDUR,Weekly,https://fred.stlouisfed.org/series/IAINSUREDUR
+Kansas,KS,Annual Population,KSPOP,Annual,https://fred.stlouisfed.org/series/KSPOP
+Kansas,KS,Unemployed Persons,LASST200000000000004,Monthly,https://fred.stlouisfed.org/series/LASST200000000000004
+Kansas,KS,Unemployment Rate,KSUR,Monthly,https://fred.stlouisfed.org/series/KSUR
+Kansas,KS,Continued Claims,KSCCLAIMS,Weekly,https://fred.stlouisfed.org/series/KSCCLAIMS
+Kansas,KS,Covered Employment,KSCEMPLOY,Weekly,https://fred.stlouisfed.org/series/KSCEMPLOY
+Kansas,KS,Initial Claims,KSICLAIMS,Weekly,https://fred.stlouisfed.org/series/KSICLAIMS
+Kansas,KS,Insured Unemployment Rate,KSINSUREDUR,Weekly,https://fred.stlouisfed.org/series/KSINSUREDUR
+Kentucky,KY,Annual Population,KYPOP,Annual,https://fred.stlouisfed.org/series/KYPOP
+Kentucky,KY,Unemployed Persons,LASST210000000000004,Monthly,https://fred.stlouisfed.org/series/LASST210000000000004
+Kentucky,KY,Unemployment Rate,KYUR,Monthly,https://fred.stlouisfed.org/series/KYUR
+Kentucky,KY,Continued Claims,KYCCLAIMS,Weekly,https://fred.stlouisfed.org/series/KYCCLAIMS
+Kentucky,KY,Covered Employment,KYCEMPLOY,Weekly,https://fred.stlouisfed.org/series/KYCEMPLOY
+Kentucky,KY,Initial Claims,KYICLAIMS,Weekly,https://fred.stlouisfed.org/series/KYICLAIMS
+Kentucky,KY,Insured Unemployment Rate,KYINSUREDUR,Weekly,https://fred.stlouisfed.org/series/KYINSUREDUR
+Louisiana,LA,Annual Population,LAPOP,Annual,https://fred.stlouisfed.org/series/LAPOP
+Louisiana,LA,Unemployed Persons,LASST220000000000004,Monthly,https://fred.stlouisfed.org/series/LASST220000000000004
+Louisiana,LA,Unemployment Rate,LAUR,Monthly,https://fred.stlouisfed.org/series/LAUR
+Louisiana,LA,Continued Claims,LACCLAIMS,Weekly,https://fred.stlouisfed.org/series/LACCLAIMS
+Louisiana,LA,Covered Employment,LACEMPLOY,Weekly,https://fred.stlouisfed.org/series/LACEMPLOY
+Louisiana,LA,Initial Claims,LAICLAIMS,Weekly,https://fred.stlouisfed.org/series/LAICLAIMS
+Louisiana,LA,Insured Unemployment Rate,LAINSUREDUR,Weekly,https://fred.stlouisfed.org/series/LAINSUREDUR
+Maine,ME,Annual Population,MEPOP,Annual,https://fred.stlouisfed.org/series/MEPOP
+Maine,ME,Unemployed Persons,LASST230000000000004,Monthly,https://fred.stlouisfed.org/series/LASST230000000000004
+Maine,ME,Unemployment Rate,MEUR,Monthly,https://fred.stlouisfed.org/series/MEUR
+Maine,ME,Continued Claims,MECCLAIMS,Weekly,https://fred.stlouisfed.org/series/MECCLAIMS
+Maine,ME,Covered Employment,MECEMPLOY,Weekly,https://fred.stlouisfed.org/series/MECEMPLOY
+Maine,ME,Initial Claims,MEICLAIMS,Weekly,https://fred.stlouisfed.org/series/MEICLAIMS
+Maine,ME,Insured Unemployment Rate,MEINSUREDUR,Weekly,https://fred.stlouisfed.org/series/MEINSUREDUR
+Maryland,MD,Annual Population,MDPOP,Annual,https://fred.stlouisfed.org/series/MDPOP
+Maryland,MD,Unemployed Persons,LASST240000000000004,Monthly,https://fred.stlouisfed.org/series/LASST240000000000004
+Maryland,MD,Unemployment Rate,MDUR,Monthly,https://fred.stlouisfed.org/series/MDUR
+Maryland,MD,Continued Claims,MDCCLAIMS,Weekly,https://fred.stlouisfed.org/series/MDCCLAIMS
+Maryland,MD,Covered Employment,MDCEMPLOY,Weekly,https://fred.stlouisfed.org/series/MDCEMPLOY
+Maryland,MD,Initial Claims,MDICLAIMS,Weekly,https://fred.stlouisfed.org/series/MDICLAIMS
+Maryland,MD,Insured Unemployment Rate,MDINSUREDUR,Weekly,https://fred.stlouisfed.org/series/MDINSUREDUR
+Massachusetts,MA,Annual Population,MAPOP,Annual,https://fred.stlouisfed.org/series/MAPOP
+Massachusetts,MA,Unemployed Persons,LASST250000000000004,Monthly,https://fred.stlouisfed.org/series/LASST250000000000004
+Massachusetts,MA,Unemployment Rate,MAUR,Monthly,https://fred.stlouisfed.org/series/MAUR
+Massachusetts,MA,Continued Claims,MACCLAIMS,Weekly,https://fred.stlouisfed.org/series/MACCLAIMS
+Massachusetts,MA,Covered Employment,MACEMPLOY,Weekly,https://fred.stlouisfed.org/series/MACEMPLOY
+Massachusetts,MA,Initial Claims,MAICLAIMS,Weekly,https://fred.stlouisfed.org/series/MAICLAIMS
+Massachusetts,MA,Insured Unemployment Rate,MAINSUREDUR,Weekly,https://fred.stlouisfed.org/series/MAINSUREDUR
+Michigan,MI,Annual Population,MIPOP,Annual,https://fred.stlouisfed.org/series/MIPOP
+Michigan,MI,Unemployed Persons,LASST260000000000004,Monthly,https://fred.stlouisfed.org/series/LASST260000000000004
+Michigan,MI,Unemployment Rate,MIUR,Monthly,https://fred.stlouisfed.org/series/MIUR
+Michigan,MI,Continued Claims,MICCLAIMS,Weekly,https://fred.stlouisfed.org/series/MICCLAIMS
+Michigan,MI,Covered Employment,MICEMPLOY,Weekly,https://fred.stlouisfed.org/series/MICEMPLOY
+Michigan,MI,Initial Claims,MIICLAIMS,Weekly,https://fred.stlouisfed.org/series/MIICLAIMS
+Michigan,MI,Insured Unemployment Rate,MIINSUREDUR,Weekly,https://fred.stlouisfed.org/series/MIINSUREDUR
+Minnesota,MN,Annual Population,MNPOP,Annual,https://fred.stlouisfed.org/series/MNPOP
+Minnesota,MN,Unemployed Persons,LASST270000000000004,Monthly,https://fred.stlouisfed.org/series/LASST270000000000004
+Minnesota,MN,Unemployment Rate,MNUR,Monthly,https://fred.stlouisfed.org/series/MNUR
+Minnesota,MN,Continued Claims,MNCCLAIMS,Weekly,https://fred.stlouisfed.org/series/MNCCLAIMS
+Minnesota,MN,Covered Employment,MNCEMPLOY,Weekly,https://fred.stlouisfed.org/series/MNCEMPLOY
+Minnesota,MN,Initial Claims,MNICLAIMS,Weekly,https://fred.stlouisfed.org/series/MNICLAIMS
+Minnesota,MN,Insured Unemployment Rate,MNINSUREDUR,Weekly,https://fred.stlouisfed.org/series/MNINSUREDUR
+Mississippi,MS,Annual Population,MSPOP,Annual,https://fred.stlouisfed.org/series/MSPOP
+Mississippi,MS,Unemployed Persons,LASST280000000000004,Monthly,https://fred.stlouisfed.org/series/LASST280000000000004
+Mississippi,MS,Unemployment Rate,MSUR,Monthly,https://fred.stlouisfed.org/series/MSUR
+Mississippi,MS,Continued Claims,MSCCLAIMS,Weekly,https://fred.stlouisfed.org/series/MSCCLAIMS
+Mississippi,MS,Covered Employment,MSCEMPLOY,Weekly,https://fred.stlouisfed.org/series/MSCEMPLOY
+Mississippi,MS,Initial Claims,MSICLAIMS,Weekly,https://fred.stlouisfed.org/series/MSICLAIMS
+Mississippi,MS,Insured Unemployment Rate,MSINSUREDUR,Weekly,https://fred.stlouisfed.org/series/MSINSUREDUR
+Missouri,MO,Annual Population,MOPOP,Annual,https://fred.stlouisfed.org/series/MOPOP
+Missouri,MO,Unemployed Persons,LASST290000000000004,Monthly,https://fred.stlouisfed.org/series/LASST290000000000004
+Missouri,MO,Unemployment Rate,MOUR,Monthly,https://fred.stlouisfed.org/series/MOUR
+Missouri,MO,Continued Claims,MOCCLAIMS,Weekly,https://fred.stlouisfed.org/series/MOCCLAIMS
+Missouri,MO,Covered Employment,MOCEMPLOY,Weekly,https://fred.stlouisfed.org/series/MOCEMPLOY
+Missouri,MO,Initial Claims,MOICLAIMS,Weekly,https://fred.stlouisfed.org/series/MOICLAIMS
+Missouri,MO,Insured Unemployment Rate,MOINSUREDUR,Weekly,https://fred.stlouisfed.org/series/MOINSUREDUR
+Montana,MT,Annual Population,MTPOP,Annual,https://fred.stlouisfed.org/series/MTPOP
+Montana,MT,Unemployed Persons,LASST300000000000004,Monthly,https://fred.stlouisfed.org/series/LASST300000000000004
+Montana,MT,Unemployment Rate,MTUR,Monthly,https://fred.stlouisfed.org/series/MTUR
+Montana,MT,Continued Claims,MTCCLAIMS,Weekly,https://fred.stlouisfed.org/series/MTCCLAIMS
+Montana,MT,Covered Employment,MTCEMPLOY,Weekly,https://fred.stlouisfed.org/series/MTCEMPLOY
+Montana,MT,Initial Claims,MTICLAIMS,Weekly,https://fred.stlouisfed.org/series/MTICLAIMS
+Montana,MT,Insured Unemployment Rate,MTINSUREDUR,Weekly,https://fred.stlouisfed.org/series/MTINSUREDUR
+Nebraska,NE,Annual Population,NEPOP,Annual,https://fred.stlouisfed.org/series/NEPOP
+Nebraska,NE,Unemployed Persons,LASST310000000000004,Monthly,https://fred.stlouisfed.org/series/LASST310000000000004
+Nebraska,NE,Unemployment Rate,NEUR,Monthly,https://fred.stlouisfed.org/series/NEUR
+Nebraska,NE,Continued Claims,NECCLAIMS,Weekly,https://fred.stlouisfed.org/series/NECCLAIMS
+Nebraska,NE,Covered Employment,NECEMPLOY,Weekly,https://fred.stlouisfed.org/series/NECEMPLOY
+Nebraska,NE,Initial Claims,NEICLAIMS,Weekly,https://fred.stlouisfed.org/series/NEICLAIMS
+Nebraska,NE,Insured Unemployment Rate,NEINSUREDUR,Weekly,https://fred.stlouisfed.org/series/NEINSUREDUR
+Nevada,NV,Annual Population,NVPOP,Annual,https://fred.stlouisfed.org/series/NVPOP
+Nevada,NV,Unemployed Persons,LASST320000000000004,Monthly,https://fred.stlouisfed.org/series/LASST320000000000004
+Nevada,NV,Unemployment Rate,NVUR,Monthly,https://fred.stlouisfed.org/series/NVUR
+Nevada,NV,Continued Claims,NVCCLAIMS,Weekly,https://fred.stlouisfed.org/series/NVCCLAIMS
+Nevada,NV,Covered Employment,NVCEMPLOY,Weekly,https://fred.stlouisfed.org/series/NVCEMPLOY
+Nevada,NV,Initial Claims,NVICLAIMS,Weekly,https://fred.stlouisfed.org/series/NVICLAIMS
+Nevada,NV,Insured Unemployment Rate,NVINSUREDUR,Weekly,https://fred.stlouisfed.org/series/NVINSUREDUR
+New Hampshire,NH,Annual Population,NHPOP,Annual,https://fred.stlouisfed.org/series/NHPOP
+New Hampshire,NH,Unemployed Persons,LASST330000000000004,Monthly,https://fred.stlouisfed.org/series/LASST330000000000004
+New Hampshire,NH,Unemployment Rate,NHUR,Monthly,https://fred.stlouisfed.org/series/NHUR
+New Hampshire,NH,Continued Claims,NHCCLAIMS,Weekly,https://fred.stlouisfed.org/series/NHCCLAIMS
+New Hampshire,NH,Covered Employment,NHCEMPLOY,Weekly,https://fred.stlouisfed.org/series/NHCEMPLOY
+New Hampshire,NH,Initial Claims,NHICLAIMS,Weekly,https://fred.stlouisfed.org/series/NHICLAIMS
+New Hampshire,NH,Insured Unemployment Rate,NHINSUREDUR,Weekly,https://fred.stlouisfed.org/series/NHINSUREDUR
+New Jersey,NJ,Annual Population,NJPOP,Annual,https://fred.stlouisfed.org/series/NJPOP
+New Jersey,NJ,Unemployed Persons,LASST340000000000004,Monthly,https://fred.stlouisfed.org/series/LASST340000000000004
+New Jersey,NJ,Unemployment Rate,NJUR,Monthly,https://fred.stlouisfed.org/series/NJUR
+New Jersey,NJ,Continued Claims,NJCCLAIMS,Weekly,https://fred.stlouisfed.org/series/NJCCLAIMS
+New Jersey,NJ,Covered Employment,NJCEMPLOY,Weekly,https://fred.stlouisfed.org/series/NJCEMPLOY
+New Jersey,NJ,Initial Claims,NJICLAIMS,Weekly,https://fred.stlouisfed.org/series/NJICLAIMS
+New Jersey,NJ,Insured Unemployment Rate,NJINSUREDUR,Weekly,https://fred.stlouisfed.org/series/NJINSUREDUR
+New Mexico,NM,Annual Population,NMPOP,Annual,https://fred.stlouisfed.org/series/NMPOP
+New Mexico,NM,Unemployed Persons,LASST350000000000004,Monthly,https://fred.stlouisfed.org/series/LASST350000000000004
+New Mexico,NM,Unemployment Rate,NMUR,Monthly,https://fred.stlouisfed.org/series/NMUR
+New Mexico,NM,Continued Claims,NMCCLAIMS,Weekly,https://fred.stlouisfed.org/series/NMCCLAIMS
+New Mexico,NM,Covered Employment,NMCEMPLOY,Weekly,https://fred.stlouisfed.org/series/NMCEMPLOY
+New Mexico,NM,Initial Claims,NMICLAIMS,Weekly,https://fred.stlouisfed.org/series/NMICLAIMS
+New Mexico,NM,Insured Unemployment Rate,NMINSUREDUR,Weekly,https://fred.stlouisfed.org/series/NMINSUREDUR
+New York,NY,Annual Population,NYPOP,Annual,https://fred.stlouisfed.org/series/NYPOP
+New York,NY,Unemployed Persons,LASST360000000000004,Monthly,https://fred.stlouisfed.org/series/LASST360000000000004
+New York,NY,Unemployment Rate,NYUR,Monthly,https://fred.stlouisfed.org/series/NYUR
+New York,NY,Continued Claims,NYCCLAIMS,Weekly,https://fred.stlouisfed.org/series/NYCCLAIMS
+New York,NY,Covered Employment,NYCEMPLOY,Weekly,https://fred.stlouisfed.org/series/NYCEMPLOY
+New York,NY,Initial Claims,NYICLAIMS,Weekly,https://fred.stlouisfed.org/series/NYICLAIMS
+New York,NY,Insured Unemployment Rate,NYINSUREDUR,Weekly,https://fred.stlouisfed.org/series/NYINSUREDUR
+North Carolina,NC,Annual Population,NCPOP,Annual,https://fred.stlouisfed.org/series/NCPOP
+North Carolina,NC,Unemployed Persons,LASST370000000000004,Monthly,https://fred.stlouisfed.org/series/LASST370000000000004
+North Carolina,NC,Unemployment Rate,NCUR,Monthly,https://fred.stlouisfed.org/series/NCUR
+North Carolina,NC,Continued Claims,NCCCLAIMS,Weekly,https://fred.stlouisfed.org/series/NCCCLAIMS
+North Carolina,NC,Covered Employment,NCCEMPLOY,Weekly,https://fred.stlouisfed.org/series/NCCEMPLOY
+North Carolina,NC,Initial Claims,NCICLAIMS,Weekly,https://fred.stlouisfed.org/series/NCICLAIMS
+North Carolina,NC,Insured Unemployment Rate,NCINSUREDUR,Weekly,https://fred.stlouisfed.org/series/NCINSUREDUR
+North Dakota,ND,Annual Population,NDPOP,Annual,https://fred.stlouisfed.org/series/NDPOP
+North Dakota,ND,Unemployed Persons,LASST380000000000004,Monthly,https://fred.stlouisfed.org/series/LASST380000000000004
+North Dakota,ND,Unemployment Rate,NDUR,Monthly,https://fred.stlouisfed.org/series/NDUR
+North Dakota,ND,Continued Claims,NDCCLAIMS,Weekly,https://fred.stlouisfed.org/series/NDCCLAIMS
+North Dakota,ND,Covered Employment,NDCEMPLOY,Weekly,https://fred.stlouisfed.org/series/NDCEMPLOY
+North Dakota,ND,Initial Claims,NDICLAIMS,Weekly,https://fred.stlouisfed.org/series/NDICLAIMS
+North Dakota,ND,Insured Unemployment Rate,NDINSUREDUR,Weekly,https://fred.stlouisfed.org/series/NDINSUREDUR
+Ohio,OH,Annual Population,OHPOP,Annual,https://fred.stlouisfed.org/series/OHPOP
+Ohio,OH,Unemployed Persons,LASST390000000000004,Monthly,https://fred.stlouisfed.org/series/LASST390000000000004
+Ohio,OH,Unemployment Rate,OHUR,Monthly,https://fred.stlouisfed.org/series/OHUR
+Ohio,OH,Continued Claims,OHCCLAIMS,Weekly,https://fred.stlouisfed.org/series/OHCCLAIMS
+Ohio,OH,Covered Employment,OHCEMPLOY,Weekly,https://fred.stlouisfed.org/series/OHCEMPLOY
+Ohio,OH,Initial Claims,OHICLAIMS,Weekly,https://fred.stlouisfed.org/series/OHICLAIMS
+Ohio,OH,Insured Unemployment Rate,OHINSUREDUR,Weekly,https://fred.stlouisfed.org/series/OHINSUREDUR
+Oklahoma,OK,Annual Population,OKPOP,Annual,https://fred.stlouisfed.org/series/OKPOP
+Oklahoma,OK,Unemployed Persons,LASST400000000000004,Monthly,https://fred.stlouisfed.org/series/LASST400000000000004
+Oklahoma,OK,Unemployment Rate,OKUR,Monthly,https://fred.stlouisfed.org/series/OKUR
+Oklahoma,OK,Continued Claims,OKCCLAIMS,Weekly,https://fred.stlouisfed.org/series/OKCCLAIMS
+Oklahoma,OK,Covered Employment,OKCEMPLOY,Weekly,https://fred.stlouisfed.org/series/OKCEMPLOY
+Oklahoma,OK,Initial Claims,OKICLAIMS,Weekly,https://fred.stlouisfed.org/series/OKICLAIMS
+Oklahoma,OK,Insured Unemployment Rate,OKINSUREDUR,Weekly,https://fred.stlouisfed.org/series/OKINSUREDUR
+Oregon,OR,Annual Population,ORPOP,Annual,https://fred.stlouisfed.org/series/ORPOP
+Oregon,OR,Unemployed Persons,LASST410000000000004,Monthly,https://fred.stlouisfed.org/series/LASST410000000000004
+Oregon,OR,Unemployment Rate,ORUR,Monthly,https://fred.stlouisfed.org/series/ORUR
+Oregon,OR,Continued Claims,ORCCLAIMS,Weekly,https://fred.stlouisfed.org/series/ORCCLAIMS
+Oregon,OR,Covered Employment,ORCEMPLOY,Weekly,https://fred.stlouisfed.org/series/ORCEMPLOY
+Oregon,OR,Initial Claims,ORICLAIMS,Weekly,https://fred.stlouisfed.org/series/ORICLAIMS
+Oregon,OR,Insured Unemployment Rate,ORINSUREDUR,Weekly,https://fred.stlouisfed.org/series/ORINSUREDUR
+Pennsylvania,PA,Annual Population,PAPOP,Annual,https://fred.stlouisfed.org/series/PAPOP
+Pennsylvania,PA,Unemployed Persons,LASST420000000000004,Monthly,https://fred.stlouisfed.org/series/LASST420000000000004
+Pennsylvania,PA,Unemployment Rate,PAUR,Monthly,https://fred.stlouisfed.org/series/PAUR
+Pennsylvania,PA,Continued Claims,PACCLAIMS,Weekly,https://fred.stlouisfed.org/series/PACCLAIMS
+Pennsylvania,PA,Covered Employment,PACEMPLOY,Weekly,https://fred.stlouisfed.org/series/PACEMPLOY
+Pennsylvania,PA,Initial Claims,PAICLAIMS,Weekly,https://fred.stlouisfed.org/series/PAICLAIMS
+Pennsylvania,PA,Insured Unemployment Rate,PAINSUREDUR,Weekly,https://fred.stlouisfed.org/series/PAINSUREDUR
+Rhode Island,RI,Annual Population,RIPOP,Annual,https://fred.stlouisfed.org/series/RIPOP
+Rhode Island,RI,Unemployed Persons,LASST440000000000004,Monthly,https://fred.stlouisfed.org/series/LASST440000000000004
+Rhode Island,RI,Unemployment Rate,RIUR,Monthly,https://fred.stlouisfed.org/series/RIUR
+Rhode Island,RI,Continued Claims,RICCLAIMS,Weekly,https://fred.stlouisfed.org/series/RICCLAIMS
+Rhode Island,RI,Covered Employment,RICEMPLOY,Weekly,https://fred.stlouisfed.org/series/RICEMPLOY
+Rhode Island,RI,Initial Claims,RIICLAIMS,Weekly,https://fred.stlouisfed.org/series/RIICLAIMS
+Rhode Island,RI,Insured Unemployment Rate,RIINSUREDUR,Weekly,https://fred.stlouisfed.org/series/RIINSUREDUR
+South Carolina,SC,Annual Population,SCPOP,Annual,https://fred.stlouisfed.org/series/SCPOP
+South Carolina,SC,Unemployed Persons,LASST450000000000004,Monthly,https://fred.stlouisfed.org/series/LASST450000000000004
+South Carolina,SC,Unemployment Rate,SCUR,Monthly,https://fred.stlouisfed.org/series/SCUR
+South Carolina,SC,Continued Claims,SCCCLAIMS,Weekly,https://fred.stlouisfed.org/series/SCCCLAIMS
+South Carolina,SC,Covered Employment,SCCEMPLOY,Weekly,https://fred.stlouisfed.org/series/SCCEMPLOY
+South Carolina,SC,Initial Claims,SCICLAIMS,Weekly,https://fred.stlouisfed.org/series/SCICLAIMS
+South Carolina,SC,Insured Unemployment Rate,SCINSUREDUR,Weekly,https://fred.stlouisfed.org/series/SCINSUREDUR
+South Dakota,SD,Annual Population,SDPOP,Annual,https://fred.stlouisfed.org/series/SDPOP
+South Dakota,SD,Unemployed Persons,LASST460000000000004,Monthly,https://fred.stlouisfed.org/series/LASST460000000000004
+South Dakota,SD,Unemployment Rate,SDUR,Monthly,https://fred.stlouisfed.org/series/SDUR
+South Dakota,SD,Continued Claims,SDCCLAIMS,Weekly,https://fred.stlouisfed.org/series/SDCCLAIMS
+South Dakota,SD,Covered Employment,SDCEMPLOY,Weekly,https://fred.stlouisfed.org/series/SDCEMPLOY
+South Dakota,SD,Initial Claims,SDICLAIMS,Weekly,https://fred.stlouisfed.org/series/SDICLAIMS
+South Dakota,SD,Insured Unemployment Rate,SDINSUREDUR,Weekly,https://fred.stlouisfed.org/series/SDINSUREDUR
+Tennessee,TN,Annual Population,TNPOP,Annual,https://fred.stlouisfed.org/series/TNPOP
+Tennessee,TN,Unemployed Persons,LASST470000000000004,Monthly,https://fred.stlouisfed.org/series/LASST470000000000004
+Tennessee,TN,Unemployment Rate,TNUR,Monthly,https://fred.stlouisfed.org/series/TNUR
+Tennessee,TN,Continued Claims,TNCCLAIMS,Weekly,https://fred.stlouisfed.org/series/TNCCLAIMS
+Tennessee,TN,Covered Employment,TNCEMPLOY,Weekly,https://fred.stlouisfed.org/series/TNCEMPLOY
+Tennessee,TN,Initial Claims,TNICLAIMS,Weekly,https://fred.stlouisfed.org/series/TNICLAIMS
+Tennessee,TN,Insured Unemployment Rate,TNINSUREDUR,Weekly,https://fred.stlouisfed.org/series/TNINSUREDUR
+Texas,TX,Annual Population,TXPOP,Annual,https://fred.stlouisfed.org/series/TXPOP
+Texas,TX,Unemployed Persons,LASST480000000000004,Monthly,https://fred.stlouisfed.org/series/LASST480000000000004
+Texas,TX,Unemployment Rate,TXUR,Monthly,https://fred.stlouisfed.org/series/TXUR
+Texas,TX,Continued Claims,TXCCLAIMS,Weekly,https://fred.stlouisfed.org/series/TXCCLAIMS
+Texas,TX,Covered Employment,TXCEMPLOY,Weekly,https://fred.stlouisfed.org/series/TXCEMPLOY
+Texas,TX,Initial Claims,TXICLAIMS,Weekly,https://fred.stlouisfed.org/series/TXICLAIMS
+Texas,TX,Insured Unemployment Rate,TXINSUREDUR,Weekly,https://fred.stlouisfed.org/series/TXINSUREDUR
+Utah,UT,Annual Population,UTPOP,Annual,https://fred.stlouisfed.org/series/UTPOP
+Utah,UT,Unemployed Persons,LASST490000000000004,Monthly,https://fred.stlouisfed.org/series/LASST490000000000004
+Utah,UT,Unemployment Rate,UTUR,Monthly,https://fred.stlouisfed.org/series/UTUR
+Utah,UT,Continued Claims,UTCCLAIMS,Weekly,https://fred.stlouisfed.org/series/UTCCLAIMS
+Utah,UT,Covered Employment,UTCEMPLOY,Weekly,https://fred.stlouisfed.org/series/UTCEMPLOY
+Utah,UT,Initial Claims,UTICLAIMS,Weekly,https://fred.stlouisfed.org/series/UTICLAIMS
+Utah,UT,Insured Unemployment Rate,UTINSUREDUR,Weekly,https://fred.stlouisfed.org/series/UTINSUREDUR
+Vermont,VT,Annual Population,VTPOP,Annual,https://fred.stlouisfed.org/series/VTPOP
+Vermont,VT,Unemployed Persons,LASST500000000000004,Monthly,https://fred.stlouisfed.org/series/LASST500000000000004
+Vermont,VT,Unemployment Rate,VTUR,Monthly,https://fred.stlouisfed.org/series/VTUR
+Vermont,VT,Continued Claims,VTCCLAIMS,Weekly,https://fred.stlouisfed.org/series/VTCCLAIMS
+Vermont,VT,Covered Employment,VTCEMPLOY,Weekly,https://fred.stlouisfed.org/series/VTCEMPLOY
+Vermont,VT,Initial Claims,VTICLAIMS,Weekly,https://fred.stlouisfed.org/series/VTICLAIMS
+Vermont,VT,Insured Unemployment Rate,VTINSUREDUR,Weekly,https://fred.stlouisfed.org/series/VTINSUREDUR
+Virginia,VA,Annual Population,VAPOP,Annual,https://fred.stlouisfed.org/series/VAPOP
+Virginia,VA,Unemployed Persons,LASST510000000000004,Monthly,https://fred.stlouisfed.org/series/LASST510000000000004
+Virginia,VA,Unemployment Rate,VAUR,Monthly,https://fred.stlouisfed.org/series/VAUR
+Virginia,VA,Continued Claims,VACCLAIMS,Weekly,https://fred.stlouisfed.org/series/VACCLAIMS
+Virginia,VA,Covered Employment,VACEMPLOY,Weekly,https://fred.stlouisfed.org/series/VACEMPLOY
+Virginia,VA,Initial Claims,VAICLAIMS,Weekly,https://fred.stlouisfed.org/series/VAICLAIMS
+Virginia,VA,Insured Unemployment Rate,VAINSUREDUR,Weekly,https://fred.stlouisfed.org/series/VAINSUREDUR
+Washington,WA,Annual Population,WAPOP,Annual,https://fred.stlouisfed.org/series/WAPOP
+Washington,WA,Unemployed Persons,LASST530000000000004,Monthly,https://fred.stlouisfed.org/series/LASST530000000000004
+Washington,WA,Unemployment Rate,WAUR,Monthly,https://fred.stlouisfed.org/series/WAUR
+Washington,WA,Continued Claims,WACCLAIMS,Weekly,https://fred.stlouisfed.org/series/WACCLAIMS
+Washington,WA,Covered Employment,WACEMPLOY,Weekly,https://fred.stlouisfed.org/series/WACEMPLOY
+Washington,WA,Initial Claims,WAICLAIMS,Weekly,https://fred.stlouisfed.org/series/WAICLAIMS
+Washington,WA,Insured Unemployment Rate,WAINSUREDUR,Weekly,https://fred.stlouisfed.org/series/WAINSUREDUR
+West Virginia,WV,Annual Population,WVPOP,Annual,https://fred.stlouisfed.org/series/WVPOP
+West Virginia,WV,Unemployed Persons,LASST540000000000004,Monthly,https://fred.stlouisfed.org/series/LASST540000000000004
+West Virginia,WV,Unemployment Rate,WVUR,Monthly,https://fred.stlouisfed.org/series/WVUR
+West Virginia,WV,Continued Claims,WVCCLAIMS,Weekly,https://fred.stlouisfed.org/series/WVCCLAIMS
+West Virginia,WV,Covered Employment,WVCEMPLOY,Weekly,https://fred.stlouisfed.org/series/WVCEMPLOY
+West Virginia,WV,Initial Claims,WVICLAIMS,Weekly,https://fred.stlouisfed.org/series/WVICLAIMS
+West Virginia,WV,Insured Unemployment Rate,WVINSUREDUR,Weekly,https://fred.stlouisfed.org/series/WVINSUREDUR
+Wisconsin,WI,Annual Population,WIPOP,Annual,https://fred.stlouisfed.org/series/WIPOP
+Wisconsin,WI,Unemployed Persons,LASST550000000000004,Monthly,https://fred.stlouisfed.org/series/LASST550000000000004
+Wisconsin,WI,Unemployment Rate,WIUR,Monthly,https://fred.stlouisfed.org/series/WIUR
+Wisconsin,WI,Continued Claims,WICCLAIMS,Weekly,https://fred.stlouisfed.org/series/WICCLAIMS
+Wisconsin,WI,Covered Employment,WICEMPLOY,Weekly,https://fred.stlouisfed.org/series/WICEMPLOY
+Wisconsin,WI,Initial Claims,WIICLAIMS,Weekly,https://fred.stlouisfed.org/series/WIICLAIMS
+Wisconsin,WI,Insured Unemployment Rate,WIINSUREDUR,Weekly,https://fred.stlouisfed.org/series/WIINSUREDUR
+Wyoming,WY,Annual Population,WYPOP,Annual,https://fred.stlouisfed.org/series/WYPOP
+Wyoming,WY,Unemployed Persons,LASST560000000000004,Monthly,https://fred.stlouisfed.org/series/LASST560000000000004
+Wyoming,WY,Unemployment Rate,WYUR,Monthly,https://fred.stlouisfed.org/series/WYUR
+Wyoming,WY,Continued Claims,WYCCLAIMS,Weekly,https://fred.stlouisfed.org/series/WYCCLAIMS
+Wyoming,WY,Covered Employment,WYCEMPLOY,Weekly,https://fred.stlouisfed.org/series/WYCEMPLOY
+Wyoming,WY,Initial Claims,WYICLAIMS,Weekly,https://fred.stlouisfed.org/series/WYICLAIMS
+Wyoming,WY,Insured Unemployment Rate,WYINSUREDUR,Weekly,https://fred.stlouisfed.org/series/WYINSUREDUR

@@ -13,7 +13,8 @@
 # Local agent/tooling state and downloaded microdata
 .claude/
 CLAUDE.md
-data/
+data/CPS/
+data/raw/
 
 # OS
 .DS_Store
