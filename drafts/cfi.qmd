@@ -18,6 +18,8 @@ library(scales)
 library(gt)
 library(lubridate)
 library(patchwork)
+library(sandwich)
+library(lmtest)
 rm(list=ls())
 
 fredr_set_key("ccd350785a210a7653a20d02ce92d83a")
@@ -321,7 +323,7 @@ ic_mod <- lm(as.formula(paste("ic_ce ~", comp_rhs)), data = reg_df)
 ```
 
 ```{r composition-regression-table}
-#| tbl-cap: "National monthly regressions of claims intensity on by-cause unemployment shares, 1994–present excluding March 2020–December 2021. Completed Temp Job is the omitted reference category; month-of-year fixed effects absorb seasonality. Coefficients are scaled to a 10 percentage-point shift in share."
+#| tbl-cap: "National monthly regressions of claims intensity on by-cause unemployment shares, 1994–present excluding March 2020–December 2021. Completed Temp Job is the omitted reference category; month-of-year fixed effects absorb seasonality. Coefficients are scaled to a 10 percentage-point shift in share. Standard errors are HAC (Newey-West) with automatic bandwidth selection."
 
 cause_labels <- c(
   temp_layoff_share    = "Temporary layoff share",
@@ -332,8 +334,8 @@ cause_labels <- c(
 )
 
 extract_share_terms <- function(model, outcome_label) {
-  summary(model)$coefficients |>
-    as.data.frame() |>
+  ct <- lmtest::coeftest(model, vcov = sandwich::NeweyWest(model, prewhite = FALSE))
+  as.data.frame(unclass(ct)) |>
     rownames_to_column("term") |>
     as_tibble() |>
     filter(term %in% names(cause_labels)) |>
@@ -365,18 +367,18 @@ bind_rows(
   ))
 ```
 
-The table reports the New Entrant coefficient on CC/CE as −0.022 for a 10 percentage-point shift in share. A 10 pp shift is far outside the observed range (the share's standard deviation is only about 1.4 pp), so a more natural read is per 1 pp: a 1 pp rise in the New Entrants share is associated with an insured unemployment rate about 0.22 pp lower, holding other causes and month fixed. The share has run about 1.6 pp above its long-run mean over the last twelve months, so composition alone would imply today's insured unemployment rate sits about 0.35 pp below what the rest of the mix would predict. That is a meaningful fraction of today's \~1.2% reading, and points in the direction of the UI-ineligible story.
+The table reports the New Entrant coefficient on CC/CE as −0.022 for a 10 percentage-point shift in share. A 10 pp shift is far outside the observed range (the share's standard deviation is only about 1.4 pp), so a more natural read is per 1 pp: a 1 pp rise in the New Entrants share is associated with an insured unemployment rate about 0.22 pp lower, holding other causes and month fixed. The share has run about 2.1 pp above its long-run mean over the last twelve months, so composition alone would imply today's insured unemployment rate sits about 0.44 pp below what the rest of the mix would predict. That is a meaningful fraction of today's \~1.2% reading, and points in the direction of the UI-ineligible story.
 
-The IC/CE coefficients are about ten times smaller than the continuing claims coefficients. Part of the difference is mechanical. IC/CE are a much smaller ratio than CC/CE to begin with, so the same composition shift shows up as a smaller number. Part of the magnitude difference is also substantive. Initial claims are a weekly flow of new filers. Continuing claims are a stock of everyone currently claiming. A composition shift that tilts the unemployed toward UI-eligible groups does two things. It raises the filing rate, and because eligible filers tend to have longer unemployment spells, it also raises the time those filers stay in the stock. Continuing claims picks up both effects while initial claims picks up only the first.
+The IC/CE coefficients are about seven times smaller than the CC/CE coefficients. Part of the difference is mechanical. IC/CE are a much smaller ratio than CC/CE to begin with, so the same composition shift shows up as a smaller number. Part of the magnitude difference is also substantive. Initial claims are a weekly flow of new filers. Continuing claims are a stock of everyone currently claiming. A composition shift that tilts the unemployed toward UI-eligible groups does two things. It raises the filing rate, and because eligible filers tend to have longer unemployment spells, it also raises the time those filers stay in the stock. Continuing claims picks up both effects while initial claims picks up only the first.
 
 Temporary Layoffs and Permanent Job Losers, the two causes closest to UI's target population, enter with positive signs. Months when these categories make up a larger share of the unemployed see higher continuing claims intensity. New Entrants and Job Leavers enter negatively, consistent with the belief that these groups are likely to be less eligible for UI programs. 
 
 We focus on New Entrants in what follows for three reasons. They are UI-ineligible by construction, which makes the "claims cannot see them" story cleanest. Their share has risen the most in the recent run-up. And the widespread concern that new graduates are having a hard time finding work is squarely about this group. Job Leavers tell a consistent story since voluntary quitters are also largely UI-ineligible, but they are not currently drawing the bulk of the attention. Reentrants load weakly positive, contrary to what their partial UI-ineligibility would predict, so we do not lean on their coefficient.
 
-The regression table is a useful descriptive benchmark. However, it is important to emphasize that these estimates are not causal. Composition shares are jointly determined with claims by the same underlying labor-market trends. The figure below plots the New Entrant share of the unemployed pool from 1994 to present, with a 12-month moving average and NBER recessions shaded.
+The regression table is a useful descriptive benchmark. However, it is important to emphasize that these estimates are not causal. Composition shares are jointly determined with claims by the same underlying labor-market trends. The figure below plots New Entrants as a share of the unemployed (top) and as a share of the civilian labor force (bottom) from 1994 to present, each with a 12-month moving average and NBER recessions shaded.
 
-```{r new-entrants-share, fig.width=10, fig.height=5, warning=F, message=F}
-#| fig-cap: "New Entrants as a share of total unemployed, monthly (light) and 12-month moving average (bold). Shaded bands are NBER recessions. Source: BLS via FRED."
+```{r new-entrants-share, fig.width=10, fig.height=8, warning=F, message=F}
+#| fig-cap: "New Entrants as a share of total unemployed (top) and as a share of the civilian labor force (bottom), monthly (light) and 12-month moving average (bold). Shaded bands are NBER recessions. Source: BLS via FRED."
 
 cause_series <- c(
   "Temporary Layoff"     = "LNS13023653",
@@ -425,29 +427,46 @@ make_share_panel <- function(cause_name) {
     geom_line(aes(y = ma12),  color = cause_cols[cause_name], linewidth = 1, alpha = 0.85) +
     scale_y_continuous(labels = \(x) paste0(x, "%")) +
     scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
-    labs(y = "Share (%)", x = NULL)
+    labs(title = "Share of Unemployed", y = "Share (%)", x = NULL)
   add_recessions(p)
 }
 
-# panels <- lapply(cause_order, make_share_panel)
-# wrap_plots(panels, ncol = 2) +
-#   plot_annotation(
-#     title = "Unemployment Shares by Cause",
-#     subtitle = "Monthly (light) and 12-month moving average (bold)"
-#   )
+lf_raw <- fredr(series_id = "CLF16OV", observation_start = as.Date("1994-01-01")) |>
+  transmute(date, lf = value)
 
-make_share_panel('New Entrants')+
+ne_lf <- cause_raw |>
+  filter(cause == "New Entrants") |>
+  inner_join(lf_raw, by = "date") |>
+  arrange(date) |>
+  mutate(
+    lf_share = 100 * value / lf,
+    ma12 = zoo::rollapplyr(lf_share, width = 12, FUN = mean,
+                           na.rm = TRUE, fill = NA)
+  )
+
+make_lf_panel <- function() {
+  p <- ne_lf |>
+    ggplot(aes(x = date)) +
+    geom_line(aes(y = lf_share), color = cause_cols["New Entrants"], alpha = 0.3, linewidth = 0.4) +
+    geom_line(aes(y = ma12),     color = cause_cols["New Entrants"], linewidth = 1, alpha = 0.85) +
+    scale_y_continuous(labels = \(x) paste0(x, "%")) +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    labs(title = "Share of Labor Force", y = "Share (%)", x = NULL)
+  add_recessions(p)
+}
+
+make_share_panel("New Entrants") / make_lf_panel() +
   plot_annotation(
-    title = "New Entrant Share of the Unemployed",
+    title = "New Entrants: Share of Unemployed vs Share of Labor Force",
     subtitle = "Monthly (light) and 12-month moving average (bold)"
   )
 ```
 
-Two things stand out. First, the New Entrants share is *counter-cyclical*: it falls in recessions, because Permanent Job Losers and Temporary Layoffs spike and dilute the entrant share, and drifts back up in expansions. Second, the 12-month average has sat above its long-run mean (\~8.6%) since 2022, and averaged \~10.7% over the last twelve months, which is notably higher than the pre-pandemic norm (\~8.8%). This counter-cyclicality of New Entrants (i.e., UI-ineligible persons) among the unemployed is what makes today's read of claims data complicated. Historically, the fraction of the unemployed that UI claims data miss is widest exactly when the labor market is strong. 
+Three things stand out. First, the New Entrants share (top panel) is *counter-cyclical*: it falls in recessions, because Permanent Job Losers and Temporary Layoffs spike and dilute the entrant share, and drifts back up in expansions. Second, the 12-month average of the share has sat above its long-run mean (\~8.6%) since 2022, and averaged \~10.7% over the last twelve months, which is notably higher than the pre-pandemic norm (\~8.8%). Third, the labor-force share (bottom panel) tells a quieter story: New Entrants have averaged about 0.46% of the civilian labor force over the last twelve months, close to the long-run median (\~0.43%). The share of the unemployed is elevated; the share of the labor force is only modestly so. This counter-cyclicality of New Entrants (i.e., UI-ineligible persons) among the unemployed is what makes today's read of claims data complicated. Historically, the fraction of the unemployed that UI claims data miss is widest exactly when the labor market is strong.
 
 But a high New Entrants share of the unemployed can arise for two very different reasons, and they imply different things about the value of the claims signal. The first is the familiar cyclical pattern. In a healthy labor market, separations fall, the unemployed pool shrinks, and New Entrants make up a bigger share of what is left. In this world, claims are low because separations are low, and claims are blind to a bigger fraction of the unemployed because more of them are ineligible. Onlookers of this labor market could reasonably conclude that it is doing well. 
 
-The second reason paints a less rosy picture. The New Entrants share could also rise because *finding a job has gotten harder*, for reasons such as weaker hiring, business uncertainty, or automation eating entry-level roles. In that world, New Entrants comprise the unemployed pool not because separations have fallen, but because employers aren't hiring them. Separations stay low, so claims stay low. Composition reports "lots of entrants", which under the historical patterns would read as a signal of a strong market. But the real story is that the labor market is weakening on the hiring side, and the weakening is concentrated in groups claims cannot see. When that happens, the claims signal could be misleading. So which world are we in today? 
+The second reason paints a less rosy picture. The share could also rise because the *pool* of New Entrants itself is elevated relative to the labor force: finding a first job has gotten harder, for reasons such as weaker hiring, business uncertainty, or automation eating entry-level roles. In that world, New Entrants accumulate in the unemployed pool not because separations have fallen, but because employers aren't hiring them. Separations stay low, so claims stay low. Composition reports "lots of entrants", which under the historical patterns would read as a signal of a strong market. But the real story is that the labor market is weakening on the hiring side, and the weakening is concentrated in groups claims cannot see. When that happens, the claims signal could be misleading. So which world are we in today? The labor-force share panel above leans toward the first: today's elevated share-of-unemployed looks more like a denominator effect from low separations than a pile-up of unemployed entrants relative to the size of the labor force. But the labor-force share alone does not speak to the hiring environment directly. To check whether hiring for entrants is actually keeping pace, we turn to the CFLMI.
 
 ## The Flow-Consistent Rate of Unemployment
 
