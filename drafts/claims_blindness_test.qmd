@@ -1,0 +1,460 @@
+---
+title: "Pseudo-Out-of-Sample Test for Claims Blindness in High-NE Regimes"
+author: "Kristin Butcher, Scott Brave, Aryan Safi"
+format:
+  html:
+    code-fold: true
+editor: visual
+---
+
+```{r setup, include=F}
+
+library(tidyverse)
+library(fredr)
+library(lubridate)
+library(sandwich)
+library(lmtest)
+library(ggsci)
+library(scales)
+library(gt)
+library(patchwork)
+rm(list=ls())
+
+fredr_set_key("ccd350785a210a7653a20d02ce92d83a")
+
+fredr_retry <- function(..., tries = 5, wait = 3) {
+  for (i in seq_len(tries)) {
+    res <- tryCatch(fredr(...), error = function(e) e)
+    if (!inherits(res, "error")) return(res)
+    Sys.sleep(wait)
+  }
+  stop(res)
+}
+
+theme_report <- theme_minimal(base_size = 11, base_family = "sans") +
+  theme(
+    plot.title = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(color = "grey50", size = 9),
+    plot.caption = element_text(color = "grey60", size = 7, hjust = 0),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.title = element_text(size = 9, color = "grey40"),
+    axis.text = element_text(size = 8, color = "grey50"),
+    legend.position = "top",
+    legend.text = element_text(size = 8),
+    legend.title = element_blank()
+  )
+
+theme_set(theme_report)
+
+set.seed(4272026)
+```
+
+## Research Question
+
+If claims are less informative about aggregate unemployment when the unemployed pool skews toward ineligible groups, then a claims-only forecasting model should produce systematically larger forecast errors in months when the New Entrants share is elevated, relative to months when it is not. This notebook implements that test as a rolling-origin pseudo-out-of-sample exercise, following the principles in Hyndman & Athanasopoulos, *Forecasting Principles and Practice*.
+
+## Target Variable
+
+The unemployment rate is highly persistent. Forecasting UR in levels lets a claims-only model win by predicting "last month's UR," which has nothing to do with claims. Following Hyndman (ch. 9 on stationarity, ch. 5 on benchmarks), we forecast the first difference:
+
+$$
+\Delta \text{UR}_t = \text{UR}_t - \text{UR}_{t-1}
+$$
+
+in percentage points. Forecasting changes is what makes claims-as-leading-indicator interesting: the question is whether a move in claims predicts the next month's turn in UR, not whether claims help explain the level.
+
+## Data
+
+```{r pull-data, warning=F, message=F}
+start_date <- as.Date("1994-01-01")
+
+ur_m <- fredr_retry(series_id = "UNRATE", observation_start = start_date) |>
+  transmute(date, UR = value)
+
+claims_monthly <- function(sid) {
+  fredr_retry(series_id = sid, observation_start = start_date) |>
+    mutate(month = floor_date(date, "month")) |>
+    group_by(month) |>
+    summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+    rename(date = month)
+}
+
+ic_m <- claims_monthly("ICSA") |> rename(IC = value)
+cc_m <- claims_monthly("CCSA") |> rename(CC = value)
+
+total_unemp <- fredr_retry(series_id = "UNEMPLOY", observation_start = start_date) |>
+  transmute(date, tot = value)
+
+cause_series <- c(
+  tl  = "LNS13023653",
+  pjl = "LNS13026638",
+  ctj = "LNS13026637",
+  jl  = "LNS13023705",
+  re  = "LNS13023557",
+  ne  = "LNS13023569"
+)
+
+cause_m <- map_dfr(names(cause_series), \(nm) {
+  fredr_retry(series_id = cause_series[[nm]], observation_start = start_date) |>
+    transmute(date, cause = nm, value)
+}) |>
+  pivot_wider(names_from = cause, values_from = value)
+
+df <- ur_m |>
+  inner_join(ic_m,       by = "date") |>
+  inner_join(cc_m,       by = "date") |>
+  inner_join(total_unemp, by = "date") |>
+  inner_join(cause_m,    by = "date") |>
+  arrange(date) |>
+  mutate(
+    ne_share  = ne  / tot,
+    jl_share  = jl  / tot,
+    tl_share  = tl  / tot,
+    pjl_share = pjl / tot,
+    re_share  = re  / tot,
+    ctj_share = ctj / tot,
+    dUR  = UR - lag(UR),
+    dlIC = log(IC) - log(lag(IC)),
+    dlCC = log(CC) - log(lag(CC)),
+    pandemic = date >= as.Date("2020-03-01") & date <= as.Date("2021-12-01")
+  ) |>
+  mutate(
+    dUR_l1      = lag(dUR),
+    dUR_l2      = lag(dUR, 2),
+    dUR_l12     = lag(dUR, 12),
+    dlIC_l1     = lag(dlIC),
+    dlIC_l2     = lag(dlIC, 2),
+    dlCC_l1     = lag(dlCC),
+    dlCC_l2     = lag(dlCC, 2),
+    ne_share_l1 = lag(ne_share)
+  )
+```
+
+## Features
+
+**Claims-only model (Model A)**: lags of $\Delta \log \text{IC}$, $\Delta \log \text{CC}$, and two AR lags of $\Delta \text{UR}$.
+
+**Composition-augmented model (Model B)**: Model A plus lagged NE share.
+
+**Benchmarks**: random walk ($\hat{\Delta \text{UR}} = 0$), AR(1) on $\Delta \text{UR}$, seasonal naive ($\hat{\Delta \text{UR}}_{t+1} = \Delta \text{UR}_{t-11}$).
+
+All models forecast at $h=1$ using a rolling 30-month training window. Windows that include any month in March 2020 – December 2021 are skipped, as are forecasts targeting those months.
+
+```{r walk-forward, warning=F, message=F}
+walk_forward <- function(df, features, target = "dUR", window = 30, label = "model") {
+  n <- nrow(df)
+  out <- vector("list", n)
+  for (end_train in window:(n - 1)) {
+    train_rows <- (end_train - window + 1):end_train
+    test_row   <- end_train + 1
+    if (any(df$pandemic[train_rows], na.rm = TRUE)) next
+    if (isTRUE(df$pandemic[test_row])) next
+
+    cols       <- c(target, features)
+    train_data <- df[train_rows, cols, drop = FALSE]
+    test_data  <- df[test_row,   cols, drop = FALSE]
+    if (anyNA(train_data) || anyNA(test_data)) next
+
+    form <- as.formula(paste(target, "~", paste(features, collapse = " + ")))
+    mod  <- lm(form, data = train_data)
+    pred <- as.numeric(predict(mod, newdata = test_data))
+
+    out[[test_row]] <- tibble(
+      date       = df$date[test_row],
+      target_val = df[[target]][test_row],
+      forecast   = pred,
+      err        = df[[target]][test_row] - pred,
+      model      = label
+    )
+  }
+  bind_rows(out)
+}
+
+rw_forecast <- function(df, target = "dUR", window = 30, label = "RW") {
+  n <- nrow(df)
+  out <- vector("list", n)
+  for (end_train in window:(n - 1)) {
+    train_rows <- (end_train - window + 1):end_train
+    test_row   <- end_train + 1
+    if (any(df$pandemic[train_rows], na.rm = TRUE)) next
+    if (isTRUE(df$pandemic[test_row])) next
+    if (is.na(df[[target]][test_row])) next
+    out[[test_row]] <- tibble(
+      date       = df$date[test_row],
+      target_val = df[[target]][test_row],
+      forecast   = 0,
+      err        = df[[target]][test_row],
+      model      = label
+    )
+  }
+  bind_rows(out)
+}
+
+snaive_forecast <- function(df, target = "dUR", window = 30, label = "SNaive") {
+  n <- nrow(df)
+  out <- vector("list", n)
+  for (end_train in window:(n - 1)) {
+    train_rows <- (end_train - window + 1):end_train
+    test_row   <- end_train + 1
+    if (any(df$pandemic[train_rows], na.rm = TRUE)) next
+    if (isTRUE(df$pandemic[test_row])) next
+    if (is.na(df[[target]][test_row]) || is.na(df$dUR_l12[test_row])) next
+    if (test_row - 12 >= 1 && isTRUE(df$pandemic[test_row - 12])) next
+    pred <- df$dUR_l12[test_row]
+    out[[test_row]] <- tibble(
+      date       = df$date[test_row],
+      target_val = df[[target]][test_row],
+      forecast   = pred,
+      err        = df[[target]][test_row] - pred,
+      model      = label
+    )
+  }
+  bind_rows(out)
+}
+
+features_A  <- c("dUR_l1", "dUR_l2", "dlIC_l1", "dlIC_l2", "dlCC_l1", "dlCC_l2")
+features_B  <- c(features_A, "ne_share_l1")
+features_AR <- c("dUR_l1")
+
+fc_A      <- walk_forward(df, features_A,  label = "A (claims)")
+fc_B      <- walk_forward(df, features_B,  label = "B (claims+NE)")
+fc_AR1    <- walk_forward(df, features_AR, label = "AR(1)")
+fc_RW     <- rw_forecast(df,                label = "RW")
+fc_SN     <- snaive_forecast(df,            label = "SNaive")
+
+all_fc <- bind_rows(fc_A, fc_B, fc_AR1, fc_RW, fc_SN)
+```
+
+## Regime Definition
+
+For each forecast target, we tag by the NE share *at time $t$* (the forecast origin), keeping the regime assignment strictly out-of-sample. The threshold is the 75th percentile of the non-pandemic NE share distribution.
+
+```{r regime-tag, warning=F, message=F}
+ne_cutoff <- df |>
+  filter(!pandemic) |>
+  pull(ne_share) |>
+  quantile(0.75, na.rm = TRUE)
+
+regime_lookup <- df |>
+  transmute(
+    target_date = date,
+    ne_share_at_origin = lag(ne_share),
+    regime = if_else(lag(ne_share) >= ne_cutoff, "High NE", "Rest")
+  )
+
+all_fc <- all_fc |>
+  left_join(regime_lookup, by = c("date" = "target_date")) |>
+  mutate(regime = factor(regime, levels = c("High NE", "Rest")))
+
+regime_counts <- all_fc |>
+  filter(model == "A (claims)") |>
+  count(regime)
+
+cat(sprintf("NE share 75th-percentile cutoff (non-pandemic): %.4f\n", ne_cutoff))
+print(regime_counts)
+```
+
+## Metrics
+
+For each regime × model we compute MAE, RMSE, and MASE. The MASE denominator is the mean absolute one-month change in $\Delta \text{UR}$ on the full non-pandemic sample, so errors are scaled by a common yardstick across regimes.
+
+```{r metrics, warning=F, message=F}
+mase_scale <- df |>
+  filter(!pandemic) |>
+  mutate(d2UR = dUR - lag(dUR)) |>
+  pull(d2UR) |>
+  abs() |>
+  mean(na.rm = TRUE)
+
+metrics_by_regime <- all_fc |>
+  group_by(model, regime) |>
+  summarise(
+    n    = n(),
+    mae  = mean(abs(err), na.rm = TRUE),
+    rmse = sqrt(mean(err^2, na.rm = TRUE)),
+    mase = mean(abs(err), na.rm = TRUE) / mase_scale,
+    .groups = "drop"
+  ) |>
+  arrange(regime, model)
+
+metrics_by_regime |>
+  gt(groupname_col = "regime") |>
+  fmt_number(columns = c(mae, rmse, mase), decimals = 3) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(style = cell_text(color = "white"), locations = cells_column_labels()) |>
+  tab_source_note(sprintf(
+    "MASE denominator (mean |Δ²UR|): %.4f pp. NE 75th-pct cutoff: %.4f.",
+    mase_scale, ne_cutoff
+  ))
+```
+
+## Inference
+
+### Block bootstrap on MAE difference (same model across regimes)
+
+For each model, block-bootstrap (block length = 6 months) the difference $\text{MAE}_{\text{high}} - \text{MAE}_{\text{rest}}$.
+
+```{r boot-mae-diff, warning=F, message=F}
+mbb_sample <- function(e, block_len) {
+  n <- length(e)
+  nblocks <- ceiling(n / block_len)
+  starts  <- sample.int(n - block_len + 1, nblocks, replace = TRUE)
+  idx     <- unlist(lapply(starts, \(s) s:(s + block_len - 1)))
+  e[idx[seq_len(n)]]
+}
+
+boot_mae_diff <- function(fc_one_model, B = 2000, block_len = 6) {
+  e_h <- fc_one_model |> filter(regime == "High NE") |> pull(err) |> na.omit()
+  e_r <- fc_one_model |> filter(regime == "Rest")    |> pull(err) |> na.omit()
+  if (length(e_h) < block_len || length(e_r) < block_len) {
+    return(tibble(observed_diff = NA, ci_lo = NA, ci_hi = NA, p_two_sided = NA))
+  }
+  diffs <- replicate(B, {
+    mean(abs(mbb_sample(e_h, block_len))) - mean(abs(mbb_sample(e_r, block_len)))
+  })
+  observed <- mean(abs(e_h)) - mean(abs(e_r))
+  tibble(
+    observed_diff = observed,
+    ci_lo         = as.numeric(quantile(diffs, 0.025)),
+    ci_hi         = as.numeric(quantile(diffs, 0.975)),
+    p_two_sided   = 2 * min(mean(diffs <= 0), mean(diffs >= 0))
+  )
+}
+
+mae_diff_table <- all_fc |>
+  group_by(model) |>
+  group_modify(~ boot_mae_diff(.x)) |>
+  ungroup()
+
+mae_diff_table |>
+  gt() |>
+  fmt_number(columns = c(observed_diff, ci_lo, ci_hi, p_two_sided), decimals = 3) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(style = cell_text(color = "white"), locations = cells_column_labels()) |>
+  tab_header(title = "Block bootstrap: MAE(High NE) − MAE(Rest)",
+             subtitle = "Block length = 6 months, B = 2000")
+```
+
+### Diebold-Mariano: Model A vs Model B within each regime
+
+Does adding the NE share to a claims-only model reduce forecast error, and does the improvement differ across regimes?
+
+```{r dm-test, warning=F, message=F}
+dm_test <- function(err_a, err_b, h = 1) {
+  d <- err_a^2 - err_b^2
+  ok <- !is.na(d)
+  d  <- d[ok]
+  if (length(d) < 10) {
+    return(tibble(dm_stat = NA_real_, dm_p = NA_real_, n = length(d), mean_loss_diff = NA_real_))
+  }
+  mod <- lm(d ~ 1)
+  nw  <- sandwich::NeweyWest(mod, lag = max(h - 1, 0), prewhite = FALSE)
+  ct  <- lmtest::coeftest(mod, vcov = nw)
+  tibble(
+    dm_stat        = ct[1, "t value"],
+    dm_p           = ct[1, "Pr(>|t|)"],
+    n              = length(d),
+    mean_loss_diff = mean(d)
+  )
+}
+
+ab_joined <- all_fc |>
+  filter(model == "A (claims)") |>
+  select(date, regime, err_A = err) |>
+  inner_join(
+    all_fc |> filter(model == "B (claims+NE)") |> select(date, err_B = err),
+    by = "date"
+  )
+
+dm_by_regime <- ab_joined |>
+  group_by(regime) |>
+  summarise(dm_test(err_A, err_B), .groups = "drop")
+
+dm_by_regime |>
+  gt() |>
+  fmt_number(columns = c(dm_stat, dm_p, mean_loss_diff), decimals = 4) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.font.weight = "bold",
+    column_labels.background.color = "#2c3e50"
+  ) |>
+  tab_style(style = cell_text(color = "white"), locations = cells_column_labels()) |>
+  tab_header(title = "Diebold-Mariano: Model A vs Model B",
+             subtitle = "Positive mean loss diff = Model B (claims+NE) has smaller squared errors")
+```
+
+## Presentation
+
+### Absolute forecast error over time
+
+```{r error-plot, fig.width=10, fig.height=5, warning=F, message=F}
+ne_ribbon <- df |>
+  filter(!pandemic) |>
+  mutate(high = ne_share >= ne_cutoff) |>
+  transmute(date, high, rle_grp = cumsum(high != lag(high, default = FALSE))) |>
+  filter(high) |>
+  group_by(rle_grp) |>
+  summarise(xmin = min(date), xmax = max(date) + months(1), .groups = "drop")
+
+p_err <- fc_A |>
+  ggplot(aes(x = date, y = abs(err))) +
+  geom_rect(data = ne_ribbon, aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf),
+            inherit.aes = FALSE, fill = "#EFC000", alpha = 0.25) +
+  geom_line(color = "#0073C2", linewidth = 0.4, alpha = 0.75) +
+  scale_y_continuous(labels = \(x) paste0(x, " pp")) +
+  scale_x_date(date_breaks = "3 years", date_labels = "%Y") +
+  labs(
+    title = "Absolute forecast error: Model A (claims only)",
+    subtitle = "Shaded bands = months when NE share at origin was in the top quartile",
+    x = NULL, y = "|error| (pp of UR)"
+  )
+
+p_err
+```
+
+### NE share through time, with the cutoff
+
+```{r ne-share-plot, fig.width=10, fig.height=4, warning=F, message=F}
+df |>
+  filter(!pandemic) |>
+  ggplot(aes(x = date, y = ne_share)) +
+  geom_line(color = "#0073C2", alpha = 0.4, linewidth = 0.4) +
+  geom_hline(yintercept = ne_cutoff, color = "#CD534C", linewidth = 0.6, linetype = "dashed") +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1)) +
+  scale_x_date(date_breaks = "3 years", date_labels = "%Y") +
+  labs(
+    title = "NE share with 75th-percentile cutoff",
+    x = NULL, y = "NE share of unemployed"
+  )
+```
+
+## Discussion
+
+The test fails to corroborate the blind-spot story at this horizon. Three findings stand out.
+
+**The claims-only model is not detectably worse in high-NE periods.** Model A's MAE is 0.123 pp in high-NE months and 0.119 pp in the rest, a difference of +0.004 pp with a bootstrap 95 percent CI of roughly $[-0.02, +0.03]$ and a two-sided p-value of 0.66. If claims were systematically blind to new entrants in a way that degraded aggregate UR forecasts at $h=1$, the gap would go the other way and be larger. It isn't.
+
+**Adding the NE share to the claims model doesn't help.** Model B layers lagged NE share on top of Model A. The Diebold-Mariano test on squared errors gives a pooled mean loss difference of $-0.0004$ pp² (p = 0.54) and small, non-significant differences within each regime. If the blind spot were large enough to show up in month-ahead forecasts, plugging in the very variable that defines the blind spot should improve Model A. It doesn't.
+
+**AR(1) beats the claims models.** In both regimes, an AR(1) on $\Delta \text{UR}$ alone has a smaller MAE (0.107 in high-NE, 0.114 in rest) than the claims-augmented models. The random walk (forecast = 0) is also competitive (0.113, 0.112). At monthly frequency, $\Delta \text{UR}$ is close to white noise around a small persistent component, and claims add little on top of its own lag. This is a general result, not specific to high-NE months — so it sets a high bar for any story in which claims would help differentially.
+
+What this does *not* say is that claims are informative about the unemployed pool when new entrants are a large part of it. Representation ratios show — mechanically, from the eligibility rules — that new entrants are outside the IC/CC window. What the forecasting test says is a narrower thing: conditional on how the short-horizon UR process actually behaves, the compositional blind spot does not generate a detectable monthly forecast gap that a claims-based forecaster would have noticed in real time. The blind spot is a level statement about who claims can see; the forecast test is a volatility statement about whether that blindness shows up in the noise of monthly changes. The two are consistent.
+
+One timing observation sharpens the caveat. High-NE months in our sample are concentrated in 2012–2016 (about 57 of 83), with a smaller cluster in 2017–2019 and another starting in 2024. This is mostly the post-GFC recovery: a low-volatility expansion with a subdued claims signal on both sides of the ratio. Any test that demands a big forecast-error gap in that environment is asking for variance the sample does not offer.
+
+## Risks & Caveats
+
+1. **Regime imbalance**: high-NE months are concentrated in the post-GFC recovery (2012–2016, 57 of 83 months), with a secondary cluster in 2017–2019 and a new cluster in 2024–2025. This is effectively a test of "subdued expansion" vs everything else, not "high-NE cycle phase" vs "low-NE cycle phase."
+2. **Business-cycle confounding**: NE share is correlated with the cycle. High-NE periods are typically expansions with lower UR volatility. MASE partially addresses this via a common denominator, but any gap-based test has less power when the base UR is quiet.
+3. **Horizon and frequency**: $\Delta \text{UR}$ at $h=1$ monthly is a demanding outcome — AR(1) already captures most of the predictable variation. A longer horizon or a smoother target (e.g., three-month changes) could reveal differences this test cannot see.
+4. **Data vintage**: current-vintage (revised) FRED data, not real-time ALFRED. A real-time exercise would also face claims revisions around benchmarks.
+5. **Small post-pandemic window**: any forecast whose 30-month training window is entirely post-pandemic only starts around July 2024, so post-pandemic coverage is ~1.5 years.
