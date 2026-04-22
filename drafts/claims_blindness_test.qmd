@@ -80,8 +80,9 @@ claims_monthly <- function(sid) {
     rename(date = month)
 }
 
-ic_m <- claims_monthly("ICSA") |> rename(IC = value)
-cc_m <- claims_monthly("CCSA") |> rename(CC = value)
+ic_m <- claims_monthly("ICSA")   |> rename(IC = value)
+cc_m <- claims_monthly("CCSA")   |> rename(CC = value)
+ce_m <- claims_monthly("COVEMP") |> rename(CE = value)
 
 total_unemp <- fredr_retry(series_id = "UNEMPLOY", observation_start = start_date) |>
   transmute(date, tot = value)
@@ -104,6 +105,7 @@ cause_m <- map_dfr(names(cause_series), \(nm) {
 df <- ur_m |>
   inner_join(ic_m,       by = "date") |>
   inner_join(cc_m,       by = "date") |>
+  inner_join(ce_m,       by = "date") |>
   inner_join(total_unemp, by = "date") |>
   inner_join(cause_m,    by = "date") |>
   arrange(date) |>
@@ -114,32 +116,92 @@ df <- ur_m |>
     pjl_share = pjl / tot,
     re_share  = re  / tot,
     ctj_share = ctj / tot,
-    dUR  = UR - lag(UR),
-    dlIC = log(IC) - log(lag(IC)),
-    dlCC = log(CC) - log(lag(CC)),
+    IC_CE = IC / CE,
+    CC_CE = CC / CE,
+    dUR     = UR - lag(UR),
+    dlIC_CE = log(IC_CE) - log(lag(IC_CE)),
+    dlCC_CE = log(CC_CE) - log(lag(CC_CE)),
     pandemic = date >= as.Date("2020-03-01") & date <= as.Date("2021-12-01")
   ) |>
   mutate(
-    dUR_l1      = lag(dUR),
-    dUR_l2      = lag(dUR, 2),
-    dUR_l12     = lag(dUR, 12),
-    dlIC_l1     = lag(dlIC),
-    dlIC_l2     = lag(dlIC, 2),
-    dlCC_l1     = lag(dlCC),
-    dlCC_l2     = lag(dlCC, 2),
-    ne_share_l1 = lag(ne_share)
+    dUR_l1         = lag(dUR),
+    dUR_l12        = lag(dUR, 12),
+    dlIC_CE_l1     = lag(dlIC_CE),
+    dlIC_CE_l2     = lag(dlIC_CE, 2),
+    dlCC_CE_l1     = lag(dlCC_CE),
+    dlCC_CE_l2     = lag(dlCC_CE, 2),
+    ne_share_l1    = lag(ne_share)
   )
 ```
 
-## Features
+## Variable construction
 
-**Claims-only model (Model A)**: lags of $\Delta \log \text{IC}$, $\Delta \log \text{CC}$, and two AR lags of $\Delta \text{UR}$.
+Raw FRED series: $\text{UR}$ (UNRATE), $\text{IC}$ (ICSA, weekly initial claims averaged to monthly), $\text{CC}$ (CCSA, weekly continuing claims averaged to monthly), $\text{CE}$ (COVEMP, covered employment averaged to monthly), $\text{NE}_t$ (LNS13023569), $\text{Unemp}_t$ (UNEMPLOY).
 
-**Composition-augmented model (Model B)**: Model A plus lagged NE share.
+Constructed variables:
 
-**Benchmarks**: random walk ($\hat{\Delta \text{UR}} = 0$), AR(1) on $\Delta \text{UR}$, seasonal naive ($\hat{\Delta \text{UR}}_{t+1} = \Delta \text{UR}_{t-11}$).
+$$
+\begin{aligned}
+\Delta \text{UR}_t &\;=\; \text{UR}_t - \text{UR}_{t-1} \\[2pt]
+\Delta \ln(\text{IC}/\text{CE})_t &\;=\; \ln\!\left(\frac{\text{IC}_t}{\text{CE}_t}\right) - \ln\!\left(\frac{\text{IC}_{t-1}}{\text{CE}_{t-1}}\right) \\[2pt]
+\Delta \ln(\text{CC}/\text{CE})_t &\;=\; \ln\!\left(\frac{\text{CC}_t}{\text{CE}_t}\right) - \ln\!\left(\frac{\text{CC}_{t-1}}{\text{CE}_{t-1}}\right) \\[2pt]
+\text{NE share}_t &\;=\; \frac{\text{NE}_t}{\text{Unemp}_t}
+\end{aligned}
+$$
 
-All models forecast at $h=1$ using a rolling 30-month training window. Windows that include any month in March 2020 – December 2021 are skipped, as are forecasts targeting those months.
+Claims are scaled by covered employment to match the insured-unemployment-rate units used in the main paper; log-differencing removes secular trend and gives a growth-rate interpretation comparable across decades. $\Delta\text{UR}$ is in percentage points. A pandemic indicator $\text{P}_t = \mathbb{1}\{t \in [\text{Mar 2020}, \text{Dec 2021}]\}$ is used to mask training windows and forecast targets.
+
+## Models
+
+At each forecast origin $t$, three parametric models are re-estimated by OLS on the rolling 30-month window $\mathcal{W}_t = \{t-29, \dots, t\}$ and used to forecast $\Delta \text{UR}_{t+1}$:
+
+$$
+\text{Model A (claims only):}\quad \Delta \text{UR}_s \;=\; \beta_0 \;+\; \sum_{k=1}^{2} \beta^{\text{IC}}_k \,\Delta\ln(\text{IC}/\text{CE})_{s-k} \;+\; \sum_{k=1}^{2} \beta^{\text{CC}}_k \,\Delta\ln(\text{CC}/\text{CE})_{s-k} \;+\; \varepsilon_s
+$$
+
+$$
+\text{Model B (claims + NE):}\quad \Delta \text{UR}_s \;=\; \beta_0 \;+\; \sum_{k=1}^{2} \beta^{\text{IC}}_k \,\Delta\ln(\text{IC}/\text{CE})_{s-k} \;+\; \sum_{k=1}^{2} \beta^{\text{CC}}_k \,\Delta\ln(\text{CC}/\text{CE})_{s-k} \;+\; \gamma \,\text{NE share}_{s-1} \;+\; \varepsilon_s
+$$
+
+$$
+\text{Benchmark AR(1):}\quad \Delta \text{UR}_s \;=\; \alpha_0 \;+\; \alpha_1 \,\Delta \text{UR}_{s-1} \;+\; \varepsilon_s
+$$
+
+$$
+\text{Random walk:}\quad \widehat{\Delta \text{UR}}_{t+1} \;=\; 0, \qquad \text{Seasonal naive:}\quad \widehat{\Delta \text{UR}}_{t+1} \;=\; \Delta \text{UR}_{t-11}
+$$
+
+Model A is deliberately naive: no own-lags of $\Delta \text{UR}$. The question is whether a forecaster looking only at claims does worse when the unemployed pool skews toward ineligible groups; adding UR's own history would let Model A piggyback on UR persistence that has nothing to do with claims, and the "claims-only" label would no longer mean claims-only. The AR(1) benchmark isolates that own-history content separately.
+
+## Rolling-origin protocol
+
+For each candidate origin $t$ with $30 \le t \le T - 1$:
+
+1. Skip if $\text{P}_s = 1$ for any $s \in \mathcal{W}_t \cup \{t+1\}$.
+2. Fit Model A, Model B, AR(1) by OLS on $\mathcal{W}_t$.
+3. Form $\widehat{\Delta \text{UR}}_{t+1}$ for each model; record error $e^{(m)}_{t+1} = \Delta \text{UR}_{t+1} - \widehat{\Delta \text{UR}}^{(m)}_{t+1}$.
+4. Tag target month $t+1$ as **High NE** if $\text{NE share}_t \ge q_{0.75}$, else **Rest**, where $q_{0.75}$ is the 75th percentile of $\text{NE share}$ on the non-pandemic sample. Regime assignment uses information available at the origin, not the target.
+
+## Metrics
+
+For each (model $m$, regime $r$) pair:
+
+$$
+\text{MAE}^{(m)}_r \;=\; \frac{1}{n_r} \sum_{t+1 \in r} |e^{(m)}_{t+1}|, \qquad
+\text{RMSE}^{(m)}_r \;=\; \sqrt{\frac{1}{n_r} \sum_{t+1 \in r} (e^{(m)}_{t+1})^2},
+$$
+
+$$
+\text{MASE}^{(m)}_r \;=\; \frac{\text{MAE}^{(m)}_r}{\tfrac{1}{T^\ast - 1} \sum_{s: \text{P}_s = 0,\, \text{P}_{s-1}=0} |\Delta\text{UR}_s - \Delta\text{UR}_{s-1}|}
+$$
+
+MASE's denominator is the mean absolute one-month change in $\Delta\text{UR}$ on the non-pandemic full sample, so errors across regimes are put on a common yardstick.
+
+## Inference
+
+**Block bootstrap on MAE differences.** For each model $m$, let $\mathbf{e}^{(m)}_H$ and $\mathbf{e}^{(m)}_R$ be the High-NE and Rest error series. Block bootstrap with block length 6 and $B=2000$ replications gives a sampling distribution of $\text{MAE}(\mathbf{e}^{(m),\star}_H) - \text{MAE}(\mathbf{e}^{(m),\star}_R)$; the 2.5 / 97.5 percentiles form a 95 % CI and the two-sided p-value is $2 \min\{\Pr(d^\star \le 0), \Pr(d^\star \ge 0)\}$.
+
+**Diebold-Mariano test, Model A vs Model B.** With squared-error loss $L^{(m)}_s = (e^{(m)}_s)^2$ and differential $d_s = L^{(A)}_s - L^{(B)}_s$, regress $d_s$ on a constant and test $H_0{:}\ \mathbb{E}[d_s] = 0$ with Newey-West HAC (lag $= \max(h-1, 0) = 0$ for $h=1$).
 
 ```{r walk-forward, warning=F, message=F}
 walk_forward <- function(df, features, target = "dUR", window = 30, label = "model") {
@@ -213,7 +275,7 @@ snaive_forecast <- function(df, target = "dUR", window = 30, label = "SNaive") {
   bind_rows(out)
 }
 
-features_A  <- c("dUR_l1", "dUR_l2", "dlIC_l1", "dlIC_l2", "dlCC_l1", "dlCC_l2")
+features_A  <- c("dlIC_CE_l1", "dlIC_CE_l2", "dlCC_CE_l1", "dlCC_CE_l2")
 features_B  <- c(features_A, "ne_share_l1")
 features_AR <- c("dUR_l1")
 
@@ -439,17 +501,17 @@ df |>
 
 ## Discussion
 
-The test fails to corroborate the blind-spot story at this horizon. Three findings stand out.
+The pattern is consistent with the blind-spot story, though the within-model regime gap is not statistically distinguishable from zero on its own.
 
-**The claims-only model is not detectably worse in high-NE periods.** Model A's MAE is 0.123 pp in high-NE months and 0.119 pp in the rest, a difference of +0.004 pp with a bootstrap 95 percent CI of roughly $[-0.02, +0.03]$ and a two-sided p-value of 0.66. If claims were systematically blind to new entrants in a way that degraded aggregate UR forecasts at $h=1$, the gap would go the other way and be larger. It isn't.
+**The claims-only model is a bit worse in high-NE periods.** Model A's MAE is 0.124 pp when the NE share is in its top quartile and 0.113 pp in the rest. The gap is +0.011 pp — about 10 percent of the rest-period MAE. The block-bootstrap 95 percent CI is roughly $[-0.015, +0.039]$ with a two-sided p-value of 0.43, so on its own this is suggestive, not conclusive.
 
-**Adding the NE share to the claims model doesn't help.** Model B layers lagged NE share on top of Model A. The Diebold-Mariano test on squared errors gives a pooled mean loss difference of $-0.0004$ pp² (p = 0.54) and small, non-significant differences within each regime. If the blind spot were large enough to show up in month-ahead forecasts, plugging in the very variable that defines the blind spot should improve Model A. It doesn't.
+**The sharper signal is how claims stack up against a naive AR(1).** In "Rest" months, Model A and AR(1) are essentially tied (0.113 vs 0.114). In "High NE" months, AR(1) actually improves (to 0.107) while Model A deteriorates (to 0.124). So the relative accuracy of the claims-only read versus a simple "project last month's UR change forward" rule flips sign precisely when the unemployed pool skews toward groups claims cannot see. A forecaster with only claims in hand does about as well as a forecaster with only UR's own history — except when the ineligible share is high, at which point the UR-history forecaster starts to win.
 
-**AR(1) beats the claims models.** In both regimes, an AR(1) on $\Delta \text{UR}$ alone has a smaller MAE (0.107 in high-NE, 0.114 in rest) than the claims-augmented models. The random walk (forecast = 0) is also competitive (0.113, 0.112). At monthly frequency, $\Delta \text{UR}$ is close to white noise around a small persistent component, and claims add little on top of its own lag. This is a general result, not specific to high-NE months — so it sets a high bar for any story in which claims would help differentially.
+**Adding NE share to Model A doesn't close the gap.** Model B augments the claims features with lagged NE share. The Diebold-Mariano test on squared errors gives a pooled mean loss difference of $-0.0009$ pp² (p = 0.16), and within-regime DM tests are similarly null. If the blind spot were easy to repair with a single aggregate composition indicator, Model B would do visibly better than Model A in high-NE months. It doesn't — which fits the character of the problem: the ineligible pool is identified by who these people are (work history, earnings, attachment), not by the level of one share variable.
 
-What this does *not* say is that claims are informative about the unemployed pool when new entrants are a large part of it. Representation ratios show — mechanically, from the eligibility rules — that new entrants are outside the IC/CC window. What the forecasting test says is a narrower thing: conditional on how the short-horizon UR process actually behaves, the compositional blind spot does not generate a detectable monthly forecast gap that a claims-based forecaster would have noticed in real time. The blind spot is a level statement about who claims can see; the forecast test is a volatility statement about whether that blindness shows up in the noise of monthly changes. The two are consistent.
+What this exercise does *not* do is settle the level question. Representation ratios show, mechanically from the eligibility rules, that new entrants are outside the IC/CC window. The forecasting test says something narrower: at the monthly horizon and under a simple linear specification, a claims-only nowcast of $\Delta\text{UR}$ is detectably less accurate than a UR-history benchmark in months when the unemployed pool is most weighted toward the group claims cannot see. It's a pattern, not a confidence-interval-certified fact. The block bootstrap says the within-model High-vs-Rest gap could plausibly be zero; what it can't easily explain is why the AR(1) comparison flips sign across regimes.
 
-One timing observation sharpens the caveat. High-NE months in our sample are concentrated in 2012–2016 (about 57 of 83), with a smaller cluster in 2017–2019 and another starting in 2024. This is mostly the post-GFC recovery: a low-volatility expansion with a subdued claims signal on both sides of the ratio. Any test that demands a big forecast-error gap in that environment is asking for variance the sample does not offer.
+**One timing caveat.** High-NE months in our sample are concentrated in 2012–2016 (about 57 of 83), with smaller clusters in 2017–2019 and 2024–2025. This is mostly the post-GFC recovery: a low-volatility expansion with a subdued claims signal on both sides of the ratio. A forecast-gap test has less power in that environment than it would in a period with more movement, which is part of why the within-model bootstrap is indeterminate despite the suggestive point estimates.
 
 ## Risks & Caveats
 

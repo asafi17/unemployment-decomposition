@@ -165,64 +165,118 @@ window.Quarto = {
 <span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">rename</span>(<span class="at">date =</span> month)</span>
 <span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>}</span>
 <span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>ic_m <span class="ot">&lt;-</span> <span class="fu">claims_monthly</span>(<span class="st">"ICSA"</span>) <span class="sc">|&gt;</span> <span class="fu">rename</span>(<span class="at">IC =</span> value)</span>
-<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>cc_m <span class="ot">&lt;-</span> <span class="fu">claims_monthly</span>(<span class="st">"CCSA"</span>) <span class="sc">|&gt;</span> <span class="fu">rename</span>(<span class="at">CC =</span> value)</span>
-<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>total_unemp <span class="ot">&lt;-</span> <span class="fu">fredr_retry</span>(<span class="at">series_id =</span> <span class="st">"UNEMPLOY"</span>, <span class="at">observation_start =</span> start_date) <span class="sc">|&gt;</span></span>
-<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">transmute</span>(date, <span class="at">tot =</span> value)</span>
-<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>cause_series <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
-<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>  <span class="at">tl  =</span> <span class="st">"LNS13023653"</span>,</span>
-<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>  <span class="at">pjl =</span> <span class="st">"LNS13026638"</span>,</span>
-<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>  <span class="at">ctj =</span> <span class="st">"LNS13026637"</span>,</span>
-<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>  <span class="at">jl  =</span> <span class="st">"LNS13023705"</span>,</span>
-<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>  <span class="at">re  =</span> <span class="st">"LNS13023557"</span>,</span>
-<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>  <span class="at">ne  =</span> <span class="st">"LNS13023569"</span></span>
-<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>cause_m <span class="ot">&lt;-</span> <span class="fu">map_dfr</span>(<span class="fu">names</span>(cause_series), \(nm) {</span>
-<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fredr_retry</span>(<span class="at">series_id =</span> cause_series[[nm]], <span class="at">observation_start =</span> start_date) <span class="sc">|&gt;</span></span>
-<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>    <span class="fu">transmute</span>(date, <span class="at">cause =</span> nm, value)</span>
-<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>}) <span class="sc">|&gt;</span></span>
-<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>  <span class="fu">pivot_wider</span>(<span class="at">names_from =</span> cause, <span class="at">values_from =</span> value)</span>
-<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>df <span class="ot">&lt;-</span> ur_m <span class="sc">|&gt;</span></span>
-<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>  <span class="fu">inner_join</span>(ic_m,       <span class="at">by =</span> <span class="st">"date"</span>) <span class="sc">|&gt;</span></span>
-<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>  <span class="fu">inner_join</span>(cc_m,       <span class="at">by =</span> <span class="st">"date"</span>) <span class="sc">|&gt;</span></span>
-<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>  <span class="fu">inner_join</span>(total_unemp, <span class="at">by =</span> <span class="st">"date"</span>) <span class="sc">|&gt;</span></span>
-<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>  <span class="fu">inner_join</span>(cause_m,    <span class="at">by =</span> <span class="st">"date"</span>) <span class="sc">|&gt;</span></span>
-<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(date) <span class="sc">|&gt;</span></span>
-<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(</span>
-<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a>    <span class="at">ne_share  =</span> ne  <span class="sc">/</span> tot,</span>
-<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>    <span class="at">jl_share  =</span> jl  <span class="sc">/</span> tot,</span>
-<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a>    <span class="at">tl_share  =</span> tl  <span class="sc">/</span> tot,</span>
-<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a>    <span class="at">pjl_share =</span> pjl <span class="sc">/</span> tot,</span>
-<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a>    <span class="at">re_share  =</span> re  <span class="sc">/</span> tot,</span>
-<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a>    <span class="at">ctj_share =</span> ctj <span class="sc">/</span> tot,</span>
-<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a>    <span class="at">dUR  =</span> UR <span class="sc">-</span> <span class="fu">lag</span>(UR),</span>
-<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a>    <span class="at">dlIC =</span> <span class="fu">log</span>(IC) <span class="sc">-</span> <span class="fu">log</span>(<span class="fu">lag</span>(IC)),</span>
-<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a>    <span class="at">dlCC =</span> <span class="fu">log</span>(CC) <span class="sc">-</span> <span class="fu">log</span>(<span class="fu">lag</span>(CC)),</span>
-<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a>    <span class="at">pandemic =</span> date <span class="sc">&gt;=</span> <span class="fu">as.Date</span>(<span class="st">"2020-03-01"</span>) <span class="sc">&amp;</span> date <span class="sc">&lt;=</span> <span class="fu">as.Date</span>(<span class="st">"2021-12-01"</span>)</span>
-<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
-<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(</span>
-<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a>    <span class="at">dUR_l1      =</span> <span class="fu">lag</span>(dUR),</span>
-<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a>    <span class="at">dUR_l2      =</span> <span class="fu">lag</span>(dUR, <span class="dv">2</span>),</span>
-<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a>    <span class="at">dUR_l12     =</span> <span class="fu">lag</span>(dUR, <span class="dv">12</span>),</span>
-<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a>    <span class="at">dlIC_l1     =</span> <span class="fu">lag</span>(dlIC),</span>
-<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a>    <span class="at">dlIC_l2     =</span> <span class="fu">lag</span>(dlIC, <span class="dv">2</span>),</span>
-<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a>    <span class="at">dlCC_l1     =</span> <span class="fu">lag</span>(dlCC),</span>
-<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a>    <span class="at">dlCC_l2     =</span> <span class="fu">lag</span>(dlCC, <span class="dv">2</span>),</span>
-<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a>    <span class="at">ne_share_l1 =</span> <span class="fu">lag</span>(ne_share)</span>
-<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a>  )</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>ic_m <span class="ot">&lt;-</span> <span class="fu">claims_monthly</span>(<span class="st">"ICSA"</span>)   <span class="sc">|&gt;</span> <span class="fu">rename</span>(<span class="at">IC =</span> value)</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>cc_m <span class="ot">&lt;-</span> <span class="fu">claims_monthly</span>(<span class="st">"CCSA"</span>)   <span class="sc">|&gt;</span> <span class="fu">rename</span>(<span class="at">CC =</span> value)</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>ce_m <span class="ot">&lt;-</span> <span class="fu">claims_monthly</span>(<span class="st">"COVEMP"</span>) <span class="sc">|&gt;</span> <span class="fu">rename</span>(<span class="at">CE =</span> value)</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>total_unemp <span class="ot">&lt;-</span> <span class="fu">fredr_retry</span>(<span class="at">series_id =</span> <span class="st">"UNEMPLOY"</span>, <span class="at">observation_start =</span> start_date) <span class="sc">|&gt;</span></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">transmute</span>(date, <span class="at">tot =</span> value)</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>cause_series <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>  <span class="at">tl  =</span> <span class="st">"LNS13023653"</span>,</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>  <span class="at">pjl =</span> <span class="st">"LNS13026638"</span>,</span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>  <span class="at">ctj =</span> <span class="st">"LNS13026637"</span>,</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>  <span class="at">jl  =</span> <span class="st">"LNS13023705"</span>,</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>  <span class="at">re  =</span> <span class="st">"LNS13023557"</span>,</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>  <span class="at">ne  =</span> <span class="st">"LNS13023569"</span></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>cause_m <span class="ot">&lt;-</span> <span class="fu">map_dfr</span>(<span class="fu">names</span>(cause_series), \(nm) {</span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fredr_retry</span>(<span class="at">series_id =</span> cause_series[[nm]], <span class="at">observation_start =</span> start_date) <span class="sc">|&gt;</span></span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>    <span class="fu">transmute</span>(date, <span class="at">cause =</span> nm, value)</span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>}) <span class="sc">|&gt;</span></span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>  <span class="fu">pivot_wider</span>(<span class="at">names_from =</span> cause, <span class="at">values_from =</span> value)</span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>df <span class="ot">&lt;-</span> ur_m <span class="sc">|&gt;</span></span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>  <span class="fu">inner_join</span>(ic_m,       <span class="at">by =</span> <span class="st">"date"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>  <span class="fu">inner_join</span>(cc_m,       <span class="at">by =</span> <span class="st">"date"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>  <span class="fu">inner_join</span>(ce_m,       <span class="at">by =</span> <span class="st">"date"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>  <span class="fu">inner_join</span>(total_unemp, <span class="at">by =</span> <span class="st">"date"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>  <span class="fu">inner_join</span>(cause_m,    <span class="at">by =</span> <span class="st">"date"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(date) <span class="sc">|&gt;</span></span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(</span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a>    <span class="at">ne_share  =</span> ne  <span class="sc">/</span> tot,</span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a>    <span class="at">jl_share  =</span> jl  <span class="sc">/</span> tot,</span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a>    <span class="at">tl_share  =</span> tl  <span class="sc">/</span> tot,</span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a>    <span class="at">pjl_share =</span> pjl <span class="sc">/</span> tot,</span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a>    <span class="at">re_share  =</span> re  <span class="sc">/</span> tot,</span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a>    <span class="at">ctj_share =</span> ctj <span class="sc">/</span> tot,</span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a>    <span class="at">IC_CE =</span> IC <span class="sc">/</span> CE,</span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a>    <span class="at">CC_CE =</span> CC <span class="sc">/</span> CE,</span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a>    <span class="at">dUR     =</span> UR <span class="sc">-</span> <span class="fu">lag</span>(UR),</span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a>    <span class="at">dlIC_CE =</span> <span class="fu">log</span>(IC_CE) <span class="sc">-</span> <span class="fu">log</span>(<span class="fu">lag</span>(IC_CE)),</span>
+<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a>    <span class="at">dlCC_CE =</span> <span class="fu">log</span>(CC_CE) <span class="sc">-</span> <span class="fu">log</span>(<span class="fu">lag</span>(CC_CE)),</span>
+<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a>    <span class="at">pandemic =</span> date <span class="sc">&gt;=</span> <span class="fu">as.Date</span>(<span class="st">"2020-03-01"</span>) <span class="sc">&amp;</span> date <span class="sc">&lt;=</span> <span class="fu">as.Date</span>(<span class="st">"2021-12-01"</span>)</span>
+<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
+<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(</span>
+<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a>    <span class="at">dUR_l1         =</span> <span class="fu">lag</span>(dUR),</span>
+<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a>    <span class="at">dUR_l12        =</span> <span class="fu">lag</span>(dUR, <span class="dv">12</span>),</span>
+<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a>    <span class="at">dlIC_CE_l1     =</span> <span class="fu">lag</span>(dlIC_CE),</span>
+<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a>    <span class="at">dlIC_CE_l2     =</span> <span class="fu">lag</span>(dlIC_CE, <span class="dv">2</span>),</span>
+<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a>    <span class="at">dlCC_CE_l1     =</span> <span class="fu">lag</span>(dlCC_CE),</span>
+<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a>    <span class="at">dlCC_CE_l2     =</span> <span class="fu">lag</span>(dlCC_CE, <span class="dv">2</span>),</span>
+<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a>    <span class="at">ne_share_l1    =</span> <span class="fu">lag</span>(ne_share)</span>
+<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a>  )</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </details>
 </div>
 </section>
-<section id="features" class="level2">
-<h2 class="anchored" data-anchor-id="features">Features</h2>
-<p><strong>Claims-only model (Model A)</strong>: lags of <span class="math inline">\(\Delta \log \text{IC}\)</span>, <span class="math inline">\(\Delta \log \text{CC}\)</span>, and two AR lags of <span class="math inline">\(\Delta \text{UR}\)</span>.</p>
-<p><strong>Composition-augmented model (Model B)</strong>: Model A plus lagged NE share.</p>
-<p><strong>Benchmarks</strong>: random walk (<span class="math inline">\(\hat{\Delta \text{UR}} = 0\)</span>), AR(1) on <span class="math inline">\(\Delta \text{UR}\)</span>, seasonal naive (<span class="math inline">\(\hat{\Delta \text{UR}}_{t+1} = \Delta \text{UR}_{t-11}\)</span>).</p>
-<p>All models forecast at <span class="math inline">\(h=1\)</span> using a rolling 30-month training window. Windows that include any month in March 2020 – December 2021 are skipped, as are forecasts targeting those months.</p>
+<section id="variable-construction" class="level2">
+<h2 class="anchored" data-anchor-id="variable-construction">Variable construction</h2>
+<p>Raw FRED series: <span class="math inline">\(\text{UR}\)</span> (UNRATE), <span class="math inline">\(\text{IC}\)</span> (ICSA, weekly initial claims averaged to monthly), <span class="math inline">\(\text{CC}\)</span> (CCSA, weekly continuing claims averaged to monthly), <span class="math inline">\(\text{CE}\)</span> (COVEMP, covered employment averaged to monthly), <span class="math inline">\(\text{NE}_t\)</span> (LNS13023569), <span class="math inline">\(\text{Unemp}_t\)</span> (UNEMPLOY).</p>
+<p>Constructed variables:</p>
+<p><span class="math display">\[
+\begin{aligned}
+\Delta \text{UR}_t &amp;\;=\; \text{UR}_t - \text{UR}_{t-1} \\[2pt]
+\Delta \ln(\text{IC}/\text{CE})_t &amp;\;=\; \ln\!\left(\frac{\text{IC}_t}{\text{CE}_t}\right) - \ln\!\left(\frac{\text{IC}_{t-1}}{\text{CE}_{t-1}}\right) \\[2pt]
+\Delta \ln(\text{CC}/\text{CE})_t &amp;\;=\; \ln\!\left(\frac{\text{CC}_t}{\text{CE}_t}\right) - \ln\!\left(\frac{\text{CC}_{t-1}}{\text{CE}_{t-1}}\right) \\[2pt]
+\text{NE share}_t &amp;\;=\; \frac{\text{NE}_t}{\text{Unemp}_t}
+\end{aligned}
+\]</span></p>
+<p>Claims are scaled by covered employment to match the insured-unemployment-rate units used in the main paper; log-differencing removes secular trend and gives a growth-rate interpretation comparable across decades. <span class="math inline">\(\Delta\text{UR}\)</span> is in percentage points. A pandemic indicator <span class="math inline">\(\text{P}_t = \mathbb{1}\{t \in [\text{Mar 2020}, \text{Dec 2021}]\}\)</span> is used to mask training windows and forecast targets.</p>
+</section>
+<section id="models" class="level2">
+<h2 class="anchored" data-anchor-id="models">Models</h2>
+<p>At each forecast origin <span class="math inline">\(t\)</span>, three parametric models are re-estimated by OLS on the rolling 30-month window <span class="math inline">\(\mathcal{W}_t = \{t-29, \dots, t\}\)</span> and used to forecast <span class="math inline">\(\Delta \text{UR}_{t+1}\)</span>:</p>
+<p><span class="math display">\[
+\text{Model A (claims only):}\quad \Delta \text{UR}_s \;=\; \beta_0 \;+\; \sum_{k=1}^{2} \beta^{\text{IC}}_k \,\Delta\ln(\text{IC}/\text{CE})_{s-k} \;+\; \sum_{k=1}^{2} \beta^{\text{CC}}_k \,\Delta\ln(\text{CC}/\text{CE})_{s-k} \;+\; \varepsilon_s
+\]</span></p>
+<p><span class="math display">\[
+\text{Model B (claims + NE):}\quad \Delta \text{UR}_s \;=\; \beta_0 \;+\; \sum_{k=1}^{2} \beta^{\text{IC}}_k \,\Delta\ln(\text{IC}/\text{CE})_{s-k} \;+\; \sum_{k=1}^{2} \beta^{\text{CC}}_k \,\Delta\ln(\text{CC}/\text{CE})_{s-k} \;+\; \gamma \,\text{NE share}_{s-1} \;+\; \varepsilon_s
+\]</span></p>
+<p><span class="math display">\[
+\text{Benchmark AR(1):}\quad \Delta \text{UR}_s \;=\; \alpha_0 \;+\; \alpha_1 \,\Delta \text{UR}_{s-1} \;+\; \varepsilon_s
+\]</span></p>
+<p><span class="math display">\[
+\text{Random walk:}\quad \widehat{\Delta \text{UR}}_{t+1} \;=\; 0, \qquad \text{Seasonal naive:}\quad \widehat{\Delta \text{UR}}_{t+1} \;=\; \Delta \text{UR}_{t-11}
+\]</span></p>
+<p>Model A is deliberately naive: no own-lags of <span class="math inline">\(\Delta \text{UR}\)</span>. The question is whether a forecaster looking only at claims does worse when the unemployed pool skews toward ineligible groups; adding UR’s own history would let Model A piggyback on UR persistence that has nothing to do with claims, and the “claims-only” label would no longer mean claims-only. The AR(1) benchmark isolates that own-history content separately.</p>
+</section>
+<section id="rolling-origin-protocol" class="level2">
+<h2 class="anchored" data-anchor-id="rolling-origin-protocol">Rolling-origin protocol</h2>
+<p>For each candidate origin <span class="math inline">\(t\)</span> with <span class="math inline">\(30 \le t \le T - 1\)</span>:</p>
+<ol type="1">
+<li>Skip if <span class="math inline">\(\text{P}_s = 1\)</span> for any <span class="math inline">\(s \in \mathcal{W}_t \cup \{t+1\}\)</span>.</li>
+<li>Fit Model A, Model B, AR(1) by OLS on <span class="math inline">\(\mathcal{W}_t\)</span>.</li>
+<li>Form <span class="math inline">\(\widehat{\Delta \text{UR}}_{t+1}\)</span> for each model; record error <span class="math inline">\(e^{(m)}_{t+1} = \Delta \text{UR}_{t+1} - \widehat{\Delta \text{UR}}^{(m)}_{t+1}\)</span>.</li>
+<li>Tag target month <span class="math inline">\(t+1\)</span> as <strong>High NE</strong> if <span class="math inline">\(\text{NE share}_t \ge q_{0.75}\)</span>, else <strong>Rest</strong>, where <span class="math inline">\(q_{0.75}\)</span> is the 75th percentile of <span class="math inline">\(\text{NE share}\)</span> on the non-pandemic sample. Regime assignment uses information available at the origin, not the target.</li>
+</ol>
+</section>
+<section id="metrics" class="level2">
+<h2 class="anchored" data-anchor-id="metrics">Metrics</h2>
+<p>For each (model <span class="math inline">\(m\)</span>, regime <span class="math inline">\(r\)</span>) pair:</p>
+<p><span class="math display">\[
+\text{MAE}^{(m)}_r \;=\; \frac{1}{n_r} \sum_{t+1 \in r} |e^{(m)}_{t+1}|, \qquad
+\text{RMSE}^{(m)}_r \;=\; \sqrt{\frac{1}{n_r} \sum_{t+1 \in r} (e^{(m)}_{t+1})^2},
+\]</span></p>
+<p><span class="math display">\[
+\text{MASE}^{(m)}_r \;=\; \frac{\text{MAE}^{(m)}_r}{\tfrac{1}{T^\ast - 1} \sum_{s: \text{P}_s = 0,\, \text{P}_{s-1}=0} |\Delta\text{UR}_s - \Delta\text{UR}_{s-1}|}
+\]</span></p>
+<p>MASE’s denominator is the mean absolute one-month change in <span class="math inline">\(\Delta\text{UR}\)</span> on the non-pandemic full sample, so errors across regimes are put on a common yardstick.</p>
+</section>
+<section id="inference" class="level2">
+<h2 class="anchored" data-anchor-id="inference">Inference</h2>
+<p><strong>Block bootstrap on MAE differences.</strong> For each model <span class="math inline">\(m\)</span>, let <span class="math inline">\(\mathbf{e}^{(m)}_H\)</span> and <span class="math inline">\(\mathbf{e}^{(m)}_R\)</span> be the High-NE and Rest error series. Block bootstrap with block length 6 and <span class="math inline">\(B=2000\)</span> replications gives a sampling distribution of <span class="math inline">\(\text{MAE}(\mathbf{e}^{(m),\star}_H) - \text{MAE}(\mathbf{e}^{(m),\star}_R)\)</span>; the 2.5 / 97.5 percentiles form a 95 % CI and the two-sided p-value is <span class="math inline">\(2 \min\{\Pr(d^\star \le 0), \Pr(d^\star \ge 0)\}\)</span>.</p>
+<p><strong>Diebold-Mariano test, Model A vs Model B.</strong> With squared-error loss <span class="math inline">\(L^{(m)}_s = (e^{(m)}_s)^2\)</span> and differential <span class="math inline">\(d_s = L^{(A)}_s - L^{(B)}_s\)</span>, regress <span class="math inline">\(d_s\)</span> on a constant and test <span class="math inline">\(H_0{:}\ \mathbb{E}[d_s] = 0\)</span> with Newey-West HAC (lag <span class="math inline">\(= \max(h-1, 0) = 0\)</span> for <span class="math inline">\(h=1\)</span>).</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
@@ -297,7 +351,7 @@ window.Quarto = {
 <span id="cb2-69"><a href="#cb2-69" aria-hidden="true" tabindex="-1"></a>  <span class="fu">bind_rows</span>(out)</span>
 <span id="cb2-70"><a href="#cb2-70" aria-hidden="true" tabindex="-1"></a>}</span>
 <span id="cb2-71"><a href="#cb2-71" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-72"><a href="#cb2-72" aria-hidden="true" tabindex="-1"></a>features_A  <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"dUR_l1"</span>, <span class="st">"dUR_l2"</span>, <span class="st">"dlIC_l1"</span>, <span class="st">"dlIC_l2"</span>, <span class="st">"dlCC_l1"</span>, <span class="st">"dlCC_l2"</span>)</span>
+<span id="cb2-72"><a href="#cb2-72" aria-hidden="true" tabindex="-1"></a>features_A  <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"dlIC_CE_l1"</span>, <span class="st">"dlIC_CE_l2"</span>, <span class="st">"dlCC_CE_l1"</span>, <span class="st">"dlCC_CE_l2"</span>)</span>
 <span id="cb2-73"><a href="#cb2-73" aria-hidden="true" tabindex="-1"></a>features_B  <span class="ot">&lt;-</span> <span class="fu">c</span>(features_A, <span class="st">"ne_share_l1"</span>)</span>
 <span id="cb2-74"><a href="#cb2-74" aria-hidden="true" tabindex="-1"></a>features_AR <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"dUR_l1"</span>)</span>
 <span id="cb2-75"><a href="#cb2-75" aria-hidden="true" tabindex="-1"></a></span>
@@ -355,8 +409,8 @@ window.Quarto = {
 </div>
 </div>
 </section>
-<section id="metrics" class="level2">
-<h2 class="anchored" data-anchor-id="metrics">Metrics</h2>
+<section id="metrics-1" class="level2">
+<h2 class="anchored" data-anchor-id="metrics-1">Metrics</h2>
 <p>For each regime × model we compute MAE, RMSE, and MASE. The MASE denominator is the mean absolute one-month change in <span class="math inline">\(\Delta \text{UR}\)</span> on the full non-pandemic sample, so errors are scaled by a common yardstick across regimes.</p>
 <div class="cell">
 <details class="code-fold">
@@ -861,9 +915,9 @@ window.Quarto = {
 <tr class="gt_row_group_first even">
 <td class="gt_row gt_left" headers="High NE  model">A (claims)</td>
 <td class="gt_row gt_right" headers="High NE  n">83</td>
-<td class="gt_row gt_right" headers="High NE  mae">0.123</td>
+<td class="gt_row gt_right" headers="High NE  mae">0.124</td>
 <td class="gt_row gt_right" headers="High NE  rmse">0.158</td>
-<td class="gt_row gt_right" headers="High NE  mase">0.777</td>
+<td class="gt_row gt_right" headers="High NE  mase">0.784</td>
 </tr>
 <tr class="odd">
 <td class="gt_row gt_left" headers="High NE  model">AR(1)</td>
@@ -876,8 +930,8 @@ window.Quarto = {
 <td class="gt_row gt_left" headers="High NE  model">B (claims+NE)</td>
 <td class="gt_row gt_right" headers="High NE  n">83</td>
 <td class="gt_row gt_right" headers="High NE  mae">0.126</td>
-<td class="gt_row gt_right" headers="High NE  rmse">0.165</td>
-<td class="gt_row gt_right" headers="High NE  mase">0.796</td>
+<td class="gt_row gt_right" headers="High NE  rmse">0.163</td>
+<td class="gt_row gt_right" headers="High NE  mase">0.795</td>
 </tr>
 <tr class="odd">
 <td class="gt_row gt_left" headers="High NE  model">RW</td>
@@ -899,9 +953,9 @@ window.Quarto = {
 <tr class="gt_row_group_first even">
 <td class="gt_row gt_left" headers="Rest  model">A (claims)</td>
 <td class="gt_row gt_right" headers="Rest  n">213</td>
-<td class="gt_row gt_right" headers="Rest  mae">0.119</td>
-<td class="gt_row gt_right" headers="Rest  rmse">0.153</td>
-<td class="gt_row gt_right" headers="Rest  mase">0.749</td>
+<td class="gt_row gt_right" headers="Rest  mae">0.113</td>
+<td class="gt_row gt_right" headers="Rest  rmse">0.147</td>
+<td class="gt_row gt_right" headers="Rest  mase">0.715</td>
 </tr>
 <tr class="odd">
 <td class="gt_row gt_left" headers="Rest  model">AR(1)</td>
@@ -913,9 +967,9 @@ window.Quarto = {
 <tr class="even">
 <td class="gt_row gt_left" headers="Rest  model">B (claims+NE)</td>
 <td class="gt_row gt_right" headers="Rest  n">213</td>
-<td class="gt_row gt_right" headers="Rest  mae">0.120</td>
-<td class="gt_row gt_right" headers="Rest  rmse">0.152</td>
-<td class="gt_row gt_right" headers="Rest  mase">0.754</td>
+<td class="gt_row gt_right" headers="Rest  mae">0.116</td>
+<td class="gt_row gt_right" headers="Rest  rmse">0.149</td>
+<td class="gt_row gt_right" headers="Rest  mase">0.732</td>
 </tr>
 <tr class="odd">
 <td class="gt_row gt_left" headers="Rest  model">RW</td>
@@ -943,8 +997,8 @@ window.Quarto = {
 </div>
 </div>
 </section>
-<section id="inference" class="level2">
-<h2 class="anchored" data-anchor-id="inference">Inference</h2>
+<section id="inference-1" class="level2">
+<h2 class="anchored" data-anchor-id="inference-1">Inference</h2>
 <section id="block-bootstrap-on-mae-difference-same-model-across-regimes" class="level3">
 <h3 class="anchored" data-anchor-id="block-bootstrap-on-mae-difference-same-model-across-regimes">Block bootstrap on MAE difference (same model across regimes)</h3>
 <p>For each model, block-bootstrap (block length = 6 months) the difference <span class="math inline">\(\text{MAE}_{\text{high}} - \text{MAE}_{\text{rest}}\)</span>.</p>
@@ -1464,10 +1518,10 @@ window.Quarto = {
 <tbody class="gt_table_body">
 <tr class="odd">
 <td class="gt_row gt_left" headers="model">A (claims)</td>
-<td class="gt_row gt_right" headers="observed_diff">0.004</td>
-<td class="gt_row gt_right" headers="ci_lo">−0.021</td>
-<td class="gt_row gt_right" headers="ci_hi">0.034</td>
-<td class="gt_row gt_right" headers="p_two_sided">0.660</td>
+<td class="gt_row gt_right" headers="observed_diff">0.011</td>
+<td class="gt_row gt_right" headers="ci_lo">−0.015</td>
+<td class="gt_row gt_right" headers="ci_hi">0.039</td>
+<td class="gt_row gt_right" headers="p_two_sided">0.430</td>
 </tr>
 <tr class="even">
 <td class="gt_row gt_left" headers="model">AR(1)</td>
@@ -1478,10 +1532,10 @@ window.Quarto = {
 </tr>
 <tr class="odd">
 <td class="gt_row gt_left" headers="model">B (claims+NE)</td>
-<td class="gt_row gt_right" headers="observed_diff">0.007</td>
-<td class="gt_row gt_right" headers="ci_lo">−0.018</td>
-<td class="gt_row gt_right" headers="ci_hi">0.036</td>
-<td class="gt_row gt_right" headers="p_two_sided">0.526</td>
+<td class="gt_row gt_right" headers="observed_diff">0.010</td>
+<td class="gt_row gt_right" headers="ci_lo">−0.017</td>
+<td class="gt_row gt_right" headers="ci_hi">0.038</td>
+<td class="gt_row gt_right" headers="p_two_sided">0.453</td>
 </tr>
 <tr class="even">
 <td class="gt_row gt_left" headers="model">RW</td>
@@ -2022,17 +2076,17 @@ window.Quarto = {
 <tbody class="gt_table_body">
 <tr class="odd">
 <td class="gt_row gt_center" headers="regime">High NE</td>
-<td class="gt_row gt_right" headers="dm_stat">−1.3442</td>
-<td class="gt_row gt_right" headers="dm_p">0.1826</td>
+<td class="gt_row gt_right" headers="dm_stat">−1.2282</td>
+<td class="gt_row gt_right" headers="dm_p">0.2229</td>
 <td class="gt_row gt_right" headers="n">83</td>
-<td class="gt_row gt_right" headers="mean_loss_diff">−0.0021</td>
+<td class="gt_row gt_right" headers="mean_loss_diff">−0.0016</td>
 </tr>
 <tr class="even">
 <td class="gt_row gt_center" headers="regime">Rest</td>
-<td class="gt_row gt_right" headers="dm_stat">0.3277</td>
-<td class="gt_row gt_right" headers="dm_p">0.7435</td>
+<td class="gt_row gt_right" headers="dm_stat">−0.8430</td>
+<td class="gt_row gt_right" headers="dm_p">0.4002</td>
 <td class="gt_row gt_right" headers="n">213</td>
-<td class="gt_row gt_right" headers="mean_loss_diff">0.0002</td>
+<td class="gt_row gt_right" headers="mean_loss_diff">−0.0006</td>
 </tr>
 </tbody>
 </table>
@@ -2110,12 +2164,12 @@ window.Quarto = {
 </section>
 <section id="discussion" class="level2">
 <h2 class="anchored" data-anchor-id="discussion">Discussion</h2>
-<p>The test fails to corroborate the blind-spot story at this horizon. Three findings stand out.</p>
-<p><strong>The claims-only model is not detectably worse in high-NE periods.</strong> Model A’s MAE is 0.123 pp in high-NE months and 0.119 pp in the rest, a difference of +0.004 pp with a bootstrap 95 percent CI of roughly <span class="math inline">\([-0.02, +0.03]\)</span> and a two-sided p-value of 0.66. If claims were systematically blind to new entrants in a way that degraded aggregate UR forecasts at <span class="math inline">\(h=1\)</span>, the gap would go the other way and be larger. It isn’t.</p>
-<p><strong>Adding the NE share to the claims model doesn’t help.</strong> Model B layers lagged NE share on top of Model A. The Diebold-Mariano test on squared errors gives a pooled mean loss difference of <span class="math inline">\(-0.0004\)</span> pp² (p = 0.54) and small, non-significant differences within each regime. If the blind spot were large enough to show up in month-ahead forecasts, plugging in the very variable that defines the blind spot should improve Model A. It doesn’t.</p>
-<p><strong>AR(1) beats the claims models.</strong> In both regimes, an AR(1) on <span class="math inline">\(\Delta \text{UR}\)</span> alone has a smaller MAE (0.107 in high-NE, 0.114 in rest) than the claims-augmented models. The random walk (forecast = 0) is also competitive (0.113, 0.112). At monthly frequency, <span class="math inline">\(\Delta \text{UR}\)</span> is close to white noise around a small persistent component, and claims add little on top of its own lag. This is a general result, not specific to high-NE months — so it sets a high bar for any story in which claims would help differentially.</p>
-<p>What this does <em>not</em> say is that claims are informative about the unemployed pool when new entrants are a large part of it. Representation ratios show — mechanically, from the eligibility rules — that new entrants are outside the IC/CC window. What the forecasting test says is a narrower thing: conditional on how the short-horizon UR process actually behaves, the compositional blind spot does not generate a detectable monthly forecast gap that a claims-based forecaster would have noticed in real time. The blind spot is a level statement about who claims can see; the forecast test is a volatility statement about whether that blindness shows up in the noise of monthly changes. The two are consistent.</p>
-<p>One timing observation sharpens the caveat. High-NE months in our sample are concentrated in 2012–2016 (about 57 of 83), with a smaller cluster in 2017–2019 and another starting in 2024. This is mostly the post-GFC recovery: a low-volatility expansion with a subdued claims signal on both sides of the ratio. Any test that demands a big forecast-error gap in that environment is asking for variance the sample does not offer.</p>
+<p>The pattern is consistent with the blind-spot story, though the within-model regime gap is not statistically distinguishable from zero on its own.</p>
+<p><strong>The claims-only model is a bit worse in high-NE periods.</strong> Model A’s MAE is 0.124 pp when the NE share is in its top quartile and 0.113 pp in the rest. The gap is +0.011 pp — about 10 percent of the rest-period MAE. The block-bootstrap 95 percent CI is roughly <span class="math inline">\([-0.015, +0.039]\)</span> with a two-sided p-value of 0.43, so on its own this is suggestive, not conclusive.</p>
+<p><strong>The sharper signal is how claims stack up against a naive AR(1).</strong> In “Rest” months, Model A and AR(1) are essentially tied (0.113 vs 0.114). In “High NE” months, AR(1) actually improves (to 0.107) while Model A deteriorates (to 0.124). So the relative accuracy of the claims-only read versus a simple “project last month’s UR change forward” rule flips sign precisely when the unemployed pool skews toward groups claims cannot see. A forecaster with only claims in hand does about as well as a forecaster with only UR’s own history — except when the ineligible share is high, at which point the UR-history forecaster starts to win.</p>
+<p><strong>Adding NE share to Model A doesn’t close the gap.</strong> Model B augments the claims features with lagged NE share. The Diebold-Mariano test on squared errors gives a pooled mean loss difference of <span class="math inline">\(-0.0009\)</span> pp² (p = 0.16), and within-regime DM tests are similarly null. If the blind spot were easy to repair with a single aggregate composition indicator, Model B would do visibly better than Model A in high-NE months. It doesn’t — which fits the character of the problem: the ineligible pool is identified by who these people are (work history, earnings, attachment), not by the level of one share variable.</p>
+<p>What this exercise does <em>not</em> do is settle the level question. Representation ratios show, mechanically from the eligibility rules, that new entrants are outside the IC/CC window. The forecasting test says something narrower: at the monthly horizon and under a simple linear specification, a claims-only nowcast of <span class="math inline">\(\Delta\text{UR}\)</span> is detectably less accurate than a UR-history benchmark in months when the unemployed pool is most weighted toward the group claims cannot see. It’s a pattern, not a confidence-interval-certified fact. The block bootstrap says the within-model High-vs-Rest gap could plausibly be zero; what it can’t easily explain is why the AR(1) comparison flips sign across regimes.</p>
+<p><strong>One timing caveat.</strong> High-NE months in our sample are concentrated in 2012–2016 (about 57 of 83), with smaller clusters in 2017–2019 and 2024–2025. This is mostly the post-GFC recovery: a low-volatility expansion with a subdued claims signal on both sides of the ratio. A forecast-gap test has less power in that environment than it would in a period with more movement, which is part of why the within-model bootstrap is indeterminate despite the suggestive point estimates.</p>
 </section>
 <section id="risks-caveats" class="level2">
 <h2 class="anchored" data-anchor-id="risks-caveats">Risks &amp; Caveats</h2>
