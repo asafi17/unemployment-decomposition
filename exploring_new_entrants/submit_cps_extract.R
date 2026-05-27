@@ -1,9 +1,9 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # IPUMS CPS extract for the Recent College Graduate (RCG) FAQ.
 #
-# Same variables as the project-wide cps_unified extract PLUS DURUNEMP
-# (duration of unemployment in weeks), which is needed for the RCG vs overall
-# duration comparison.
+# Variables needed by the RCG FAQ: monthly timing, person weight, age,
+# education, labor-force status, unemployment duration, and reason for
+# unemployment.
 #
 # Output:
 #   exploring_new_entrants/data/CPS/cps_rcg.xml      (DDI)
@@ -55,7 +55,7 @@ ipums_samples <- all_samples |>
 cat("Selected", length(ipums_samples), "monthly CPS samples\n")
 
 # ── 2. Variables ─────────────────────────────────────────────────────────────
-# Mirrors cps_unified + DURUNEMP.
+# Minimal variable set used by markdown/rcg_faq.qmd.
 
 extract_description <- "RCG FAQ extract v3: monthly CPS minimal vars (YEAR/MONTH/WTFINL + AGE/EDUC/EMPSTAT/LABFORCE/DURUNEMP/WHYUNEMP), 1994-present"
 
@@ -112,7 +112,7 @@ if (length(c(partial_xml, partial_csv)) > 0) file.remove(c(partial_xml, partial_
 path_to_ddi <- NULL
 for (attempt in 1:5) {
   path_to_ddi <- tryCatch(
-    download_extract(downloadable, download_dir = cps_dir),
+    download_extract(downloadable, download_dir = cps_dir, overwrite = TRUE),
     error = function(e) {
       if (attempt < 5) {
         message("Download attempt ", attempt, " failed: ", conditionMessage(e))
