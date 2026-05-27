@@ -1,0 +1,4 @@
+# FRED downloads — keep out of version control.
+# This .gitignore tracks the directory structure while ignoring all contents.
+*
+!.gitignore

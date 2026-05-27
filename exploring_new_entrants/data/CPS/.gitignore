@@ -1,0 +1,4 @@
+# IPUMS microdata has redistribution restrictions — do not commit.
+# This .gitignore tracks the directory structure while ignoring all contents.
+*
+!.gitignore
