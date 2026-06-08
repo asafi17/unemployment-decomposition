@@ -1,9 +1,14 @@
 ---
 title: "CFI Blog"
 author: "Kristin Butcher, Scott Brave, Aryan Safi"
-format: 
+format:
   html:
     code-fold: true
+  pdf:
+    toc: false
+    number-sections: false
+    keep-tex: false
+    echo: false
 editor: visual
 ---
 

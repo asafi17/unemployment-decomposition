@@ -139,6 +139,7 @@ monthly[, `:=`(
   ne_re_share        = 100 * ne_re_w     / total_unemp_w,
   ne_share           = 100 * ne_w        / total_unemp_w,
   re_share           = 100 * re_w        / total_unemp_w,
+  ne_re_lf_share     = 100 * ne_re_w     / total_lf_w,
   rcg_lf_millions    = rcg_lf_w / 1e6
 )]
 
@@ -322,21 +323,29 @@ rate_panel(monthly, "rcg_lf_millions",
 ```
 :::
 
-## Q4. What share of unemployed people are New Entrants or Reentrants?
+## Q4. What share of the unemployed — and of the labor force — are New Entrants or Reentrants?
 
-Computed from CPS `WHYUNEMP`: codes 5 (Reentrant) and 6 (New Entrant), divided by all unemployed people (`EMPSTAT %in% 20:22`).
+Computed from CPS `WHYUNEMP`: codes 5 (Reentrant) and 6 (New Entrant). Two denominators answer two different questions. Dividing by **all unemployed people** (`EMPSTAT %in% 20:22`) shows how much of the unemployed *pool* these entry categories make up — a composition measure that is roughly independent of how high unemployment is. Dividing by **everyone in the labor force** (`LABFORCE == 2`) gives the slice of the headline unemployment rate that entrants and re-entrants contribute, so it rises and falls with the business cycle.
 
 ```{r q4-table}
 q4_value <- function(dt) {
   d <- dt[is_unemp == TRUE]
   d[, sum(WTFINL * is_ne_re, na.rm = TRUE) / sum(WTFINL, na.rm = TRUE)]
 }
+ne_re_lf_value <- function(dt) {
+  d <- dt[is_lf == TRUE]
+  d[, sum(WTFINL * is_ne_re, na.rm = TRUE) / sum(WTFINL, na.rm = TRUE)]
+}
 
 q4_tbl <- data.table(
   Window = c(window_label_12, window_label_all),
-  `NE + Reentrant share` = c(
+  `Share of unemployed` = c(
     fmt_pct(100 * q4_value(cps[in_window_12(date)])),
     fmt_pct(100 * q4_value(cps))
+  ),
+  `Share of labor force` = c(
+    fmt_pct(100 * ne_re_lf_value(cps[in_window_12(date)])),
+    fmt_pct(100 * ne_re_lf_value(cps))
   )
 )
 
@@ -344,14 +353,58 @@ q4_tbl |> gt() |> style_gt()
 ```
 
 ::: panel-tabset
-### Combined (NE + Reentrant)
+### Overlay: unemployed vs labor force
 
-```{r q4-ts, fig.width=10, fig.height=4, message=F, warning=F}
+```{r q4-ts-overlay, fig.width=10, fig.height=4, message=F, warning=F}
+# Share-of-unemployed (~15-25%) and share-of-labor-force (~1-2%) differ by
+# roughly the unemployment rate, so the labor-force series is rescaled onto a
+# secondary right-hand axis (sec_axis divides the scaling factor back out).
+sf <- mean(monthly$ne_re_share, na.rm = TRUE) /
+      mean(monthly$ne_re_lf_share, na.rm = TRUE)
+
+ov_long <- rbindlist(list(
+  monthly[, .(date, series = "Share of unemployed",  value = ne_re_share)],
+  monthly[, .(date, series = "Share of labor force", value = ne_re_lf_share * sf)]
+))
+ov_long[, series := factor(series,
+                           levels = c("Share of unemployed", "Share of labor force"))]
+ov_long[, ma := roll_mean12(value), by = series]
+
+ov_cols <- c("Share of unemployed"  = jco[4],
+             "Share of labor force" = jco[2])
+
+p_ov <- ggplot(ov_long, aes(x = date, color = series)) +
+  geom_line(aes(y = value), alpha = 0.25, linewidth = 0.4) +
+  geom_line(aes(y = ma),    linewidth = 1.0, alpha = 0.9) +
+  scale_color_manual(values = ov_cols) +
+  scale_y_continuous(
+    name     = "Share of unemployed",
+    labels   = \(x) paste0(x, "%"),
+    sec.axis = sec_axis(~ . / sf, name = "Share of labor force",
+                        labels = \(x) paste0(x, "%"))
+  ) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(title = "NE + Reentrant: share of unemployed vs share of labor force",
+       subtitle = "Monthly (light); 12-month rolling mean (bold). Left axis = share of unemployed; right axis = share of labor force. NBER recessions shaded.",
+       x = NULL)
+add_recessions(p_ov)
+```
+
+### Share of the unemployed
+
+```{r q4-ts-unemp, fig.width=10, fig.height=4, message=F, warning=F}
 rate_panel(monthly, "ne_re_share",
            "NE + Reentrant share of the unemployed (%)", jco[4])
 ```
 
-### Decomposed
+### Share of the labor force
+
+```{r q4-ts-lf, fig.width=10, fig.height=4, message=F, warning=F}
+rate_panel(monthly, "ne_re_lf_share",
+           "NE + Reentrant share of the labor force (%)", jco[2])
+```
+
+### Decomposed (NE vs Reentrant)
 
 ```{r q4-ts-decomposed, fig.width=10, fig.height=4, message=F, warning=F}
 compare_panel(
@@ -441,8 +494,194 @@ make_dur_panel(dur_long_med, "Median weeks unemployed: RCG vs overall")
 ```
 :::
 
+## Q6. When unemployed RCGs are asked *why*, what do they say?
+
+Q4 asked what share of *all* unemployed people are New Entrants or Reentrants. This question conditions on being unemployed and crosstabs **RCG status** against the CPS reason-for-unemployment (`WHYUNEMP`). Each column is a distribution over reasons that **sums to 100% within that group**, so the table reads as: *of unemployed RCGs, what percent give each reason?* — and the same for non-RCGs, for comparison.
+
+A new entrant has **never held a full-time job**; a reentrant has worked before but was out of the labor force just prior to looking again. For a 21–26-year-old with a fresh bachelor's degree, "new entrant" is the answer that most directly describes someone entering the job market for the first time after school.
+
+```{r q6-setup}
+why_levels <- c(1L, 2L, 3L, 4L, 5L, 6L)
+why_labels <- c("Temporary layoff",        # WHYUNEMP 1: job loser – on layoff
+                "Permanent job loser",     # WHYUNEMP 2: other job loser
+                "Completed temp job",      # WHYUNEMP 3: temporary job ended
+                "Job leaver",              # WHYUNEMP 4
+                "Reentrant",               # WHYUNEMP 5
+                "New entrant")             # WHYUNEMP 6
+
+# Weighted distribution over WHYUNEMP reasons within a group of the unemployed.
+# Denominator = unemployed in the group with a valid reason code, so the
+# returned vector of percentages sums to 100.
+reason_share <- function(dt, rcg_flag) {
+  d   <- dt[is_unemp & is_rcg == rcg_flag & WHYUNEMP %in% why_levels]
+  tot <- d[, sum(WTFINL, na.rm = TRUE)]
+  vapply(why_levels, function(k)
+    100 * d[WHYUNEMP == k, sum(WTFINL, na.rm = TRUE)] / tot,
+    numeric(1))
+}
+```
+
+```{r q6-table}
+q6_12  <- list(rcg = reason_share(cps[in_window_12(date)], TRUE),
+               non = reason_share(cps[in_window_12(date)], FALSE))
+q6_all <- list(rcg = reason_share(cps, TRUE),
+               non = reason_share(cps, FALSE))
+
+q6_tbl <- data.table(
+  Reason             = why_labels,
+  `RCG (12mo)`       = q6_12$rcg,
+  `Non-RCG (12mo)`   = q6_12$non,
+  `RCG (pooled)`     = q6_all$rcg,
+  `Non-RCG (pooled)` = q6_all$non
+)
+
+q6_tbl |>
+  gt() |>
+  fmt_number(columns = where(is.numeric), decimals = 1, pattern = "{x}%") |>
+  tab_spanner(label = window_label_12,  columns = c(`RCG (12mo)`, `Non-RCG (12mo)`)) |>
+  tab_spanner(label = window_label_all, columns = c(`RCG (pooled)`, `Non-RCG (pooled)`)) |>
+  cols_label(
+    `RCG (12mo)` = "RCG", `Non-RCG (12mo)` = "Non-RCG",
+    `RCG (pooled)` = "RCG", `Non-RCG (pooled)` = "Non-RCG"
+  ) |>
+  style_gt()
+```
+
+Reading the table: each column answers "of this group's unemployed, what percent give each reason?" Comparing the **New entrant** and **Reentrant** rows across the RCG and Non-RCG columns shows whether unemployed RCGs are unusually likely to be entering or re-entering the labor force rather than having lost or left a job.
+
+```{r q6-ts-prep, message=F, warning=F}
+# Monthly reason mix *within RCG unemployed* (denominator = RCG unemployed).
+monthly_rcg_reason <- cps[, .(
+  rcg_unemp_w = sum(WTFINL * (is_rcg & is_unemp), na.rm = TRUE),
+  rcg_ne_w    = sum(WTFINL * (is_rcg & is_ne),    na.rm = TRUE),
+  rcg_re_w    = sum(WTFINL * (is_rcg & is_re),    na.rm = TRUE)
+), by = date]
+setorder(monthly_rcg_reason, date)
+monthly_rcg_reason[, `:=`(
+  rcg_ne_share    = 100 * rcg_ne_w / rcg_unemp_w,
+  rcg_re_share    = 100 * rcg_re_w / rcg_unemp_w,
+  rcg_ne_re_share = 100 * (rcg_ne_w + rcg_re_w) / rcg_unemp_w
+)]
+```
+
+::: panel-tabset
+### NE + Reentrant share of RCG unemployed
+
+```{r q6-ts-combined, fig.width=10, fig.height=4, message=F, warning=F}
+rate_panel(monthly_rcg_reason, "rcg_ne_re_share",
+           "New Entrant + Reentrant share of RCG unemployed (%)", jco[4])
+```
+
+### Decomposed (NE vs Reentrant)
+
+```{r q6-ts-decomposed, fig.width=10, fig.height=4, message=F, warning=F}
+compare_panel(
+  monthly_rcg_reason,
+  cols   = c("rcg_ne_share", "rcg_re_share"),
+  labels = c("New Entrants", "Reentrants"),
+  colors = c(jco[4], jco[5]),
+  title  = "Among RCG unemployed: New Entrant vs Reentrant share"
+)
+```
+
+### RCG vs all unemployed
+
+```{r q6-ts-vs-all, fig.width=10, fig.height=4, message=F, warning=F}
+q6_cmp <- merge(
+  monthly_rcg_reason[, .(date, rcg_ne_re_share)],
+  monthly[, .(date, ne_re_share)],
+  by = "date"
+)
+compare_panel(
+  q6_cmp,
+  cols   = c("rcg_ne_re_share", "ne_re_share"),
+  labels = c("Among RCG unemployed", "Among all unemployed"),
+  colors = c(rcg_col, overall_col),
+  title  = "NE + Reentrant share: RCG unemployed vs all unemployed"
+)
+```
+:::
+
+::: callout-warning
+The RCG-unemployed pool is small in any single month, so the New Entrant and Reentrant counts behind the RCG monthly lines can be thin (the unweighted sample sizes are reported in the appendix's *Recoded indicators* table). Lean on the 12-month rolling mean (bold) rather than the raw monthly line (light), and on the pooled column of the table above.
+:::
+
 ::: callout-note
 Source: IPUMS CPS basic monthly microdata, January 1994–`r format(latest_month, "%b %Y")`. ASEC samples excluded. All estimates weighted by `WTFINL`.
+:::
+
+## Q7. What percentage of New Entrants and Reentrants are recent college graduates?
+
+Q6 conditioned on being an unemployed RCG and asked what reason they give. This question turns the crosstab around: it conditions on the **reason** and asks what share of that group is RCG. The denominators are the unemployed New Entrants (`WHYUNEMP == 6`) and the unemployed Reentrants (`WHYUNEMP == 5`); the numerators are the RCGs within each.
+
+```{r q7-table}
+# Share of a reason-group's unemployed that are RCG.
+# Denominator = unemployed with that reason; numerator = RCGs among them.
+rcg_share_of <- function(dt, flag_col) {
+  d <- dt[is_unemp == TRUE & get(flag_col) == TRUE]
+  d[, sum(WTFINL * is_rcg, na.rm = TRUE) / sum(WTFINL, na.rm = TRUE)]
+}
+
+q7_tbl <- data.table(
+  Window = c(window_label_12, window_label_all),
+  `RCG share of New Entrants` = c(
+    fmt_pct(100 * rcg_share_of(cps[in_window_12(date)], "is_ne")),
+    fmt_pct(100 * rcg_share_of(cps, "is_ne"))
+  ),
+  `RCG share of Reentrants` = c(
+    fmt_pct(100 * rcg_share_of(cps[in_window_12(date)], "is_re")),
+    fmt_pct(100 * rcg_share_of(cps, "is_re"))
+  )
+)
+
+q7_tbl |> gt() |> style_gt()
+```
+
+```{r q7-ts-prep, message=F, warning=F}
+# Monthly RCG share *within* each reason group (denominator = that group).
+monthly_rcg_in_entrants <- cps[, .(
+  ne_w        = sum(WTFINL * is_ne,             na.rm = TRUE),
+  re_w        = sum(WTFINL * is_re,             na.rm = TRUE),
+  rcg_in_ne_w = sum(WTFINL * (is_ne & is_rcg),  na.rm = TRUE),
+  rcg_in_re_w = sum(WTFINL * (is_re & is_rcg),  na.rm = TRUE)
+), by = date]
+setorder(monthly_rcg_in_entrants, date)
+monthly_rcg_in_entrants[, `:=`(
+  rcg_in_ne_share = 100 * rcg_in_ne_w / ne_w,
+  rcg_in_re_share = 100 * rcg_in_re_w / re_w
+)]
+```
+
+::: panel-tabset
+### RCG share of New Entrants
+
+```{r q7-ts-ne, fig.width=10, fig.height=4, message=F, warning=F}
+rate_panel(monthly_rcg_in_entrants, "rcg_in_ne_share",
+           "RCG share of unemployed New Entrants (%)", jco[4])
+```
+
+### RCG share of Reentrants
+
+```{r q7-ts-re, fig.width=10, fig.height=4, message=F, warning=F}
+rate_panel(monthly_rcg_in_entrants, "rcg_in_re_share",
+           "RCG share of unemployed Reentrants (%)", jco[5])
+```
+
+### Both
+
+```{r q7-ts-both, fig.width=10, fig.height=4, message=F, warning=F}
+compare_panel(
+  monthly_rcg_in_entrants,
+  cols   = c("rcg_in_ne_share", "rcg_in_re_share"),
+  labels = c("Share of New Entrants", "Share of Reentrants"),
+  colors = c(jco[4], jco[5]),
+  title  = "RCG share within each entry group"
+)
+```
+:::
+
+::: callout-warning
+These denominators (unemployed New Entrants, unemployed Reentrants) are themselves modest in any single month, so the monthly RCG-share lines are noisy. Lean on the 12-month rolling mean (bold) and the pooled column of the table.
 :::
 
 ## Appendix: Extract check
