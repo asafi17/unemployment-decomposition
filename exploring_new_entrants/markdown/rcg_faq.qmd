@@ -43,6 +43,7 @@ theme_set(theme_report)
 jco          <- pal_jco()(6)
 rcg_col      <- jco[1]
 overall_col  <- jco[2]
+ylb_col      <- jco[3]
 
 recessions <- data.table(
   start = as.Date(c("2001-03-01", "2007-12-01", "2020-02-01")),
@@ -95,6 +96,8 @@ style_gt <- function(g) {
 
 A **Recent College Graduate (RCG)** is a person who is **age 21–26** and holds a **bachelor's degree or higher** (`AGE %in% 21:26` and `EDUC >= 111` in IPUMS CPS). This captures people near the usual age of bachelor's-degree completion and the first several years afterward.
 
+A **Young Less-Bachelor's (YLB)** person is **age 18–25** with **less than a bachelor's degree** (`AGE %in% 18:25` and `EDUC < 111`). This is the age-peer comparison group for RCGs who did not complete a four-year degree; several questions below add a YLB series alongside RCG and overall figures.
+
 All shares, rates, means, and medians use the IPUMS basic monthly person weight (`WTFINL`). The sample is the regular monthly basic CPS from January 1994 through the latest extract month, with the ASEC supplement excluded.
 
 ```{r data-prep, message=F, warning=F}
@@ -105,6 +108,7 @@ cps <- fread(csv_path)
 cps[, `:=`(
   date     = make_date(YEAR, MONTH, 1L),
   is_rcg   = AGE >= 21 & AGE <= 26 & EDUC >= 111,
+  is_ylb   = AGE >= 18 & AGE <= 25 & EDUC < 111,
   is_lf    = LABFORCE == 2,
   is_emp   = EMPSTAT %in% c(10L, 12L),
   is_unemp = EMPSTAT %in% c(20L, 21L, 22L)
@@ -124,6 +128,8 @@ format_window   <- paste0(format(latest_12_start, "%b %Y"),
 monthly <- cps[, .(
   rcg_unemp_w   = sum(WTFINL * (is_rcg & is_unemp), na.rm = TRUE),
   rcg_lf_w      = sum(WTFINL * (is_rcg & is_lf),    na.rm = TRUE),
+  ylb_unemp_w   = sum(WTFINL * (is_ylb & is_unemp), na.rm = TRUE),
+  ylb_lf_w      = sum(WTFINL * (is_ylb & is_lf),    na.rm = TRUE),
   total_unemp_w = sum(WTFINL * is_unemp,            na.rm = TRUE),
   total_lf_w    = sum(WTFINL * is_lf,               na.rm = TRUE),
   ne_re_w       = sum(WTFINL * is_ne_re,            na.rm = TRUE),
@@ -133,9 +139,12 @@ monthly <- cps[, .(
 setorder(monthly, date)
 monthly[, `:=`(
   rcg_unemp_rate     = 100 * rcg_unemp_w / rcg_lf_w,
+  ylb_unemp_rate     = 100 * ylb_unemp_w / ylb_lf_w,
   overall_unemp_rate = 100 * total_unemp_w / total_lf_w,
   rcg_share_unemp    = 100 * rcg_unemp_w / total_unemp_w,
   rcg_share_lf       = 100 * rcg_lf_w    / total_lf_w,
+  ylb_share_unemp    = 100 * ylb_unemp_w / total_unemp_w,
+  ylb_share_lf       = 100 * ylb_lf_w    / total_lf_w,
   ne_re_share        = 100 * ne_re_w     / total_unemp_w,
   ne_share           = 100 * ne_w        / total_unemp_w,
   re_share           = 100 * re_w        / total_unemp_w,
@@ -148,6 +157,8 @@ unemp_dt    <- cps[is_unemp & !is.na(dur_wks)]
 monthly_dur <- unemp_dt[, .(
   rcg_mean       = weighted_mean(dur_wks[is_rcg], WTFINL[is_rcg]),
   rcg_median     = weighted_median(dur_wks[is_rcg], WTFINL[is_rcg]),
+  ylb_mean       = weighted_mean(dur_wks[is_ylb], WTFINL[is_ylb]),
+  ylb_median     = weighted_median(dur_wks[is_ylb], WTFINL[is_ylb]),
   overall_mean   = weighted_mean(dur_wks, WTFINL),
   overall_median = weighted_median(dur_wks, WTFINL)
 ), by = date]
@@ -243,6 +254,18 @@ compare_panel(
   title  = "Unemployment rate: RCG vs Overall"
 )
 ```
+
+### RCG vs YLB vs Overall
+
+```{r q1-ts-compare-ylb, fig.width=10, fig.height=4, message=F, warning=F}
+compare_panel(
+  monthly,
+  cols   = c("rcg_unemp_rate", "ylb_unemp_rate", "overall_unemp_rate"),
+  labels = c("RCG", "YLB", "Overall"),
+  colors = c(rcg_col, ylb_col, overall_col),
+  title  = "Unemployment rate: RCG vs YLB vs Overall"
+)
+```
 :::
 
 ## Q2. What percentage of the unemployed are recent college graduates?
@@ -252,12 +275,20 @@ q2_value <- function(dt) {
   d <- dt[is_unemp == TRUE]
   d[, sum(WTFINL * is_rcg, na.rm = TRUE) / sum(WTFINL, na.rm = TRUE)]
 }
+q2_ylb_value <- function(dt) {
+  d <- dt[is_unemp == TRUE]
+  d[, sum(WTFINL * is_ylb, na.rm = TRUE) / sum(WTFINL, na.rm = TRUE)]
+}
 
 q2_tbl <- data.table(
   Window = c(window_label_12, window_label_all),
   `RCG share of unemployed` = c(
     fmt_pct(100 * q2_value(cps[in_window_12(date)])),
     fmt_pct(100 * q2_value(cps))
+  ),
+  `YLB share of unemployed` = c(
+    fmt_pct(100 * q2_ylb_value(cps[in_window_12(date)])),
+    fmt_pct(100 * q2_ylb_value(cps))
   )
 )
 
@@ -285,6 +316,20 @@ compare_panel(
 ```
 
 When the "share of unemployed" line sits above the "share of LF" line, RCGs are *over*-represented in the unemployed pool relative to their presence in the labor force, and vice versa.
+
+### YLB: share of unemployed vs share of LF
+
+```{r q2-ts-compare-ylb, fig.width=10, fig.height=4, message=F, warning=F}
+compare_panel(
+  monthly,
+  cols   = c("ylb_share_unemp", "ylb_share_lf"),
+  labels = c("Share of unemployed", "Share of LF"),
+  colors = c(jco[2], jco[3]),
+  title  = "YLB: share of unemployed vs share of labor force"
+)
+```
+
+The same reading applies to YLB: when the "share of unemployed" line sits above the "share of LF" line, young workers without a bachelor's are over-represented among the unemployed relative to their share of the labor force.
 :::
 
 ## Q3. What percentage of the labor force are recent college graduates?
@@ -424,10 +469,13 @@ Weighted **mean** and **median** weeks unemployed (`DURUNEMP`) for unemployed RC
 ```{r q5-table, message=F, warning=F}
 q5_value <- function(dt) {
   rcg <- dt[is_unemp & is_rcg]
+  ylb <- dt[is_unemp & is_ylb]
   all <- dt[is_unemp == TRUE]
   data.table(
     `RCG mean (weeks)`       = weighted_mean(rcg$dur_wks,  rcg$WTFINL),
     `RCG median (weeks)`     = weighted_median(rcg$dur_wks, rcg$WTFINL),
+    `YLB mean (weeks)`       = weighted_mean(ylb$dur_wks,  ylb$WTFINL),
+    `YLB median (weeks)`     = weighted_median(ylb$dur_wks, ylb$WTFINL),
     `Overall mean (weeks)`   = weighted_mean(all$dur_wks,   all$WTFINL),
     `Overall median (weeks)` = weighted_median(all$dur_wks, all$WTFINL)
   )
@@ -448,23 +496,23 @@ q5_tbl |>
 # Reshape to long for clean ggplot legend (used by both mean and median tabs)
 dur_long_mean <- melt(monthly_dur,
                       id.vars = "date",
-                      measure.vars = c("rcg_mean", "overall_mean"),
+                      measure.vars = c("rcg_mean", "ylb_mean", "overall_mean"),
                       variable.name = "group", value.name = "value")
 dur_long_mean[, group := factor(group,
-                                levels = c("rcg_mean", "overall_mean"),
-                                labels = c("RCG", "Overall"))]
+                                levels = c("rcg_mean", "ylb_mean", "overall_mean"),
+                                labels = c("RCG", "YLB", "Overall"))]
 dur_long_mean[, ma := roll_mean12(value), by = group]
 
 dur_long_med <- melt(monthly_dur,
                      id.vars = "date",
-                     measure.vars = c("rcg_median", "overall_median"),
+                     measure.vars = c("rcg_median", "ylb_median", "overall_median"),
                      variable.name = "group", value.name = "value")
 dur_long_med[, group := factor(group,
-                               levels = c("rcg_median", "overall_median"),
-                               labels = c("RCG", "Overall"))]
+                               levels = c("rcg_median", "ylb_median", "overall_median"),
+                               labels = c("RCG", "YLB", "Overall"))]
 dur_long_med[, ma := roll_mean12(value), by = group]
 
-dur_cols <- c(RCG = rcg_col, Overall = overall_col)
+dur_cols <- c(RCG = rcg_col, YLB = ylb_col, Overall = overall_col)
 
 make_dur_panel <- function(d, title) {
   p <- ggplot(d, aes(x = date, color = group)) +
@@ -484,13 +532,13 @@ make_dur_panel <- function(d, title) {
 ### Mean weeks
 
 ```{r q5-ts-mean, fig.width=10, fig.height=4, message=F, warning=F}
-make_dur_panel(dur_long_mean, "Mean weeks unemployed: RCG vs overall")
+make_dur_panel(dur_long_mean, "Mean weeks unemployed: RCG vs YLB vs overall")
 ```
 
 ### Median weeks
 
 ```{r q5-ts-median, fig.width=10, fig.height=4, message=F, warning=F}
-make_dur_panel(dur_long_med, "Median weeks unemployed: RCG vs overall")
+make_dur_panel(dur_long_med, "Median weeks unemployed: RCG vs YLB vs overall")
 ```
 :::
 
@@ -519,30 +567,46 @@ reason_share <- function(dt, rcg_flag) {
     100 * d[WHYUNEMP == k, sum(WTFINL, na.rm = TRUE)] / tot,
     numeric(1))
 }
+
+# Same distribution, but for the unemployed in an arbitrary group flag column
+# (e.g. "is_ylb"). Denominator = that group's unemployed with a valid reason.
+reason_share_col <- function(dt, col) {
+  d   <- dt[is_unemp & get(col) == TRUE & WHYUNEMP %in% why_levels]
+  tot <- d[, sum(WTFINL, na.rm = TRUE)]
+  vapply(why_levels, function(k)
+    100 * d[WHYUNEMP == k, sum(WTFINL, na.rm = TRUE)] / tot,
+    numeric(1))
+}
 ```
 
 ```{r q6-table}
 q6_12  <- list(rcg = reason_share(cps[in_window_12(date)], TRUE),
-               non = reason_share(cps[in_window_12(date)], FALSE))
+               non = reason_share(cps[in_window_12(date)], FALSE),
+               ylb = reason_share_col(cps[in_window_12(date)], "is_ylb"))
 q6_all <- list(rcg = reason_share(cps, TRUE),
-               non = reason_share(cps, FALSE))
+               non = reason_share(cps, FALSE),
+               ylb = reason_share_col(cps, "is_ylb"))
 
 q6_tbl <- data.table(
   Reason             = why_labels,
   `RCG (12mo)`       = q6_12$rcg,
   `Non-RCG (12mo)`   = q6_12$non,
+  `YLB (12mo)`       = q6_12$ylb,
   `RCG (pooled)`     = q6_all$rcg,
-  `Non-RCG (pooled)` = q6_all$non
+  `Non-RCG (pooled)` = q6_all$non,
+  `YLB (pooled)`     = q6_all$ylb
 )
 
 q6_tbl |>
   gt() |>
   fmt_number(columns = where(is.numeric), decimals = 1, pattern = "{x}%") |>
-  tab_spanner(label = window_label_12,  columns = c(`RCG (12mo)`, `Non-RCG (12mo)`)) |>
-  tab_spanner(label = window_label_all, columns = c(`RCG (pooled)`, `Non-RCG (pooled)`)) |>
+  tab_spanner(label = window_label_12,
+              columns = c(`RCG (12mo)`, `Non-RCG (12mo)`, `YLB (12mo)`)) |>
+  tab_spanner(label = window_label_all,
+              columns = c(`RCG (pooled)`, `Non-RCG (pooled)`, `YLB (pooled)`)) |>
   cols_label(
-    `RCG (12mo)` = "RCG", `Non-RCG (12mo)` = "Non-RCG",
-    `RCG (pooled)` = "RCG", `Non-RCG (pooled)` = "Non-RCG"
+    `RCG (12mo)` = "RCG", `Non-RCG (12mo)` = "Non-RCG", `YLB (12mo)` = "YLB",
+    `RCG (pooled)` = "RCG", `Non-RCG (pooled)` = "Non-RCG", `YLB (pooled)` = "YLB"
   ) |>
   style_gt()
 ```
@@ -562,6 +626,15 @@ monthly_rcg_reason[, `:=`(
   rcg_re_share    = 100 * rcg_re_w / rcg_unemp_w,
   rcg_ne_re_share = 100 * (rcg_ne_w + rcg_re_w) / rcg_unemp_w
 )]
+
+# Same NE + Reentrant share, but within YLB unemployed (denominator = YLB unemp).
+monthly_ylb_reason <- cps[, .(
+  ylb_unemp_w = sum(WTFINL * (is_ylb & is_unemp), na.rm = TRUE),
+  ylb_ne_w    = sum(WTFINL * (is_ylb & is_ne),    na.rm = TRUE),
+  ylb_re_w    = sum(WTFINL * (is_ylb & is_re),    na.rm = TRUE)
+), by = date]
+setorder(monthly_ylb_reason, date)
+monthly_ylb_reason[, ylb_ne_re_share := 100 * (ylb_ne_w + ylb_re_w) / ylb_unemp_w]
 ```
 
 ::: panel-tabset
@@ -598,6 +671,23 @@ compare_panel(
   labels = c("Among RCG unemployed", "Among all unemployed"),
   colors = c(rcg_col, overall_col),
   title  = "NE + Reentrant share: RCG unemployed vs all unemployed"
+)
+```
+
+### RCG vs all unemployed vs YLB
+
+```{r q6-ts-vs-all-ylb, fig.width=10, fig.height=4, message=F, warning=F}
+q6_cmp3 <- Reduce(function(x, y) merge(x, y, by = "date"), list(
+  monthly_rcg_reason[, .(date, rcg_ne_re_share)],
+  monthly[, .(date, ne_re_share)],
+  monthly_ylb_reason[, .(date, ylb_ne_re_share)]
+))
+compare_panel(
+  q6_cmp3,
+  cols   = c("rcg_ne_re_share", "ne_re_share", "ylb_ne_re_share"),
+  labels = c("Among RCG unemployed", "Among all unemployed", "Among YLB unemployed"),
+  colors = c(rcg_col, overall_col, ylb_col),
+  title  = "NE + Reentrant share: RCG vs all unemployed vs YLB"
 )
 ```
 :::
@@ -964,21 +1054,25 @@ Counts below are person-months from January 1994 through `r format(latest_month,
 recode_summary <- data.table(
   Indicator = c(
     "RCG (age 21–26 & bachelor's+)",
+    "YLB (age 18–25 & less than bachelor's)",
     "In labor force (LABFORCE == 2)",
     "Employed (EMPSTAT in {10, 12})",
     "Unemployed (EMPSTAT in {20, 21, 22})",
     "RCG ∩ in labor force",
     "RCG ∩ unemployed",
+    "YLB ∩ unemployed",
     "Unemployed ∩ New Entrant (WHYUNEMP == 6)",
     "Unemployed ∩ Reentrant (WHYUNEMP == 5)"
   ),
   `Unweighted rows` = c(
     format(sum(cps$is_rcg,                    na.rm = TRUE), big.mark = ","),
+    format(sum(cps$is_ylb,                    na.rm = TRUE), big.mark = ","),
     format(sum(cps$is_lf,                     na.rm = TRUE), big.mark = ","),
     format(sum(cps$is_emp,                    na.rm = TRUE), big.mark = ","),
     format(sum(cps$is_unemp,                  na.rm = TRUE), big.mark = ","),
     format(sum(cps$is_rcg & cps$is_lf,        na.rm = TRUE), big.mark = ","),
     format(sum(cps$is_rcg & cps$is_unemp,     na.rm = TRUE), big.mark = ","),
+    format(sum(cps$is_ylb & cps$is_unemp,     na.rm = TRUE), big.mark = ","),
     format(sum(cps$is_ne,                     na.rm = TRUE), big.mark = ","),
     format(sum(cps$is_re,                     na.rm = TRUE), big.mark = ",")
   )
