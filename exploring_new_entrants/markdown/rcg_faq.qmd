@@ -774,6 +774,97 @@ compare_panel(
 These denominators (unemployed New Entrants, unemployed Reentrants) are themselves modest in any single month, so the monthly RCG-share lines are noisy. Lean on the 12-month rolling mean (bold) and the pooled column of the table.
 :::
 
+## Q8. How long are people unemployed, by reason for unemployment?
+
+Q5 split duration of unemployment by *who* the person is (RCG, YLB, overall); this question splits it by *why* they are unemployed. Each row is a `WHYUNEMP` category, and the cells are the weighted **mean** and **median** weeks unemployed (`DURUNEMP`) among that reason's unemployed. New Entrants and Reentrants have no prior job to lose, so their "duration" is time spent searching since they began looking — useful context for the entry-focused questions above.
+
+```{r q8-table, message=F, warning=F}
+# Weighted mean/median weeks unemployed within each WHYUNEMP reason.
+# Rows are reordered to why_levels; reasons absent from the window come back NA.
+dur_reason_summary <- function(dt) {
+  d <- dt[is_unemp & !is.na(dur_wks) & WHYUNEMP %in% why_levels]
+  out <- d[, .(
+    mean_wks   = weighted_mean(dur_wks, WTFINL),
+    median_wks = weighted_median(dur_wks, WTFINL)
+  ), by = WHYUNEMP]
+  out[match(why_levels, WHYUNEMP)]
+}
+
+s12  <- dur_reason_summary(cps[in_window_12(date)])
+sall <- dur_reason_summary(cps)
+
+q8_tbl <- data.table(
+  Reason            = why_labels,
+  `Mean (12mo)`     = s12$mean_wks,
+  `Median (12mo)`   = s12$median_wks,
+  `Mean (pooled)`   = sall$mean_wks,
+  `Median (pooled)` = sall$median_wks
+)
+
+q8_tbl |>
+  gt() |>
+  fmt_number(columns = where(is.numeric), decimals = 1) |>
+  tab_spanner(label = window_label_12,
+              columns = c(`Mean (12mo)`, `Median (12mo)`)) |>
+  tab_spanner(label = window_label_all,
+              columns = c(`Mean (pooled)`, `Median (pooled)`)) |>
+  cols_label(
+    `Mean (12mo)` = "Mean (wks)", `Median (12mo)` = "Median (wks)",
+    `Mean (pooled)` = "Mean (wks)", `Median (pooled)` = "Median (wks)"
+  ) |>
+  style_gt()
+```
+
+```{r q8-ts-prep, message=F, warning=F}
+# Monthly weighted mean/median weeks unemployed, by WHYUNEMP reason.
+monthly_dur_reason <- cps[is_unemp & !is.na(dur_wks) & WHYUNEMP %in% why_levels, .(
+  mean_wks   = weighted_mean(dur_wks, WTFINL),
+  median_wks = weighted_median(dur_wks, WTFINL)
+), by = .(date, WHYUNEMP)]
+setorder(monthly_dur_reason, WHYUNEMP, date)
+monthly_dur_reason[, reason := factor(WHYUNEMP, levels = why_levels, labels = why_labels)]
+monthly_dur_reason[, `:=`(
+  mean_ma   = roll_mean12(mean_wks),
+  median_ma = roll_mean12(median_wks)
+), by = WHYUNEMP]
+
+reason_cols <- setNames(jco, why_labels)
+
+# Six reasons overlaid would be unreadable as raw monthly lines, so only the
+# 12-month rolling mean is drawn for each reason.
+make_dur_reason_panel <- function(ma_col, title) {
+  d <- copy(monthly_dur_reason)
+  d[, .y := get(ma_col)]
+  p <- ggplot(d, aes(x = date, y = .y, color = reason)) +
+    geom_line(linewidth = 0.9, alpha = 0.9) +
+    scale_color_manual(values = reason_cols) +
+    scale_y_continuous(labels = \(x) paste0(x, " wks")) +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    labs(title = title,
+         subtitle = "12-month rolling mean of the monthly weighted value. NBER recessions shaded.",
+         y = "Weeks", x = NULL)
+  add_recessions(p)
+}
+```
+
+::: panel-tabset
+### Mean weeks
+
+```{r q8-ts-mean, fig.width=10, fig.height=4, message=F, warning=F}
+make_dur_reason_panel("mean_ma", "Mean weeks unemployed, by reason for unemployment")
+```
+
+### Median weeks
+
+```{r q8-ts-median, fig.width=10, fig.height=4, message=F, warning=F}
+make_dur_reason_panel("median_ma", "Median weeks unemployed, by reason for unemployment")
+```
+:::
+
+::: callout-note
+Duration here is total weeks unemployed as of the survey, not completed spells, so it is a point-in-time snapshot rather than how long a typical spell ultimately lasts. Permanent job losers and reentrants are the larger reason groups; New Entrants and Job Leavers can be thin in a single month, so lean on the rolling means and the pooled columns.
+:::
+
 ## Appendix: Extract check
 
 This section checks the IPUMS pull before reporting estimates: variables, month coverage, sample size, and recoded indicators.
