@@ -134,7 +134,8 @@ monthly <- cps[, .(
   total_lf_w    = sum(WTFINL * is_lf,               na.rm = TRUE),
   ne_re_w       = sum(WTFINL * is_ne_re,            na.rm = TRUE),
   ne_w          = sum(WTFINL * is_ne,               na.rm = TRUE),
-  re_w          = sum(WTFINL * is_re,               na.rm = TRUE)
+  re_w          = sum(WTFINL * is_re,               na.rm = TRUE),
+  nere_nonrcg_w = sum(WTFINL * (is_ne_re & !is_rcg), na.rm = TRUE)
 ), by = date]
 setorder(monthly, date)
 monthly[, `:=`(
@@ -149,6 +150,8 @@ monthly[, `:=`(
   ne_share           = 100 * ne_w        / total_unemp_w,
   re_share           = 100 * re_w        / total_unemp_w,
   ne_re_lf_share     = 100 * ne_re_w     / total_lf_w,
+  nere_nonrcg_share_unemp = 100 * nere_nonrcg_w / total_unemp_w,
+  nere_nonrcg_share_lf    = 100 * nere_nonrcg_w / total_lf_w,
   rcg_lf_millions    = rcg_lf_w / 1e6
 )]
 
@@ -330,6 +333,47 @@ compare_panel(
 ```
 
 The same reading applies to YLB: when the "share of unemployed" line sits above the "share of LF" line, young workers without a bachelor's are over-represented among the unemployed relative to their share of the labor force.
+
+### Non-RCG entrants: share of unemployed vs LF
+
+This isolates **New Entrants + Reentrants who are *not* RCG** (`WHYUNEMP %in% 5:6 & !is_rcg`) and asks how much of the unemployed pool — and of the labor force — they make up. It strips the recent-graduate slice out of the entry categories so the line reflects everyone *else* entering or re-entering the job market.
+
+```{r q2-ts-nere-nonrcg, fig.width=10, fig.height=4, message=F, warning=F}
+# Share-of-unemployed (~15-25%) and share-of-labor-force (~1-2%) differ by
+# roughly the unemployment rate, so the labor-force series is rescaled onto a
+# secondary right-hand axis (sec_axis divides the scaling factor back out).
+sf_q2 <- mean(monthly$nere_nonrcg_share_unemp, na.rm = TRUE) /
+         mean(monthly$nere_nonrcg_share_lf, na.rm = TRUE)
+
+q2_ov_long <- rbindlist(list(
+  monthly[, .(date, series = "Share of unemployed",
+              value = nere_nonrcg_share_unemp)],
+  monthly[, .(date, series = "Share of labor force",
+              value = nere_nonrcg_share_lf * sf_q2)]
+))
+q2_ov_long[, series := factor(series,
+                              levels = c("Share of unemployed", "Share of labor force"))]
+q2_ov_long[, ma := roll_mean12(value), by = series]
+
+q2_ov_cols <- c("Share of unemployed"  = jco[4],
+                "Share of labor force" = jco[2])
+
+p_q2_ov <- ggplot(q2_ov_long, aes(x = date, color = series)) +
+  geom_line(aes(y = value), alpha = 0.25, linewidth = 0.4) +
+  geom_line(aes(y = ma),    linewidth = 1.0, alpha = 0.9) +
+  scale_color_manual(values = q2_ov_cols) +
+  scale_y_continuous(
+    name     = "Share of unemployed",
+    labels   = \(x) paste0(x, "%"),
+    sec.axis = sec_axis(~ . / sf_q2, name = "Share of labor force",
+                        labels = \(x) paste0(x, "%"))
+  ) +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(title = "Non-RCG New Entrants + Reentrants: share of unemployed vs share of labor force",
+       subtitle = "Monthly (light); 12-month rolling mean (bold). Left axis = share of unemployed; right axis = share of labor force. NBER recessions shaded.",
+       x = NULL)
+add_recessions(p_q2_ov)
+```
 :::
 
 ## Q3. What percentage of the labor force are recent college graduates?
@@ -887,6 +931,14 @@ dur_levels[, `:=`(
   gap_nere_rcg     = nere_median - rcg_median,
   gap_overall_nere = overall_median - nere_median
 )]
+
+# Median weeks unemployed for the complements of the two entry-focused groups:
+# non-entrants (job separations only, !is_ne_re) and non-RCG unemployed.
+monthly_dur_excl <- cps[is_unemp & !is.na(dur_wks), .(
+  nonentrant_median = weighted_median(dur_wks[!is_ne_re], WTFINL[!is_ne_re]),
+  nonrcg_median     = weighted_median(dur_wks[!is_rcg],   WTFINL[!is_rcg])
+), by = date]
+setorder(monthly_dur_excl, date)
 ```
 
 ### Entry group only: mean vs median weeks
@@ -924,6 +976,21 @@ compare_panel(
 ::: callout-note
 The gap lines (iv, v) are differences of monthly weighted medians, so they sit near zero against the same week axis as the level lines and can turn negative. As with the other duration plots, the entry-group medians can be thin in a single month — lean on the 12-month rolling mean (bold) rather than the raw monthly line (light).
 :::
+
+### Median weeks: non-entrants and non-RCG
+
+The plots above center on the entry categories and on recent graduates. This one looks at their complements: the **median** weeks unemployed for (i) **non-entrants** — the unemployed whose reason is a job separation rather than entering or re-entering the labor force (`!is_ne_re`, i.e. `WHYUNEMP %in% 1:4`) — and (ii) **non-RCG** unemployed (`!is_rcg`). Both are weighted medians in weeks, so they read directly off the same axis. Because each group is the large majority of the unemployed, these lines track the overall median closely and serve as the baselines the entry-group and RCG durations are measured against.
+
+```{r q8-ts-excl, fig.width=10, fig.height=4, message=F, warning=F}
+compare_panel(
+  monthly_dur_excl,
+  cols   = c("nonentrant_median", "nonrcg_median"),
+  labels = c("Non-entrants (job separations)", "Non-RCG"),
+  colors = c(jco[1], jco[2]),
+  title  = "Median weeks unemployed: non-entrants vs non-RCG",
+  y_label = "Weeks", y_suffix = " wks"
+)
+```
 
 ## Appendix: Extract check
 
