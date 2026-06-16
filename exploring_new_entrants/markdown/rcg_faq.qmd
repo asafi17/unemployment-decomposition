@@ -865,6 +865,66 @@ make_dur_reason_panel("median_ma", "Median weeks unemployed, by reason for unemp
 Duration here is total weeks unemployed as of the survey, not completed spells, so it is a point-in-time snapshot rather than how long a typical spell ultimately lasts. Permanent job losers and reentrants are the larger reason groups; New Entrants and Job Leavers can be thin in a single month, so lean on the rolling means and the pooled columns.
 :::
 
+```{r q8b-prep, message=F, warning=F}
+# Weeks unemployed for the pooled entry group (New Entrants + Reentrants).
+# is_ne_re already requires is_unemp, so we only drop missing duration.
+monthly_dur_nere <- cps[is_ne_re & !is.na(dur_wks), .(
+  mean_wks   = weighted_mean(dur_wks, WTFINL),
+  median_wks = weighted_median(dur_wks, WTFINL)
+), by = date]
+setorder(monthly_dur_nere, date)
+
+# Median-duration levels and gaps for the comparison plot below.
+# Levels: overall, RCG, and the pooled entry group. Gaps are differences in
+# the monthly weighted medians, so they sit near zero on the same week axis.
+dur_levels <- merge(
+  monthly_dur[, .(date, overall_median, rcg_median)],
+  monthly_dur_nere[, .(date, nere_median = median_wks)],
+  by = "date", all = TRUE
+)
+setorder(dur_levels, date)
+dur_levels[, `:=`(
+  gap_nere_rcg     = nere_median - rcg_median,
+  gap_overall_nere = overall_median - nere_median
+)]
+```
+
+### Entry group only: mean vs median weeks
+
+This pools the two entry reasons from the by-reason plots above — **New Entrants** and **Reentrants** — into a single line and asks how long that combined group sits unemployed. The two lines compare the **mean** (the average spell) against the **median** (the typical, middle spell). When the mean runs above the median, a handful of unusually long searches are pulling the average up while most people's spells are shorter.
+
+```{r q8-ts-nere, fig.width=10, fig.height=4, message=F, warning=F}
+compare_panel(
+  monthly_dur_nere,
+  cols   = c("mean_wks", "median_wks"),
+  labels = c("Mean", "Median"),
+  colors = c(jco[4], jco[5]),
+  title  = "Weeks unemployed: New Entrants + Reentrants (combined)",
+  y_label = "Weeks", y_suffix = " wks"
+)
+```
+
+### Median weeks: levels and gaps
+
+This puts five **median**-duration series on one chart, all measured in weeks. Three are levels you can read directly: (i) the **overall** median across all unemployed, (ii) the **RCG** median, and (iii) the **New Entrants + Reentrants** median. The other two are gaps that hover near zero on the same axis: (iv) **entry group minus RCG**, which asks whether first-job and returning searchers take longer than recent graduates, and (v) **overall minus entry group**, which shows how much shorter (positive) or longer (negative) entry spells run compared with the typical unemployed worker. A gap above zero means the first group in its label waits longer.
+
+```{r q8-ts-median-gaps, fig.width=10, fig.height=4, message=F, warning=F}
+compare_panel(
+  dur_levels,
+  cols   = c("overall_median", "rcg_median", "nere_median",
+             "gap_nere_rcg", "gap_overall_nere"),
+  labels = c("Overall median", "RCG median", "NE + Reentrant median",
+             "Gap: (NE + Re) − RCG", "Gap: overall − (NE + Re)"),
+  colors = jco[1:5],
+  title  = "Median weeks unemployed: levels and gaps",
+  y_label = "Weeks", y_suffix = " wks"
+)
+```
+
+::: callout-note
+The gap lines (iv, v) are differences of monthly weighted medians, so they sit near zero against the same week axis as the level lines and can turn negative. As with the other duration plots, the entry-group medians can be thin in a single month — lean on the 12-month rolling mean (bold) rather than the raw monthly line (light).
+:::
+
 ## Appendix: Extract check
 
 This section checks the IPUMS pull before reporting estimates: variables, month coverage, sample size, and recoded indicators.
