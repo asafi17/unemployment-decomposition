@@ -934,10 +934,17 @@ dur_levels[, `:=`(
 
 # Median weeks unemployed for the complements of the two entry-focused groups:
 # non-entrants (job separations only, !is_ne_re) and non-RCG unemployed.
+# RCG and the pooled entry group (NE + Reentrant) medians are merged in from
+# dur_levels so the plot can show each group against its complement.
 monthly_dur_excl <- cps[is_unemp & !is.na(dur_wks), .(
   nonentrant_median = weighted_median(dur_wks[!is_ne_re], WTFINL[!is_ne_re]),
   nonrcg_median     = weighted_median(dur_wks[!is_rcg],   WTFINL[!is_rcg])
 ), by = date]
+monthly_dur_excl <- merge(
+  monthly_dur_excl,
+  dur_levels[, .(date, rcg_median, nere_median)],
+  by = "date", all.x = TRUE
+)
 setorder(monthly_dur_excl, date)
 ```
 
@@ -979,15 +986,16 @@ The gap lines (iv, v) are differences of monthly weighted medians, so they sit n
 
 ### Median weeks: non-entrants and non-RCG
 
-The plots above center on the entry categories and on recent graduates. This one looks at their complements: the **median** weeks unemployed for (i) **non-entrants** — the unemployed whose reason is a job separation rather than entering or re-entering the labor force (`!is_ne_re`, i.e. `WHYUNEMP %in% 1:4`) — and (ii) **non-RCG** unemployed (`!is_rcg`). Both are weighted medians in weeks, so they read directly off the same axis. Because each group is the large majority of the unemployed, these lines track the overall median closely and serve as the baselines the entry-group and RCG durations are measured against.
+The plots above center on the entry categories and on recent graduates. This one pairs each group with its complement so they can be read side by side: the **median** weeks unemployed for (i) **non-entrants** — the unemployed whose reason is a job separation rather than entering or re-entering the labor force (`!is_ne_re`, i.e. `WHYUNEMP %in% 1:4`) — and (ii) **non-RCG** unemployed (`!is_rcg`), alongside (iii) **RCG** and (iv) the pooled **New Entrants + Reentrant** group. All four are weighted medians in weeks, so they read directly off the same axis. The two complement lines (non-entrants, non-RCG) are the large majority of the unemployed, so they track the overall median closely and serve as the baselines the RCG and entry-group durations are measured against.
 
 ```{r q8-ts-excl, fig.width=10, fig.height=4, message=F, warning=F}
 compare_panel(
   monthly_dur_excl,
-  cols   = c("nonentrant_median", "nonrcg_median"),
-  labels = c("Non-entrants (job separations)", "Non-RCG"),
-  colors = c(jco[1], jco[2]),
-  title  = "Median weeks unemployed: non-entrants vs non-RCG",
+  cols   = c("nonentrant_median", "nonrcg_median", "rcg_median", "nere_median"),
+  labels = c("Non-entrants", "Non-RCG",
+             "RCG", "NE + Reentrant"),
+  colors = c(jco[1], jco[2], jco[3], jco[4]),
+  title  = "Median weeks unemployed: non-entrants vs non-RCG, with RCG and entrants",
   y_label = "Weeks", y_suffix = " wks"
 )
 ```
