@@ -97,7 +97,7 @@ $$
 \text{representation ratio} = \frac{\text{group's share of this cause's unemployed pool}}{\text{group's share of the overall labor force}}
 $$
 
-A value of 1 means the group's presence among that cause's unemployed is exactly proportional to its presence in the labor force. A value above 1 means the group is overrepresented; a value below 1 means underrepresented. Values are computed on the pooled CPS sample (1994–present) so that each ratio reflects a long-run average rather than a single-year snapshot. We present each cause's ratios on a radar ("spiderweb") plot. Each spoke is one demographic dimension, labeled at the end with the dominant group on that dimension (e.g., "Age 16–24" on the age spoke, "High school or less" on the education spoke). The radius at that spoke is the group's representation ratio. A polygon hugging the 1 ring says the cause's unemployed look roughly like the country's workers along each margin. A polygon stretching far outside the 1 ring says that a cause's unemployed are overrepresented relative to the country's workers. A polygon deep within the 1 ring says that a cause's unemployed are underrepresented relative to the country's workers. 
+A value of 1 means the group's presence among that cause's unemployed is exactly proportional to its presence in the labor force. A value above 1 means the group is overrepresented; a value below 1 means underrepresented. Values are computed on the pooled CPS sample (1994–present) so that each ratio reflects a long-run average rather than a single-year snapshot. We present each cause's ratios on a radar ("spiderweb") plot. Each spoke is one demographic dimension, labeled at the end with the dominant group on that dimension (e.g., "Age 16–24" on the age spoke, "HS Diploma" on the education spoke). The radius at that spoke is the group's representation ratio. A polygon hugging the 1 ring says the cause's unemployed look roughly like the country's workers along each margin. A polygon stretching far outside the 1 ring says that a cause's unemployed are overrepresented relative to the country's workers. A polygon deep within the 1 ring says that a cause's unemployed are underrepresented relative to the country's workers. 
 
 ```{r radar-representation-ratio, fig.width=15, fig.height=16}
 #| fig-cap: "Dominant-group representation ratios by reason-for-unemployment category, pooled CPS 1994–present. Each spoke shows the group with the largest share on that dimension; the radius is that group's share of the cause-specific unemployed pool divided by its share of the labor force. Solid ring = 1 (proportional representation)."
@@ -255,6 +255,20 @@ patchwork::wrap_plots(radar_plots, ncol = 2)
 
 For five of the six categories, the polygons hug the 1-ring, deviating on at most one spoke. New Entrants are the clear outlier, sitting far outside the 1-ring on age, education, and, by construction, occupation and class, since they have no prior job. Because UI eligibility depends on recent work history and earnings thresholds, these demographic differences map directly onto how much of a cause's unemployed actually shows up in the claims data.
 
+```{r ne-composition-narrative, include=FALSE}
+# Provenance: this parquet is produced by build_panels.R section 8c
+# (unemployment_new_entrant_composition.parquet). The paragraph below cites it
+# inline via nec() so the numbers always match the build.
+ne_comp <- arrow::read_parquet(
+  here("data", "final", "unemployment_new_entrant_composition.parquet")
+)
+nec <- function(w, m) {
+  sprintf("%.0f%%", 100 * ne_comp$value[ne_comp$window == w & ne_comp$metric == m])
+}
+```
+
+One might object that New Entrants are just teenagers — and pooled over 1994–present they largely are, with `r nec("pooled", "age_16_19")` aged 16–19 and `r nec("pooled", "educ_below_hs")` below a high-school diploma. But that pooled picture averages over thirty years, and 2025 looks different: `r nec("2025", "age_18plus")` are 18 or older (up from `r nec("pooled", "age_18plus")`), `r nec("2025", "educ_hs_plus")` have at least a high-school diploma (up from `r nec("pooled", "educ_hs_plus")`), and the college-educated share has roughly doubled, to `r nec("2025", "educ_college_plus")`. The base still skews young, but the recent tilt toward older, degree-holding first-job seekers is exactly the group the entry-level hiring concern is about.
+
 ## Composition and UI Takeup
 
 The CPS cause categories appear to be useful proxies for UI eligibility in the unemployed pool. To test whether the  distinction shows up in the UI claims data, we estimate a simple national monthly regression of initial and continuing claims intensity on the composition of the unemployed:
@@ -374,7 +388,25 @@ bind_rows(
   ))
 ```
 
-The CC/CE column tells a clean compositional story. Temporary Layoffs and Permanent Job Losers, the two causes closest to UI's target population, enter positively: months when they make up a larger share of the unemployed see higher continuing claims intensity. New Entrants and Job Leavers enter negatively, consistent with those groups being largely UI-ineligible. The New Entrants coefficient on CC/CE is −0.217, meaning that a 1 pp rise in the New Entrants share is associated with an insured unemployment rate about 0.22 pp lower, holding other causes and month fixed. With the NE share running about 1.8 pp above its long-run mean over the past twelve months, composition alone would imply today's insured unemployment rate sits about 0.40 pp below what the rest of the mix would predict. That is a meaningful fraction of today's \~1.2% reading, and points in the direction of the UI-ineligible story. The IC/CE coefficients are about seven times smaller than their CC/CE counterparts. Initial claims are a weekly flow of new filers; continuing claims are a stock that accumulates those filers over typical spell duration, so any composition effect on filing rates shows up amplified in continuing claims. A tilt toward eligible groups also tends to pull in filers with longer spells, which compounds the stock effect.
+```{r composition-narrative, include=FALSE}
+# NE coefficient in pp per 1 pp shift (same scaling as the table above)
+ne_coef_cc <- as.numeric(coef(cc_mod)[["new_entrant_share"]]) * 0.01
+
+# NE share of the unemployed over the full monthly history (percent)
+ne_share_ts <- cause_monthly |>
+  inner_join(total_unemp, by = "date") |>
+  transmute(date, s = 100 * `New Entrants` / total) |>
+  arrange(date)
+ne_share_full_mean <- mean(ne_share_ts$s, na.rm = TRUE)
+ne_share_last12    <- mean(tail(ne_share_ts$s, 12), na.rm = TRUE)
+ne_gap_pp          <- ne_share_last12 - ne_share_full_mean
+implied_pp         <- ne_gap_pp * ne_coef_cc
+
+# Latest insured unemployment rate (CC/CE), last finite month
+iur_latest <- tail(na.omit(claims_weekly$cc_ce_pct), 1)
+```
+
+The CC/CE column tells a clean compositional story. Temporary Layoffs and Permanent Job Losers, the two causes closest to UI's target population, enter positively: months when they make up a larger share of the unemployed see higher continuing claims intensity. New Entrants and Job Leavers enter negatively, consistent with those groups being largely UI-ineligible. The New Entrants coefficient on CC/CE is `r sprintf("%.3f", ne_coef_cc)`, meaning that a 1 pp rise in the New Entrants share is associated with an insured unemployment rate about `r sprintf("%.2f", abs(ne_coef_cc))` pp lower, holding other causes and month fixed. With the NE share running about `r sprintf("%.1f", ne_gap_pp)` pp above its long-run mean over the past twelve months, composition alone would imply today's insured unemployment rate sits about `r sprintf("%.2f", abs(implied_pp))` pp below what the rest of the mix would predict. That is a meaningful fraction of today's \~`r sprintf("%.1f", iur_latest)`% reading, and points in the direction of the UI-ineligible story. The IC/CE coefficients are about seven times smaller than their CC/CE counterparts. Initial claims are a weekly flow of new filers; continuing claims are a stock that accumulates those filers over typical spell duration, so any composition effect on filing rates shows up amplified in continuing claims. A tilt toward eligible groups also tends to pull in filers with longer spells, which compounds the stock effect.
 
 We focus on New Entrants in what follows for three reasons. They are UI-ineligible by construction, which makes the "claims cannot see them" story cleanest. Their share has risen the most in the recent run-up. And the widespread concern that new graduates are having a hard time finding work is squarely about this group. Job Leavers tell a consistent story since voluntary quitters are also largely UI-ineligible, but they are not currently drawing the bulk of the attention. Reentrants load weakly positive, contrary to what their partial UI-ineligibility would predict, so we do not lean on their coefficient.
 
@@ -465,13 +497,235 @@ make_share_panel("New Entrants") / make_lf_panel() +
   )
 ```
 
-Three things stand out. First, the New Entrants share (top panel) moves *opposite to the unemployment rate*: it falls in recessions, because Permanent Job Losers and Temporary Layoffs spike and dilute the entrant share, and drifts back up in expansions. Second, the 12-month average of the share has sat above its long-run mean (\~8.6%) since 2022, and averaged \~10.7% over the last twelve months, which is notably higher than the pre-pandemic norm (\~8.8%). Third, the labor-force share (bottom panel) tells a quieter story: New Entrants have averaged about 0.46% of the civilian labor force over the last twelve months, close to the long-run median (\~0.43%). The share of the unemployed is elevated; the share of the labor force is only modestly so. That the New Entrants share (i.e., UI-ineligible persons) is highest precisely when the unemployment rate is lowest is what makes today's read of claims data complicated. Historically, the fraction of the unemployed that UI claims data miss is widest exactly when the labor market is strong.
+```{r ne-share-narrative, include=FALSE}
+ne_u <- shares |> filter(cause == "New Entrants") |> arrange(date)
+ne_share_u_mean   <- mean(ne_u$share, na.rm = TRUE)
+ne_share_u_last12 <- mean(tail(ne_u$share, 12), na.rm = TRUE)
+ne_share_u_pre    <- mean(ne_u$share[ne_u$date < as.Date("2020-03-01")], na.rm = TRUE)
+ne_lf_last12  <- mean(tail(ne_lf$lf_share, 12), na.rm = TRUE)
+ne_lf_median  <- median(ne_lf$lf_share, na.rm = TRUE)
+```
+
+Three things stand out. First, the New Entrants share (top panel) moves *opposite to the unemployment rate*: it falls in recessions, because Permanent Job Losers and Temporary Layoffs spike and dilute the entrant share, and drifts back up in expansions. Second, the 12-month average of the share has sat above its long-run mean (\~`r sprintf("%.1f", ne_share_u_mean)`%) since 2022, and averaged \~`r sprintf("%.1f", ne_share_u_last12)`% over the last twelve months, which is notably higher than the pre-pandemic norm (\~`r sprintf("%.1f", ne_share_u_pre)`%). Third, the labor-force share (bottom panel) tells a quieter story: New Entrants have averaged about `r sprintf("%.2f", ne_lf_last12)`% of the civilian labor force over the last twelve months, close to the long-run median (\~`r sprintf("%.2f", ne_lf_median)`%). The share of the unemployed is elevated; the share of the labor force is only modestly so. That the New Entrants share (i.e., UI-ineligible persons) is highest precisely when the unemployment rate is lowest is what makes today's read of claims data complicated. Historically, the fraction of the unemployed that UI claims data miss is widest exactly when the labor market is strong.
 
 But a high New Entrants share of the unemployed can arise for two very different reasons, and they imply different things about the value of the claims signal. The first is the familiar cyclical pattern. In a healthy labor market, separations fall, the unemployed pool shrinks, and New Entrants make up a bigger share of what is left. In this world, claims are low because separations are low, and claims are blind to a bigger fraction of the unemployed because more of them are ineligible. Onlookers of this labor market could reasonably conclude that it is doing well. 
 
 The second reason paints a less rosy picture. The share could also rise because the *pool* of New Entrants itself is elevated relative to the labor force: finding a first job has gotten harder, for reasons such as weaker hiring, business uncertainty, or automation eating entry-level roles. In that world, New Entrants accumulate in the unemployed pool not because separations have fallen, but because employers aren't hiring them. Separations stay low, so claims stay low. Composition reports "lots of entrants", which under the historical patterns would read as a signal of a strong market. But the real story is that the labor market is weakening on the hiring side, and the weakening is concentrated in groups claims cannot see.
 
 These two worlds imply very different things about the claims signal. In the first, claims stay quiet because the labor market really is quiet. Separations are low, hiring is strong, and new entrants pass through unemployment quickly on their way to first jobs. Claims miss them, but nothing about the labor market differs from what claims report. In the second, claims stay quiet even though the labor market is not. Hiring has softened for the groups claims cannot see, and those people accumulate in the unemployed pool. Claims report calm because the weakening is happening in the part of the labor market they cannot observe. Telling the two apart requires a measure that does not share the blind spot.
+
+## Do Claims Lose Their Signal When New Entrants Pile Up?
+
+So far, our case that claims have a blind spot rests on the eligibility rules and on who the unemployed are. We can also look for the blind spot directly in the claims data. If claims really do miss New Entrants, then a forecaster who uses only claims should predict the unemployment rate worse in months when New Entrants are a large share of the unemployed than in other months.
+
+We run a simple forecasting test to check. Each month, we use only recent claims to predict next month's *change* in the unemployment rate, and record how far off the prediction is. We forecast the change, not the level, because the level barely moves from month to month and a model can look good just by repeating last month's number. The predictors are recent changes in initial and continuing claims, each scaled by covered employment, entered at one- and two-month lags.
+
+We refit the model every month, using only the data a forecaster would have had at the time — a genuine out-of-sample test. Rather than train on the full history back to 1994, we use a rolling window that always drops the oldest month as it adds the newest. The reason is that the link between claims and unemployment has not held still: UI take-up has fallen steadily for decades, from a recipiency rate near 50% in the 1950s to about 25% just before the pandemic, as coverage rules tightened and the workforce shifted toward jobs and workers that claims miss (Blank and Card 1991; Anderson and Meyer 1997; Kuka and Stuart 2025; Lachowska, Sorkin, and Woodbury 2025). A model trained on the full history would anchor itself to a 1990s relationship that no longer describes how claims map into unemployment; a rolling window lets it track the relationship that holds now. How long a window to use is a judgment call — too short and the estimates get noisy, too long and they lag the drift — so we show two: a fast-adapting three-year (36-month) window and a steadier five-year (60-month) one. We set the pandemic aside (March 2020–December 2021), keeping those months out of both training and the forecasts we score.
+
+We then sort the forecasts into two groups — "high New Entrants" and "the rest" — using the New Entrants share the forecaster would have seen when it made each call, so the split is genuinely out-of-sample. Because there is no single obvious line between high and low, we try many: "high" starts at the top 10% of months and widens in five-point steps to the top 50%. For each definition we compare the average error (MAE) in the two groups, with a block bootstrap (block length 6 months, 2,000 replications) that puts a confidence interval on each group's MAE and on the difference between them.
+
+```{r blindspot-compute, warning=F, message=F}
+set.seed(4272026)
+
+fredr_retry <- function(..., tries = 5, wait = 3) {
+  for (i in seq_len(tries)) {
+    res <- tryCatch(fredr(...), error = function(e) e)
+    if (!inherits(res, "error")) return(res)
+    Sys.sleep(wait)
+  }
+  stop(res)
+}
+
+start_date <- as.Date("1994-01-01")
+
+ur_m <- fredr_retry(series_id = "UNRATE", observation_start = start_date) |>
+  transmute(date, UR = value)
+
+claims_monthly <- function(sid) {
+  fredr_retry(series_id = sid, observation_start = start_date) |>
+    mutate(month = floor_date(date, "month")) |>
+    group_by(month) |>
+    summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+    rename(date = month)
+}
+
+ic_m  <- claims_monthly("ICSA")   |> rename(IC = value)
+cc_m  <- claims_monthly("CCSA")   |> rename(CC = value)
+ce_m  <- claims_monthly("COVEMP") |> rename(CE = value)
+tot_m <- fredr_retry(series_id = "UNEMPLOY",    observation_start = start_date) |> transmute(date, tot = value)
+ne_m  <- fredr_retry(series_id = "LNS13023569", observation_start = start_date) |> transmute(date, ne  = value)
+
+fdf <- ur_m |>
+  inner_join(ic_m, by = "date") |> inner_join(cc_m, by = "date") |>
+  inner_join(ce_m, by = "date") |> inner_join(tot_m, by = "date") |>
+  inner_join(ne_m, by = "date") |>
+  arrange(date) |>
+  mutate(
+    ne_share = ne / tot,
+    IC_CE = IC / CE, CC_CE = CC / CE,
+    dUR     = UR - lag(UR),
+    dlIC_CE = log(IC_CE) - log(lag(IC_CE)),
+    dlCC_CE = log(CC_CE) - log(lag(CC_CE)),
+    pandemic = date >= as.Date("2020-03-01") & date <= as.Date("2021-12-01")
+  ) |>
+  mutate(
+    dlIC_CE_l1 = lag(dlIC_CE), dlIC_CE_l2 = lag(dlIC_CE, 2),
+    dlCC_CE_l1 = lag(dlCC_CE), dlCC_CE_l2 = lag(dlCC_CE, 2),
+    ne_share_l1 = lag(ne_share)
+  )
+
+# Rolling window over the most recent `window` NON-pandemic months. Pandemic
+# months are dropped from training rather than forcing the forecast to be
+# skipped, so forecasts continue through 2022 onward.
+walk_forward <- function(df, features, target = "dUR", window = 60, min_train = 30) {
+  n <- nrow(df); out <- vector("list", n); cols <- c(target, features)
+  for (end_train in min_train:(n - 1)) {
+    te <- end_train + 1
+    if (isTRUE(df$pandemic[te])) next
+    keep <- (1:end_train)[!df$pandemic[1:end_train]]
+    trd  <- df[keep, cols, drop = FALSE]
+    trd  <- trd[stats::complete.cases(trd), , drop = FALSE]
+    if (nrow(trd) > window) trd <- tail(trd, window)   # keep the most recent 60 months
+    ted <- df[te, cols, drop = FALSE]
+    if (nrow(trd) < min_train || anyNA(ted)) next
+    mod <- lm(as.formula(paste(target, "~", paste(features, collapse = " + "))), data = trd)
+    out[[te]] <- tibble(date = df$date[te], err = df[[target]][te] - as.numeric(predict(mod, newdata = ted)))
+  }
+  bind_rows(out)
+}
+
+# Sweep the "High NE" cutoff from the top 10% to the top 50%, in 5-point steps
+top_pct <- seq(10, 50, by = 5)
+top_lab <- paste0("Top ", top_pct, "%")
+
+regime_long <- map_dfr(seq_along(top_pct), function(i) {
+  cutoff <- quantile(fdf$ne_share[!fdf$pandemic], 1 - top_pct[i] / 100, na.rm = TRUE)
+  fdf |>
+    transmute(date, top_pct = top_pct[i], threshold = top_lab[i],
+              regime = if_else(ne_share_l1 >= cutoff, "High", "Low"))
+})
+
+mbb_sample <- function(e, block_len = 6) {
+  n <- length(e); nb <- ceiling(n / block_len)
+  starts <- sample.int(n - block_len + 1, nb, replace = TRUE)
+  idx <- unlist(lapply(starts, \(s) s:(s + block_len - 1)))
+  e[idx[seq_len(n)]]
+}
+boot_gap <- function(e_h, e_l, B = 2000, block_len = 6) {
+  if (length(e_h) < block_len || length(e_l) < block_len)
+    return(tibble(gap = NA, ci_lo = NA, ci_hi = NA, p = NA))
+  d <- replicate(B, mean(abs(mbb_sample(e_h, block_len))) - mean(abs(mbb_sample(e_l, block_len))))
+  tibble(gap = mean(abs(e_h)) - mean(abs(e_l)),
+         ci_lo = as.numeric(quantile(d, 0.025)), ci_hi = as.numeric(quantile(d, 0.975)),
+         p = 2 * min(mean(d <= 0), mean(d >= 0)))
+}
+# Bootstrap CI on a single regime's MAE (block bootstrap of its error series)
+boot_mae <- function(e, B = 2000, block_len = 6) {
+  if (length(e) < block_len) return(tibble(mae = mean(abs(e)), lo = NA, hi = NA))
+  m <- replicate(B, mean(abs(mbb_sample(e, block_len))))
+  tibble(mae = mean(abs(e)), lo = as.numeric(quantile(m, 0.025)), hi = as.numeric(quantile(m, 0.975)))
+}
+
+# Run the whole sweep for one rolling-window length; returns per-regime MAE
+# (with bootstrap CI) and the High-Low gap (with CI and p).
+sweep_one <- function(win) {
+  fc <- walk_forward(fdf, c("dlIC_CE_l1", "dlIC_CE_l2", "dlCC_CE_l1", "dlCC_CE_l2"), window = win)
+  ce <- fc |>
+    inner_join(regime_long, by = "date", relationship = "many-to-many") |>
+    filter(!is.na(regime))
+  win_lab <- paste0(win, "-month")
+
+  mae_ci <- ce |>
+    group_by(top_pct, threshold, regime) |>
+    group_modify(~ boot_mae(na.omit(.x$err))) |>
+    ungroup() |>
+    left_join(count(ce, top_pct, regime), by = c("top_pct", "regime")) |>
+    mutate(window = win_lab)
+
+  gap <- ce |>
+    group_by(top_pct, threshold) |>
+    group_modify(~ boot_gap(.x |> filter(regime == "High") |> pull(err) |> na.omit(),
+                            .x |> filter(regime == "Low")  |> pull(err) |> na.omit())) |>
+    ungroup() |>
+    left_join(mae_ci |> select(top_pct, regime, mae, n) |>
+                pivot_wider(names_from = regime, values_from = c(mae, n)),
+              by = "top_pct") |>
+    mutate(window = win_lab)
+
+  list(mae_ci = mae_ci, gap = gap)
+}
+
+windows   <- c(36, 60)
+win_levels <- paste0(windows, "-month")
+sweeps    <- lapply(windows, sweep_one)
+
+mae_ci_all <- bind_rows(lapply(sweeps, `[[`, "mae_ci")) |>
+  mutate(regime = factor(regime, levels = c("High", "Low")),
+         window = factor(window, levels = win_levels))
+
+gap_all <- bind_rows(lapply(sweeps, `[[`, "gap")) |>
+  mutate(threshold = factor(threshold, levels = top_lab),
+         window    = factor(window, levels = win_levels)) |>
+  arrange(window, top_pct)
+
+# Plot one window's per-regime MAE with bootstrap CIs
+plot_mae_window <- function(win_lab) {
+  regime_cols <- c(High = cause_cols[["New Entrants"]], Low = "grey55")
+  dodge <- position_dodge(width = 1.8)
+  mae_ci_all |>
+    filter(window == win_lab) |>
+    ggplot(aes(x = top_pct, y = mae, color = regime, group = regime)) +
+    geom_line(position = dodge, alpha = 0.5, linewidth = 0.5) +
+    geom_errorbar(aes(ymin = lo, ymax = hi), width = 1.6, linewidth = 0.5, position = dodge) +
+    geom_point(aes(fill = regime), shape = 21, color = "white", size = 2.6, stroke = 0.4, position = dodge) +
+    scale_color_manual(values = regime_cols, labels = c(High = "High New Entrants", Low = "Rest of months")) +
+    scale_fill_manual(values = regime_cols, labels = c(High = "High New Entrants", Low = "Rest of months")) +
+    scale_x_continuous(breaks = top_pct, labels = paste0("Top\n", top_pct, "%")) +
+    scale_y_continuous(labels = \(x) paste0(x, " pp")) +
+    labs(
+      title = paste0("Claims-only forecast MAE by New Entrants regime (", win_lab, " window)"),
+      subtitle = "Lower is better. 95% block-bootstrap CIs. The two bands overlap at every cutoff.",
+      x = "Definition of a 'high New Entrants' month (share in this top percentile at the forecast origin)",
+      y = "Mean absolute forecast error (pp of UR)"
+    ) +
+    theme(legend.position = "top")
+}
+
+ne_latest <- tail(fdf$ne_share, 1)
+ne_ptile  <- 100 * mean(fdf$ne_share[!fdf$pandemic] <= ne_latest, na.rm = TRUE)
+```
+
+```{r blindspot-ne-table}
+#| tbl-cap: "Claims-only pseudo-out-of-sample MAE for one-month-ahead forecasts of the change in the unemployment rate, by New Entrants regime, 1994–present excluding March 2020–December 2021, for both rolling-window lengths. A month is High if the New Entrants share at the forecast origin was in the stated top percentile of its non-pandemic history. A positive gap means claims forecast worse when New Entrants are elevated. MAE in percentage points of the unemployment rate; the bootstrap p-value is a two-sided test that the High−Low gap is zero."
+
+gap_all |>
+  transmute(
+    window = paste0(window, " window"),
+    Threshold = threshold,
+    `MAE High` = mae_High, `MAE Low` = mae_Low,
+    `Gap (High − Low)` = gap,
+    `Bootstrap p` = p
+  ) |>
+  gt(groupname_col = "window") |>
+  fmt_number(columns = c(`MAE High`, `MAE Low`, `Gap (High − Low)`, `Bootstrap p`), decimals = 3) |>
+  tab_options(table.font.size = px(11), column_labels.font.weight = "bold",
+              column_labels.background.color = "#2c3e50", row_group.font.weight = "bold") |>
+  tab_style(style = cell_text(color = "white"), locations = cells_column_labels()) |>
+  tab_source_note(sprintf(
+    "Latest New Entrants share: %.3f (%s percentile of the non-pandemic distribution), placing today in roughly the top %.0f%% of months.",
+    ne_latest, scales::ordinal(round(ne_ptile)), 100 - ne_ptile
+  ))
+```
+
+Both windows point the same way. When the New Entrants share is high, the claims-only model forecasts a little worse — the direction the blind-spot story predicts — and the gap is clearest at the tight cutoffs (top 10% through top 25%), which is where today falls, since the New Entrants share sits near the `r scales::ordinal(round(ne_ptile))` percentile of its history.
+
+```{r blindspot-ne-plot, fig.width=9, fig.height=9}
+#| fig-cap: "Claims-only forecast MAE in high- versus low-New-Entrants months, for the 36-month (top) and 60-month (bottom) rolling windows, with 95% block-bootstrap confidence intervals. Lower is better; the horizontal axis widens the definition of a 'high' month from the top 10% to the top 50% of the New Entrants share distribution. In both panels the two bands overlap at every cutoff."
+(plot_mae_window("36-month") / plot_mae_window("60-month")) +
+  plot_layout(guides = "collect") & theme(legend.position = "top")
+```
+
+But the confidence intervals do not make this conclusive. In both windows the two error bands overlap at every cutoff, every High−Low gap in the table includes zero, and no gap's bootstrap p-value falls below `r sprintf("%.2f", min(gap_all$p, na.rm = TRUE))`. The point estimates lean the way the blind-spot story predicts, and they lean harder in the shorter window, but we cannot rule out that the true difference is zero. High-entrant months are few and mostly fall in calm expansions, so the test has little power to confirm the pattern even if it is real. So we treat this as suggestive, not proof — one more reason not to read today's quiet claims as the whole story, and to bring in a measure built to see the hiring side directly.
 
 So which world are we in today? The labor-force share panel above leans toward the first: today's elevated share-of-unemployed looks more like a denominator effect from low separations than a pile-up of unemployed entrants relative to the size of the labor force. But the labor-force share alone does not speak to the hiring environment directly. To check whether hiring for entrants is actually keeping pace, we turn to the CFLMI.
 
@@ -486,7 +740,7 @@ The figure below plots the CFLMI's published finding rate, separation rate, and 
 ```{r cflmi-rates, fig.width=10, fig.height=9, warning=F, message=F}
 #| fig-cap: "Chicago Fed Labor Market Indicators: the job finding rate (Hiring Rate for Unemployed Workers), the job separation rate (Layoffs and Other Separations Rate), and the flow-consistent unemployment rate, monthly. Shaded bands are NBER recessions. Source: Federal Reserve Bank of Chicago."
 
-cflmi <- readxl::read_excel("data/chi-labor-market-indicators.xlsx", sheet = "1. Rates") |>
+cflmi <- arrow::read_parquet(here("data", "final", "cflmi_rates.parquet")) |>
   mutate(date = as.Date(date))
 
 mk_cflmi_panel <- function(y, title, color) {
@@ -507,9 +761,31 @@ p_fcr <- mk_cflmi_panel("fcr",                "Flow-Consistent Unemployment Rate
 p_f / p_s / p_fcr
 ```
 
-A few things from the CFLMI plot are worth flagging explicitly. The flow-consistent rate of unemployment sits at about 4.4% in the latest reading, below its full-sample median (\~4.9%) and well below its full-sample mean (\~5.9%). The finding rate sits at roughly 45%, above its long-run median (\~42%) and its long-run mean (\~41%). Separations are near 2.1%, below their long-run median of \~2.2%. Together these readings describe a cyclically strong labor market: low separations, high finding, low flow-consistent unemployment. Because the CFLMI's hiring-side inputs do not share the claims blind spot, this reading is not being manufactured by the same quietness we were worried about. On balance, the first story fits better than the second.
+```{r cflmi-narrative, include=FALSE}
+# Provenance: all figures below come from cflmi_rates.parquet (build_panels.R
+# section 8d), cited inline so the prose tracks the monthly CFLMI release.
+cflmi_stat <- function(col) {
+  d <- cflmi[!is.na(cflmi[[col]]), ]
+  d <- d[order(d$date), ]
+  v <- d[[col]]
+  list(latest = v[length(v)], median = median(v), mean = mean(v))
+}
+fcr_s  <- cflmi_stat("fcr")
+find_s <- cflmi_stat("hiring_rate_uw")
+seps_s <- cflmi_stat("layoffs_other_seps")
+# Spring-2025 (Mar–May) finding rate for the 12-month drift sentence.
+find_spring25 <- mean(
+  cflmi$hiring_rate_uw[format(cflmi$date, "%Y") == "2025" &
+                       as.integer(format(cflmi$date, "%m")) %in% 3:5],
+  na.rm = TRUE
+)
+pct1 <- function(x) sprintf("%.1f%%", x)   # FCR / separations (one decimal)
+pct0 <- function(x) sprintf("%.0f%%", x)   # finding rate (whole percent)
+```
 
-That said, the finding rate has drifted down over the past twelve months, from roughly 47% in spring 2025 to around 45% in the latest release. The drift is gentle and the absolute level is still healthy, but the finding rate is the margin most likely to move first if the hiring-side weakening story starts to take hold. This is a number to keep an eye on moving forward.
+A few things from the CFLMI plot are worth flagging explicitly. The flow-consistent rate of unemployment sits at about `r pct1(fcr_s$latest)` in the latest reading, below its full-sample median (\~`r pct1(fcr_s$median)`) and well below its full-sample mean (\~`r pct1(fcr_s$mean)`). The finding rate sits at roughly `r pct0(find_s$latest)`, above its long-run median (\~`r pct0(find_s$median)`) and its long-run mean (\~`r pct0(find_s$mean)`). Separations are near `r pct1(seps_s$latest)`, below their long-run median of \~`r pct1(seps_s$median)`. Together these readings describe a cyclically strong labor market: low separations, high finding, low flow-consistent unemployment. Because the CFLMI's hiring-side inputs do not share the claims blind spot, this reading is not being manufactured by the same quietness we were worried about. On balance, the first story fits better than the second.
+
+That said, the finding rate has drifted down over the past twelve months, from roughly `r pct0(find_spring25)` in spring 2025 to around `r pct0(find_s$latest)` in the latest release. The drift is gentle and the absolute level is still healthy, but the finding rate is the margin most likely to move first if the hiring-side weakening story starts to take hold. This is a number to keep an eye on moving forward.
 
 ## Conclusion
 

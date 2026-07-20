@@ -15,6 +15,7 @@ library(here)
 library(ipumsr)
 library(lubridate)
 library(tidyverse)
+library(readxl)
 
 here::i_am("build_panels.R")
 
@@ -360,6 +361,11 @@ cps_raw <- read_ipums_micro(ddi, data_file = cps_data_path, verbose = FALSE)
 cat("  Rows:", nrow(cps_raw), "\n")
 
 cps_all <- cps_raw |>
+  # Restrict to the official 16+ labor-force universe so every profile dimension
+  # and the labor-force denominator match the FRED 16+ series (UNRATE,
+  # LNS130236xx, CLF16OV). IPUMS includes some sub-16 records with WHYUNEMP set;
+  # those are not in the published 16+ labor force.
+  filter(AGE >= 16) |>
   mutate(
     cause = factor(WHYUNEMP, levels = 1:6, labels = cause_order),
     group2 = cause_to_group[as.character(cause)],
@@ -1309,6 +1315,118 @@ write_final_parquet(
   unemployment_dominant_profile_ratios,
   "unemployment_dominant_profile_ratios.parquet"
 )
+
+# -----------------------------------------------------------------------------
+# 8b. Diagnostic: full composition of each unemployment reason across every spoke
+# -----------------------------------------------------------------------------
+# Unlike the dominant-profile files (which keep only the single largest group per
+# spoke), this writes the ENTIRE distribution: for each reason-for-unemployment
+# (cause) and each demographic dimension, the weighted share of that cause's
+# unemployed falling in every group, alongside the group's labor-force share and
+# the ratio of the two. A single-year-of-age dimension is added so ages 16, 17,
+# 18, ... can be read individually rather than only within the 16-24 bin. Pooled
+# over the full 1994-present, 16+ sample; WTFINL-weighted.
+
+# Binned dimensions (Age bin, Education, Sex, Race, Occupation, Class, Nativity,
+# Citizenship) reuse the same profile helpers as the dominant-profile build.
+reason_comp_binned <- build_profile_shares(cps_unemp) |>
+  left_join(build_lf_profile_shares(cps_lf), by = c("dimension", "group_key")) |>
+  mutate(dimension = as.character(dimension))
+
+# Single-year-of-age composition, same structure.
+age_year_cause <- cps_unemp |>
+  filter(!is.na(AGE)) |>
+  group_by(cause, AGE) |>
+  summarise(n = sum(WTFINL, na.rm = TRUE), .groups = "drop") |>
+  group_by(cause) |>
+  mutate(share = n / sum(n)) |>
+  ungroup() |>
+  transmute(cause, dimension = "Age (single year)",
+            group_key = as.character(AGE), share)
+
+age_year_lf <- cps_lf |>
+  filter(!is.na(AGE)) |>
+  group_by(AGE) |>
+  summarise(n = sum(WTFINL, na.rm = TRUE), .groups = "drop") |>
+  mutate(lf_share = n / sum(n)) |>
+  transmute(dimension = "Age (single year)", group_key = as.character(AGE), lf_share)
+
+age_year_comp <- age_year_cause |>
+  left_join(age_year_lf, by = c("dimension", "group_key"))
+
+reason_composition <- bind_rows(reason_comp_binned, age_year_comp) |>
+  rename(cause_share = share) |>
+  mutate(ratio = cause_share / lf_share) |>
+  arrange(cause, dimension, group_key) |>
+  select(cause, dimension, group = group_key, cause_share, lf_share, ratio)
+
+readr::write_csv(
+  reason_composition,
+  here("data", "final", "unemployment_reason_composition_16plus.csv")
+)
+write_final_parquet(reason_composition, "unemployment_reason_composition_16plus.parquet")
+
+# -----------------------------------------------------------------------------
+# 8c. New Entrant age/education composition: pooled vs 2025
+# -----------------------------------------------------------------------------
+# Feeds the spider-plot section's "are New Entrants just teenagers?" paragraph in
+# cfi.qmd. For each window (full 1994-present pooled, and calendar 2025), the
+# WTFINL-weighted share of New-Entrant unemployed by age band (denominator = all
+# NE) and by education (denominator = NE with a valid education code). 16+
+# universe and the educ_group binning are inherited from cps_all.
+ne_comp_one <- function(df, window_label) {
+  ne <- df |> filter(cause == "New Entrants")
+  wa <- sum(ne$WTFINL, na.rm = TRUE)
+  ne_ed <- ne |> filter(!is.na(educ_group))
+  we <- sum(ne_ed$WTFINL, na.rm = TRUE)
+  wsum <- function(x, mask) sum(x$WTFINL[mask], na.rm = TRUE)
+  tibble(
+    window = window_label,
+    metric = c("age_16_19", "age_18plus", "age_25plus", "age_under25",
+               "educ_below_hs", "educ_hs_plus", "educ_college_plus"),
+    value = c(
+      wsum(ne, ne$AGE >= 16 & ne$AGE <= 19) / wa,
+      wsum(ne, ne$AGE >= 18) / wa,
+      wsum(ne, ne$AGE >= 25) / wa,
+      wsum(ne, ne$AGE <  25) / wa,
+      wsum(ne_ed, ne_ed$educ_group == "Below HS") / we,
+      wsum(ne_ed, ne_ed$educ_group %in% c("HS Diploma", "Some College", "College+")) / we,
+      wsum(ne_ed, ne_ed$educ_group == "College+") / we
+    )
+  )
+}
+
+new_entrant_composition <- bind_rows(
+  ne_comp_one(cps_unemp, "pooled"),
+  ne_comp_one(cps_unemp |> filter(YEAR == 2025), "2025")
+)
+
+write_final_parquet(new_entrant_composition, "unemployment_new_entrant_composition.parquet")
+
+# -----------------------------------------------------------------------------
+# 8d. Chicago Fed Labor Market Indicators (CFLMI): fetch + tidy for cfi.qmd
+# -----------------------------------------------------------------------------
+# The CFLMI workbook updates monthly. Fetch it live (like FRED) so cfi.qmd never
+# silently desyncs from a stale manual drop-in, tidy the "1. Rates" sheet, and
+# write it to data/final as a parquet. Falls back to the cached raw copy if the
+# download fails so the build still completes offline.
+cflmi_url      <- "https://api.data.chicagofed.org/CFLMI/chi-labor-market-indicators.xlsx"
+cflmi_raw_path <- here("data", "CFLMI", "chi-labor-market-indicators.xlsx")
+dir.create(dirname(cflmi_raw_path), recursive = TRUE, showWarnings = FALSE)
+cflmi_ok <- tryCatch({
+  download.file(cflmi_url, cflmi_raw_path, mode = "wb", quiet = TRUE)
+  TRUE
+}, error = function(e) FALSE)
+if (!cflmi_ok && !file.exists(cflmi_raw_path)) {
+  stop("CFLMI download failed and no cached copy exists at ", cflmi_raw_path)
+}
+if (!cflmi_ok) message("CFLMI download failed; using cached copy at ", cflmi_raw_path)
+
+cflmi_rates <- read_excel(cflmi_raw_path, sheet = "1. Rates") |>
+  mutate(date = as.Date(date)) |>
+  select(date, layoffs_other_seps, hiring_rate_uw, fcr, s, f)
+
+write_final_parquet(cflmi_rates, "cflmi_rates.parquet")
 
 # -----------------------------------------------------------------------------
 # 9. Metadata / codebooks for report-facing tables
