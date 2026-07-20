@@ -510,23 +510,25 @@ Three things stand out. First, the New Entrants share (top panel) moves *opposit
 
 But a high New Entrants share of the unemployed can arise for two very different reasons, and they imply different things about the value of the claims signal. The first is the familiar cyclical pattern. In a healthy labor market, separations fall, the unemployed pool shrinks, and New Entrants make up a bigger share of what is left. In this world, claims are low because separations are low, and claims are blind to a bigger fraction of the unemployed because more of them are ineligible. Onlookers of this labor market could reasonably conclude that it is doing well. 
 
-The second reason paints a less rosy picture. The share could also rise because the *pool* of New Entrants itself is elevated relative to the labor force: finding a first job has gotten harder, for reasons such as weaker hiring, business uncertainty, or automation eating entry-level roles. In that world, New Entrants accumulate in the unemployed pool not because separations have fallen, but because employers aren't hiring them. Separations stay low, so claims stay low. Composition reports "lots of entrants", which under the historical patterns would read as a signal of a strong market. But the real story is that the labor market is weakening on the hiring side, and the weakening is concentrated in groups claims cannot see.
-
-These two worlds imply very different things about the claims signal. In the first, claims stay quiet because the labor market really is quiet. Separations are low, hiring is strong, and new entrants pass through unemployment quickly on their way to first jobs. Claims miss them, but nothing about the labor market differs from what claims report. In the second, claims stay quiet even though the labor market is not. Hiring has softened for the groups claims cannot see, and those people accumulate in the unemployed pool. Claims report calm because the weakening is happening in the part of the labor market they cannot observe. Telling the two apart requires a measure that does not share the blind spot.
+A second reason is the share could rise because the pool of New Entrants itself is elevated relative to the labor force. In this scenario, finding a first job has gotten harder, for reasons such as weaker hiring, business uncertainty, or automation eating entry-level roles. New Entrants would accumulate in the unemployed pool not because separations have fallen, but because employers aren't hiring them. The share of New Entrants would read high, which under the historical patterns would read as a sign of a strong labor market. But the real story is that the labor market is weakening on the hiring side, concentrated in the groups claims cannot see. These two worlds imply very different things about the claims signal. Telling them apart requires a measure that does not share this eligibility blind spot.
 
 ## Do Claims Lose Their Signal When New Entrants Pile Up?
 
 So far, our case that claims have a blind spot rests on the eligibility rules and on who the unemployed are. We can also look for the blind spot directly in the claims data. If claims really do miss New Entrants, then a forecaster who uses only claims should predict the unemployment rate worse in months when New Entrants are a large share of the unemployed than in other months.
 
-We run a simple forecasting test to check. Each month, we use only recent claims to predict next month's *change* in the unemployment rate, and record how far off the prediction is. We forecast the change, not the level, because the level barely moves from month to month and a model can look good just by repeating last month's number. The predictors are recent changes in initial and continuing claims, each scaled by covered employment, entered at one- and two-month lags.
+We run a simple forecasting test to check. Each month, we use only recent claims to predict next month's *change* in the unemployment rate, and record how far off the prediction is. We forecast the change, not the level, because the unemployment rate and the claims intensities are all highly persistent, close to random walks from month to month, so a regression in levels would mostly pick up their shared trends rather than genuine predictive content. Differencing both the target and the predictors keeps the series stationary. The predictors are the prior month's changes in initial and continuing claims, each scaled by covered employment. Concretely, each month we fit
 
-We refit the model every month, using only the data a forecaster would have had at the time — a genuine out-of-sample test. Rather than train on the full history back to 1994, we use a rolling window that always drops the oldest month as it adds the newest. The reason is that the link between claims and unemployment has not held still: UI take-up has fallen steadily for decades, from a recipiency rate near 50% in the 1950s to about 25% just before the pandemic, as coverage rules tightened and the workforce shifted toward jobs and workers that claims miss (Blank and Card 1991; Anderson and Meyer 1997; Kuka and Stuart 2025; Lachowska, Sorkin, and Woodbury 2025). A model trained on the full history would anchor itself to a 1990s relationship that no longer describes how claims map into unemployment; a rolling window lets it track the relationship that holds now. How long a window to use is a judgment call — too short and the estimates get noisy, too long and they lag the drift — so we show two: a fast-adapting three-year (36-month) window and a steadier five-year (60-month) one. We set the pandemic aside (March 2020–December 2021), keeping those months out of both training and the forecasts we score.
+$$
+\Delta UR_t = \alpha + \beta\,\Delta\log\!\left(\frac{IC}{CE}\right)_{t-1} + \gamma\,\Delta\log\!\left(\frac{CC}{CE}\right)_{t-1} + \varepsilon_t,
+$$
 
-We then sort the forecasts into two groups — "high New Entrants" and "the rest" — using the New Entrants share the forecaster would have seen when it made each call, so the split is genuinely out-of-sample. Because there is no single obvious line between high and low, we try many: "high" starts at the top 10% of months and widens in five-point steps to the top 50%. For each definition we compare the average error (MAE) in the two groups, with a block bootstrap (block length 6 months, 2,000 replications) that puts a confidence interval on each group's MAE and on the difference between them.
+where $\Delta UR_t$ is the month-over-month change in the unemployment rate (in percentage points) and $\Delta\log(IC/CE)$ and $\Delta\log(CC/CE)$ are log-changes in the initial- and continuing-claims intensities.
+
+We refit the model every month, using only data dated up to the forecast month, so the model never sees the month it is predicting. This is a pseudo-out-of-sample test. Rather than train on the full history back to 1994, we use a rolling window that always drops the oldest month as it adds the newest. The reason is that the link between claims and unemployment has not held still: UI take-up has fallen steadily for decades, from a recipiency rate near 50% in the 1950s to about 25% just before the pandemic, as coverage rules tightened and the workforce shifted toward jobs and workers that claims miss (Blank and Card 1991; Anderson and Meyer 1997; Kuka and Stuart 2025; Lachowska, Sorkin, and Woodbury 2025). A model trained on the full history would anchor itself to a historical relationship that is less apt today; a rolling window lets it track the relationship that holds now. The window length is a judgment call: too short and the estimates get noisy, too long and they lag the drift. We settle on a three-year (36-month) window; a longer five-year window points the same way but weaker. We set the pandemic aside (March 2020–December 2021), keeping those months out of both training and the forecasts we score.
+
+We then sort the forecasts into two groups, "high New Entrants" and "the rest," using the New Entrants share as of the forecast month (its one-month lag), so the split uses no future information. Because there is no single obvious line between high and low, we try many: "high" starts at the top 10% of months and widens in five-point steps to the top 50%. For each definition we compare the average error (MAE) in the two groups.
 
 ```{r blindspot-compute, warning=F, message=F}
-set.seed(4272026)
-
 fredr_retry <- function(..., tries = 5, wait = 3) {
   for (i in seq_len(tries)) {
     res <- tryCatch(fredr(...), error = function(e) e)
@@ -569,8 +571,8 @@ fdf <- ur_m |>
     pandemic = date >= as.Date("2020-03-01") & date <= as.Date("2021-12-01")
   ) |>
   mutate(
-    dlIC_CE_l1 = lag(dlIC_CE), dlIC_CE_l2 = lag(dlIC_CE, 2),
-    dlCC_CE_l1 = lag(dlCC_CE), dlCC_CE_l2 = lag(dlCC_CE, 2),
+    dlIC_CE_l1 = lag(dlIC_CE),
+    dlCC_CE_l1 = lag(dlCC_CE),
     ne_share_l1 = lag(ne_share)
   )
 
@@ -605,61 +607,35 @@ regime_long <- map_dfr(seq_along(top_pct), function(i) {
               regime = if_else(ne_share_l1 >= cutoff, "High", "Low"))
 })
 
-mbb_sample <- function(e, block_len = 6) {
-  n <- length(e); nb <- ceiling(n / block_len)
-  starts <- sample.int(n - block_len + 1, nb, replace = TRUE)
-  idx <- unlist(lapply(starts, \(s) s:(s + block_len - 1)))
-  e[idx[seq_len(n)]]
-}
-boot_gap <- function(e_h, e_l, B = 2000, block_len = 6) {
-  if (length(e_h) < block_len || length(e_l) < block_len)
-    return(tibble(gap = NA, ci_lo = NA, ci_hi = NA, p = NA))
-  d <- replicate(B, mean(abs(mbb_sample(e_h, block_len))) - mean(abs(mbb_sample(e_l, block_len))))
-  tibble(gap = mean(abs(e_h)) - mean(abs(e_l)),
-         ci_lo = as.numeric(quantile(d, 0.025)), ci_hi = as.numeric(quantile(d, 0.975)),
-         p = 2 * min(mean(d <= 0), mean(d >= 0)))
-}
-# Bootstrap CI on a single regime's MAE (block bootstrap of its error series)
-boot_mae <- function(e, B = 2000, block_len = 6) {
-  if (length(e) < block_len) return(tibble(mae = mean(abs(e)), lo = NA, hi = NA))
-  m <- replicate(B, mean(abs(mbb_sample(e, block_len))))
-  tibble(mae = mean(abs(e)), lo = as.numeric(quantile(m, 0.025)), hi = as.numeric(quantile(m, 0.975)))
-}
-
-# Run the whole sweep for one rolling-window length; returns per-regime MAE
-# (with bootstrap CI) and the High-Low gap (with CI and p).
+# Per-regime mean absolute forecast error, and the High-Low gap, for one
+# rolling-window length. No formal inference is attached (see text): the
+# high-entrant subsample is small, serially dependent, and confounded with the
+# volatility regime, so we report point MAEs only.
 sweep_one <- function(win) {
-  fc <- walk_forward(fdf, c("dlIC_CE_l1", "dlIC_CE_l2", "dlCC_CE_l1", "dlCC_CE_l2"), window = win)
+  fc <- walk_forward(fdf, c("dlIC_CE_l1", "dlCC_CE_l1"), window = win)
   ce <- fc |>
     inner_join(regime_long, by = "date", relationship = "many-to-many") |>
     filter(!is.na(regime))
   win_lab <- paste0(win, "-month")
 
-  mae_ci <- ce |>
+  mae <- ce |>
     group_by(top_pct, threshold, regime) |>
-    group_modify(~ boot_mae(na.omit(.x$err))) |>
-    ungroup() |>
-    left_join(count(ce, top_pct, regime), by = c("top_pct", "regime")) |>
+    summarise(mae = mean(abs(err), na.rm = TRUE), n = sum(!is.na(err)), .groups = "drop") |>
     mutate(window = win_lab)
 
-  gap <- ce |>
-    group_by(top_pct, threshold) |>
-    group_modify(~ boot_gap(.x |> filter(regime == "High") |> pull(err) |> na.omit(),
-                            .x |> filter(regime == "Low")  |> pull(err) |> na.omit())) |>
-    ungroup() |>
-    left_join(mae_ci |> select(top_pct, regime, mae, n) |>
-                pivot_wider(names_from = regime, values_from = c(mae, n)),
-              by = "top_pct") |>
-    mutate(window = win_lab)
+  gap <- mae |>
+    select(top_pct, threshold, regime, mae, n) |>
+    pivot_wider(names_from = regime, values_from = c(mae, n)) |>
+    mutate(gap = mae_High - mae_Low, window = win_lab)
 
-  list(mae_ci = mae_ci, gap = gap)
+  list(mae = mae, gap = gap)
 }
 
-windows   <- c(36, 60)
+windows   <- 36
 win_levels <- paste0(windows, "-month")
 sweeps    <- lapply(windows, sweep_one)
 
-mae_ci_all <- bind_rows(lapply(sweeps, `[[`, "mae_ci")) |>
+mae_all <- bind_rows(lapply(sweeps, `[[`, "mae")) |>
   mutate(regime = factor(regime, levels = c("High", "Low")),
          window = factor(window, levels = win_levels))
 
@@ -668,23 +644,21 @@ gap_all <- bind_rows(lapply(sweeps, `[[`, "gap")) |>
          window    = factor(window, levels = win_levels)) |>
   arrange(window, top_pct)
 
-# Plot one window's per-regime MAE with bootstrap CIs
+# Plot one window's per-regime MAE (point estimates only)
 plot_mae_window <- function(win_lab) {
   regime_cols <- c(High = cause_cols[["New Entrants"]], Low = "grey55")
-  dodge <- position_dodge(width = 1.8)
-  mae_ci_all |>
+  mae_all |>
     filter(window == win_lab) |>
     ggplot(aes(x = top_pct, y = mae, color = regime, group = regime)) +
-    geom_line(position = dodge, alpha = 0.5, linewidth = 0.5) +
-    geom_errorbar(aes(ymin = lo, ymax = hi), width = 1.6, linewidth = 0.5, position = dodge) +
-    geom_point(aes(fill = regime), shape = 21, color = "white", size = 2.6, stroke = 0.4, position = dodge) +
+    geom_line(alpha = 0.6, linewidth = 0.6) +
+    geom_point(aes(fill = regime), shape = 21, color = "white", size = 2.8, stroke = 0.4) +
     scale_color_manual(values = regime_cols, labels = c(High = "High New Entrants", Low = "Rest of months")) +
     scale_fill_manual(values = regime_cols, labels = c(High = "High New Entrants", Low = "Rest of months")) +
     scale_x_continuous(breaks = top_pct, labels = paste0("Top\n", top_pct, "%")) +
     scale_y_continuous(labels = \(x) paste0(x, " pp")) +
     labs(
       title = paste0("Claims-only forecast MAE by New Entrants regime (", win_lab, " window)"),
-      subtitle = "Lower is better. 95% block-bootstrap CIs. The two bands overlap at every cutoff.",
+      subtitle = "Lower is better. Point estimates; the two regimes are nearly identical at every cutoff.",
       x = "Definition of a 'high New Entrants' month (share in this top percentile at the forecast origin)",
       y = "Mean absolute forecast error (pp of UR)"
     ) +
@@ -696,18 +670,17 @@ ne_ptile  <- 100 * mean(fdf$ne_share[!fdf$pandemic] <= ne_latest, na.rm = TRUE)
 ```
 
 ```{r blindspot-ne-table}
-#| tbl-cap: "Claims-only pseudo-out-of-sample MAE for one-month-ahead forecasts of the change in the unemployment rate, by New Entrants regime, 1994–present excluding March 2020–December 2021, for both rolling-window lengths. A month is High if the New Entrants share at the forecast origin was in the stated top percentile of its non-pandemic history. A positive gap means claims forecast worse when New Entrants are elevated. MAE in percentage points of the unemployment rate; the bootstrap p-value is a two-sided test that the High−Low gap is zero."
+#| tbl-cap: "Claims-only pseudo-out-of-sample MAE for one-month-ahead forecasts of the change in the unemployment rate, by New Entrants regime, 1994–present excluding March 2020–December 2021, 36-month rolling window. A month is High if the New Entrants share at the forecast origin was in the stated top percentile of its non-pandemic history. A positive gap means claims forecast worse when New Entrants are elevated. MAE in percentage points of the unemployment rate."
 
 gap_all |>
   transmute(
     window = paste0(window, " window"),
     Threshold = threshold,
     `MAE High` = mae_High, `MAE Low` = mae_Low,
-    `Gap (High − Low)` = gap,
-    `Bootstrap p` = p
+    `Gap (High − Low)` = gap
   ) |>
   gt(groupname_col = "window") |>
-  fmt_number(columns = c(`MAE High`, `MAE Low`, `Gap (High − Low)`, `Bootstrap p`), decimals = 3) |>
+  fmt_number(columns = c(`MAE High`, `MAE Low`, `Gap (High − Low)`), decimals = 3) |>
   tab_options(table.font.size = px(11), column_labels.font.weight = "bold",
               column_labels.background.color = "#2c3e50", row_group.font.weight = "bold") |>
   tab_style(style = cell_text(color = "white"), locations = cells_column_labels()) |>
@@ -717,15 +690,14 @@ gap_all |>
   ))
 ```
 
-Both windows point the same way. When the New Entrants share is high, the claims-only model forecasts a little worse — the direction the blind-spot story predicts — and the gap is clearest at the tight cutoffs (top 10% through top 25%), which is where today falls, since the New Entrants share sits near the `r scales::ordinal(round(ne_ptile))` percentile of its history.
+The point estimates point the way the blind-spot story predicts. When the New Entrants share is high, the claims-only model forecasts a little worse, and the gap is clearest at the tight cutoffs (top 10% through top 25%), which is where today falls, since the New Entrants share sits near the `r scales::ordinal(round(ne_ptile))` percentile of its history.
 
 ```{r blindspot-ne-plot, fig.width=9, fig.height=9}
-#| fig-cap: "Claims-only forecast MAE in high- versus low-New-Entrants months, for the 36-month (top) and 60-month (bottom) rolling windows, with 95% block-bootstrap confidence intervals. Lower is better; the horizontal axis widens the definition of a 'high' month from the top 10% to the top 50% of the New Entrants share distribution. In both panels the two bands overlap at every cutoff."
-(plot_mae_window("36-month") / plot_mae_window("60-month")) +
-  plot_layout(guides = "collect") & theme(legend.position = "top")
+#| fig-cap: "Claims-only forecast MAE in high- versus low-New-Entrants months, 36-month rolling window. Lower is better; the horizontal axis widens the definition of a 'high' month from the top 10% to the top 50% of the New Entrants share distribution. The two regimes are nearly identical at every cutoff."
+plot_mae_window("36-month")
 ```
 
-But the confidence intervals do not make this conclusive. In both windows the two error bands overlap at every cutoff, every High−Low gap in the table includes zero, and no gap's bootstrap p-value falls below `r sprintf("%.2f", min(gap_all$p, na.rm = TRUE))`. The point estimates lean the way the blind-spot story predicts, and they lean harder in the shorter window, but we cannot rule out that the true difference is zero. High-entrant months are few and mostly fall in calm expansions, so the test has little power to confirm the pattern even if it is real. So we treat this as suggestive, not proof — one more reason not to read today's quiet claims as the whole story, and to bring in a measure built to see the hiring side directly.
+We want to emphasize what this exercise is for. Its purpose is to show that our argument — that the composition of the unemployed pool shapes what claims can see — is *plausible*, not to prove it. We don't attach a formal significance test: the high-entrant sample is small, serially dependent, and drawn mostly from calm expansions. The point estimates lean the way the blind-spot story predicts but are almost certainly not distinguishable from no difference. We treat this as one more reason not to read today's quiet claims as the whole story, and to bring in a measure built to see the hiring side directly.
 
 So which world are we in today? The labor-force share panel above leans toward the first: today's elevated share-of-unemployed looks more like a denominator effect from low separations than a pile-up of unemployed entrants relative to the size of the labor force. But the labor-force share alone does not speak to the hiring environment directly. To check whether hiring for entrants is actually keeping pace, we turn to the CFLMI.
 
