@@ -1,0 +1,94 @@
+{
+  "language": "R",
+  "package": "lm() (base R)",
+  "r_version": "4.5.3",
+  "sample_first_date": "1994-01-01",
+  "sample_last_date": "2026-03-01",
+  "n_obs": 364,
+  "cc_ce": {
+    "temp_layoff_share": {
+      "estimate_raw": 0.0393,
+      "se_raw": 0.0174,
+      "coef_10pp": 0.0039,
+      "se_10pp": 0.0017,
+      "p_value": 0.0248
+    },
+    "perm_job_loser_share": {
+      "estimate_raw": 0.0597,
+      "se_raw": 0.0138,
+      "coef_10pp": 0.006,
+      "se_10pp": 0.0014,
+      "p_value": 0
+    },
+    "job_leaver_share": {
+      "estimate_raw": -0.1858,
+      "se_raw": 0.017,
+      "coef_10pp": -0.0186,
+      "se_10pp": 0.0017,
+      "p_value": 4.2384e-24
+    },
+    "reentrant_share": {
+      "estimate_raw": 0.0313,
+      "se_raw": 0.0146,
+      "coef_10pp": 0.0031,
+      "se_10pp": 0.0015,
+      "p_value": 0.0322
+    },
+    "new_entrant_share": {
+      "estimate_raw": -0.2172,
+      "se_raw": 0.019,
+      "coef_10pp": -0.0217,
+      "se_10pp": 0.0019,
+      "p_value": 7.5172e-26
+    },
+    "_r_squared": 0.8902,
+    "_n": 364
+  },
+  "ic_ce": {
+    "temp_layoff_share": {
+      "estimate_raw": 0.0042,
+      "se_raw": 0.0023,
+      "coef_10pp": 0.0004,
+      "se_10pp": 0.0002,
+      "p_value": 0.0703
+    },
+    "perm_job_loser_share": {
+      "estimate_raw": 0.0017,
+      "se_raw": 0.0018,
+      "coef_10pp": 0.0002,
+      "se_10pp": 0.0002,
+      "p_value": 0.352
+    },
+    "job_leaver_share": {
+      "estimate_raw": -0.026,
+      "se_raw": 0.0023,
+      "coef_10pp": -0.0026,
+      "se_10pp": 0.0002,
+      "p_value": 2.9962e-26
+    },
+    "reentrant_share": {
+      "estimate_raw": 0.0042,
+      "se_raw": 0.0019,
+      "coef_10pp": 0.0004,
+      "se_10pp": 0.0002,
+      "p_value": 0.0287
+    },
+    "new_entrant_share": {
+      "estimate_raw": -0.0294,
+      "se_raw": 0.0025,
+      "coef_10pp": -0.0029,
+      "se_10pp": 0.0003,
+      "p_value": 1.0881e-26
+    },
+    "_r_squared": 0.8047,
+    "_n": 364
+  },
+  "new_entrant_share_pct": {
+    "latest_date": "2026-03-01",
+    "long_run_mean_1994_present_nonpandemic": 8.85,
+    "long_run_mean_1994_present_all": 8.6416,
+    "pre_pandemic_mean_through_2020_02": 8.7685,
+    "last_12_months_mean": 10.6958,
+    "latest_value": 9.8632
+  }
+}

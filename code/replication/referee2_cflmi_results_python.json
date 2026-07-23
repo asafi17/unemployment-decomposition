@@ -1,0 +1,40 @@
+{
+  "hiring_rate_uw": {
+    "latest_date": "2026-03-14",
+    "latest": 44.7859360753915,
+    "full_sample_mean": 40.57884158487582,
+    "full_sample_median": 42.1398874528312,
+    "full_sample_min": 17.9606895946092,
+    "full_sample_max": 57.8555898714618,
+    "n_obs": 213
+  },
+  "layoffs_other_seps": {
+    "latest_date": "2026-03-14",
+    "latest": 2.06786240802948,
+    "full_sample_mean": 2.316534575128334,
+    "full_sample_median": 2.21183712989653,
+    "full_sample_min": 1.9223134226622,
+    "full_sample_max": 4.00483070957992,
+    "n_obs": 213
+  },
+  "fcr": {
+    "latest_date": "2026-03-14",
+    "latest": 4.41343599657386,
+    "full_sample_mean": 5.904963338610819,
+    "full_sample_median": 4.94392621900917,
+    "full_sample_min": 3.21685598465566,
+    "full_sample_max": 17.9509335014759,
+    "n_obs": 213
+  },
+  "hiring_rate_uw_spring2025_mean": 46.789742474486744,
+  "hiring_rate_uw_spring2025_values": [
+    [
+      "2025-03-15",
+      46.5006547775703
+    ],
+    [
+      "2025-04-12",
+      47.0788301714032
+    ]
+  ]
+}

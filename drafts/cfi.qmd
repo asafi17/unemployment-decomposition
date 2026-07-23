@@ -655,7 +655,7 @@ plot_mae_window <- function(win_lab) {
     scale_color_manual(values = regime_cols, labels = c(High = "High New Entrants", Low = "Rest of months")) +
     scale_fill_manual(values = regime_cols, labels = c(High = "High New Entrants", Low = "Rest of months")) +
     scale_x_continuous(breaks = top_pct, labels = paste0("Top\n", top_pct, "%")) +
-    scale_y_continuous(labels = \(x) paste0(x, " pp")) +
+    scale_y_continuous(labels = \(x) paste0(x, " pp"), expand = expansion(mult = 0.15)) +
     labs(
       title = paste0("Claims-only forecast MAE by New Entrants regime (", win_lab, " window)"),
       subtitle = "Lower is better. Point estimates; the two regimes are nearly identical at every cutoff.",
@@ -692,7 +692,7 @@ gap_all |>
 
 The point estimates point the way the blind-spot story predicts. When the New Entrants share is high, the claims-only model forecasts a little worse, and the gap is clearest at the tight cutoffs (top 10% through top 25%), which is where today falls, since the New Entrants share sits near the `r scales::ordinal(round(ne_ptile))` percentile of its history.
 
-```{r blindspot-ne-plot, fig.width=9, fig.height=9}
+```{r blindspot-ne-plot, fig.width=8, fig.height=5}
 #| fig-cap: "Claims-only forecast MAE in high- versus low-New-Entrants months, 36-month rolling window. Lower is better; the horizontal axis widens the definition of a 'high' month from the top 10% to the top 50% of the New Entrants share distribution. The two regimes are nearly identical at every cutoff."
 plot_mae_window("36-month")
 ```
